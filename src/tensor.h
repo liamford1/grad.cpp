@@ -25,6 +25,9 @@ class Tensor {
         Tensor relu() const;
         void fill(float value);
         Tensor scale(float scaler) const;
+
+        Tensor reshape(int new_rows, int new_cols) const;
+        Tensor slice(int start_row, int num_rows, int start_col, int num_cols) const;
         
         int getRows() const { return rows; }
         int getCols() const { return cols; }

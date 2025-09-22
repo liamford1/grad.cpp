@@ -146,5 +146,71 @@ int main() {
     std::cout << "Output shape: " << output.getRows() << "x" << output.getCols() << std::endl;
     std::cout << "Shapes match: " << (output.getRows() == 2 && output.getCols() == d_model ? "YES" : "NO") << std::endl;
 
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Reshape ===" << std::endl;
+    Tensor original(2, 3);
+
+    // Fill with sequential values to track ordering
+    original.setValue(0, 0, 1); original.setValue(0, 1, 2); original.setValue(0, 2, 3);
+    original.setValue(1, 0, 4); original.setValue(1, 1, 5); original.setValue(1, 2, 6);
+
+    std::cout << "Original (2x3):" << std::endl;
+    original.display();
+
+    Tensor reshaped = original.reshape(3, 2);
+    std::cout << "\nReshaped to (3x2):" << std::endl;
+    reshaped.display();
+
+    Tensor back = reshaped.reshape(1, 6);
+    std::cout << "\nReshaped to (1x6):" << std::endl;
+    back.display();
+
+    // Test error case
+    std::cout << "\nTesting invalid reshape:" << std::endl;
+    try {
+        Tensor invalid = original.reshape(2, 4); // Should fail: 2*3 != 2*4
+        std::cout << "ERROR: Should have thrown exception!" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "Correctly caught exception: " << e.what() << std::endl;
+    }
+
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Slice ===" << std::endl;
+    Tensor matrix(4, 5);
+
+    // Fill with distinctive pattern (row*10 + col)
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            matrix.setValue(i, j, i * 10 + j);
+        }
+    }
+
+    std::cout << "Original (4x5):" << std::endl;
+    matrix.display();
+
+    // Test basic slice - get middle 2x3 portion
+    Tensor slice1 = matrix.slice(1, 2, 1, 3);
+    std::cout << "\nSlice(1,2,1,3) - 2x3 from middle:" << std::endl;
+    slice1.display();
+
+    // Test corner slice
+    Tensor slice2 = matrix.slice(0, 2, 0, 2);
+    std::cout << "\nSlice(0,2,0,2) - top-left 2x2:" << std::endl;
+    slice2.display();
+
+    // Test single row
+    Tensor slice3 = matrix.slice(2, 1, 0, 5);
+    std::cout << "\nSlice(2,1,0,5) - entire row 2:" << std::endl;
+    slice3.display();
+
+    // Test error handling
+    std::cout << "\nTesting slice out of bounds:" << std::endl;
+    try {
+        Tensor invalid = matrix.slice(3, 3, 0, 2); // Would go to row 6, but matrix only has 4 rows
+        std::cout << "ERROR: Should have thrown exception!" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "Correctly caught exception: " << e.what() << std::endl;
+    }
+
     return 0;
 }

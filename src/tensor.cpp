@@ -161,3 +161,35 @@ Tensor Tensor::scale(float scaler) const {
 
     return result;
 }
+
+Tensor Tensor::reshape(int new_rows, int new_cols) const {
+    if (new_rows * new_cols != this->rows * this->cols) {
+        throw std::invalid_argument("Matrix sizes do not match for reshape");
+    }
+
+    Tensor result(new_rows, new_cols);
+
+    for (int i = 0; i < new_rows * new_cols; i++) {
+            result.setValue(i / new_cols, i % new_cols, data[i]);
+    }
+    return result;
+}
+
+Tensor Tensor::slice(int start_row, int num_rows, int start_col, int num_cols) const {
+    if (start_row + num_rows > this->rows || start_col + num_cols > this->cols) {
+        throw std::invalid_argument("Out of bounds error");
+    }
+    if (start_row < 0 || num_rows < 0 || start_col < 0 || num_cols < 0) {
+        throw std::invalid_argument("Error there are negative parameters");
+    }
+
+    Tensor result(num_rows, num_cols);
+
+    for (int i = 0; i < num_rows; i++) {
+        for (int j = 0; j < num_cols; j++) {
+            result.setValue(i, j, this->getValue(start_row + i, start_col + j));
+        }
+    }
+
+    return result;
+}
