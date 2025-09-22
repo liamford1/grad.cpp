@@ -193,3 +193,25 @@ Tensor Tensor::slice(int start_row, int num_rows, int start_col, int num_cols) c
 
     return result;
 }
+
+Tensor Tensor::concatenate(const Tensor& other, int axis) const {
+    if (axis == 0 && this->cols != other.cols) {
+        throw std::invalid_argument("Columns do not match");
+    } 
+    if (axis == 1 && this->rows != other.rows) {
+        throw std::invalid_argument("Rows do not match");
+    }
+
+    if (axis == 0) {
+        Tensor result(this->rows + other.rows, this->cols);
+        for (int i = 0; i < this->rows; i++) {
+            result.setValue(i, i, this->getValue(i, ))
+        }
+    } else if (axis == 1) {
+        Tensor result(this->rows, this->cols + other.cols);
+    } else {
+        throw std::invalid_argument("Invalid axis");
+    }
+
+    return result;
+}
