@@ -16,3 +16,19 @@ Attention::Attention(int d_model, int d_k, int d_v) :
 }
 
 Attention::~Attention() {}
+
+Tensor Attention::forward(const Tensor& input) const {
+    Tensor Q = input.matmul(W_q);
+    Tensor K = input.matmul(W_k);
+    Tensor V = input.matmul(W_v);
+
+    Tensor scores = Q.matmul(K.transpose());
+
+    Tensor attention_weights = scores.softmax();
+
+    Tensor attended_values = attention_weights.matmul(V);
+
+    Tensor output = attended_values.matmul(W_o);
+
+    return output;
+}
