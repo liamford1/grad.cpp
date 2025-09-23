@@ -1,0 +1,50 @@
+#include "tensor.h"
+#include "multihead_attention.h"
+#include <iostream>
+
+MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads) : 
+    d_model(d_model),
+    num_heads(num_heads),
+    W_q(d_model, d_model),
+    W_k(d_model, d_model), 
+    W_v(d_model, d_model),
+    W_o(d_model, d_model) {
+
+    W_q.xavier(d_model, d_model);
+    W_k.xavier(d_model, d_model);
+    W_v.xavier(d_model, d_model);
+    W_o.xavier(d_model, d_model);
+}
+
+MultiHeadAttention::~MultiHeadAttention() {}
+
+Tensor MultiHeadAttention::forward(const Tensor& input) const {
+    Tensor Q = input.matmul(W_q);
+    Tensor K = input.matmul(W_k);
+    Tensor V = input.matmul(W_v);
+
+    int head_size = d_model / num_heads;
+    
+    
+    Tensor result(input.getRows(), d_model);
+    
+    for (int i = 0; i < num_heads; i++) {
+        int start_col = i * head_size;
+        
+        Tensor Q_head = Q.slice(0, Q.getRows(), start_col, head_size);
+        Tensor K_head = K.slice(0, K.getRows(), start_col, head_size);
+        Tensor V_head = V.slice(0, V.getRows(), start_col, head_size);
+        
+        Tensor scores = Q_head.matmul(K_head.transpose());
+        Tensor attention_weights = scores.softmax();
+        Tensor attended_values = attention_weights.matmul(V_head);
+        
+        for (int row = 0; row < input.getRows(); row++) {
+            for (int col = 0; col < head_size; col++) {
+                result.setValue(row, start_col + col, attended_values.getValue(row, col));
+            }
+        }
+    }
+    
+    return result.matmul(W_o);
+}

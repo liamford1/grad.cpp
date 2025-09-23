@@ -2,6 +2,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 Tensor::Tensor(int rows, int cols) {
     this->rows = rows;
@@ -21,6 +22,24 @@ Tensor::Tensor(const Tensor& other) {
     for (int i = 0; i < rows * cols; i++) {
         this->data[i] = other.data[i];
     }
+}
+
+Tensor& Tensor::operator=(const Tensor& other) {
+    if (this == &other) {
+        return *this;
+    }
+
+    delete[] data;
+
+    this->rows = other.rows;
+    this->cols = other.cols;
+    this->data = new float[rows * cols];
+
+    for (int i = 0; i < rows * cols; i++) {
+        this->data[i] = other.data[i];
+    }
+
+    return *this;
 }
 
 Tensor::~Tensor() {
@@ -247,5 +266,17 @@ Tensor Tensor::concatenate(const Tensor& other, int axis) const {
         }
         
         return result;
+    }
+}
+
+void Tensor::xavier(int fan_in, int fan_out) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    float limit = std::sqrt(6.0f / (fan_in + fan_out));
+    std::uniform_real_distribution<float> dis(-limit, limit);
+
+    for (int i = 0; i < rows * cols; i++) {
+        data[i] = dis(gen);
     }
 }

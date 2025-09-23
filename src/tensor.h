@@ -9,6 +9,7 @@ class Tensor {
     public:
         Tensor(int rows, int cols);
         Tensor(const Tensor& other);
+        Tensor& operator=(const Tensor& other);
         ~Tensor();
 
         float getValue(int row, int col) const;
@@ -29,6 +30,8 @@ class Tensor {
         Tensor reshape(int new_rows, int new_cols) const;
         Tensor slice(int start_row, int num_rows, int start_col, int num_cols) const;
         Tensor concatenate(const Tensor& other, int axis) const;
+
+        void xavier(int fan_in, int fan_out);
         
         int getRows() const { return rows; }
         int getCols() const { return cols; }

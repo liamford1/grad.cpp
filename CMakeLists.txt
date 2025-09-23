@@ -9,6 +9,7 @@ add_executable(transformer
     src/main.cpp
     src/tensor.cpp
     src/attention.cpp
+    src/multihead_attention.cpp
 )
 
 target_include_directories(transformer PRIVATE src)
