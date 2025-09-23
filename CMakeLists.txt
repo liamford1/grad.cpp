@@ -8,6 +8,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
 add_executable(transformer
     src/main.cpp
     src/tensor.cpp
+    src/attention.cpp
 )
 
 target_include_directories(transformer PRIVATE src)
