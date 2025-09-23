@@ -1,5 +1,6 @@
 #include "tensor.h"
 #include "attention.h"
+#include "multihead_attention.h"
 #include <iostream>
 
 int main() {
@@ -136,33 +137,33 @@ int main() {
     std::cout << "\n\n=== Testing Single-Head Attention ===" << std::endl;
     
     // Create attention layer with small dimensions
-    int d_model = 4;  // Input/output dimension
-    int d_k = 3;      // Key/query dimension  
-    int d_v = 2;      // Value dimension
+    int attention_d_model = 4;  // Input/output dimension (renamed to avoid conflict)
+    int attention_d_k = 3;      // Key/query dimension  
+    int attention_d_v = 2;      // Value dimension
     
-    Attention attention(d_model, d_k, d_v);
+    Attention attention(attention_d_model, attention_d_k, attention_d_v);
     
     // Create simple input: 2 sequence positions, each of dimension d_model
-    Tensor attention_input(2, d_model);
+    Tensor attention_input(2, attention_d_model);
     
     // Fill input with simple test values
     attention_input.setValue(0, 0, 1.0f); attention_input.setValue(0, 1, 0.0f); attention_input.setValue(0, 2, 1.0f); attention_input.setValue(0, 3, 0.0f);
     attention_input.setValue(1, 0, 0.0f); attention_input.setValue(1, 1, 1.0f); attention_input.setValue(1, 2, 0.0f); attention_input.setValue(1, 3, 1.0f);
     
-    std::cout << "Input (2x" << d_model << "):" << std::endl;
+    std::cout << "Input (2x" << attention_d_model << "):" << std::endl;
     attention_input.display();
     
     // Run attention
     Tensor attention_output = attention.forward(attention_input);
     
-    std::cout << "\nAttention Output (should be 2x" << d_model << "):" << std::endl;
+    std::cout << "\nAttention Output (should be 2x" << attention_d_model << "):" << std::endl;
     attention_output.display();
     
     // Verify output dimensions
     std::cout << "\nDimension check:" << std::endl;
-    std::cout << "Input shape: 2x" << d_model << std::endl;
+    std::cout << "Input shape: 2x" << attention_d_model << std::endl;
     std::cout << "Output shape: " << attention_output.getRows() << "x" << attention_output.getCols() << std::endl;
-    std::cout << "Shapes match: " << (attention_output.getRows() == 2 && attention_output.getCols() == d_model ? "YES" : "NO") << std::endl;
+    std::cout << "Shapes match: " << (attention_output.getRows() == 2 && attention_output.getCols() == attention_d_model ? "YES" : "NO") << std::endl;
 
     // -----------------------------------------------------------------
     std::cout << "\n=== Testing Reshape ===" << std::endl;
@@ -296,6 +297,72 @@ int main() {
     } catch (const std::exception& e) {
         std::cout << "Correctly caught invalid axis: " << e.what() << std::endl;
     }
+
+    // =================================================================
+    // MULTI-HEAD ATTENTION TESTS
+    // =================================================================
+    
+    std::cout << "\n\n=== Testing Multi-Head Attention ===" << std::endl;
+    
+    // Test parameters (renamed to avoid conflicts)
+    int mha_seq_len = 4;      // Short sequence for easy verification
+    int mha_d_model = 8;      // Small model size
+    int mha_num_heads = 2;    // 2 heads, so each head gets d_k = 4
+    
+    // Create test input with varied values (not all identical)
+    Tensor mha_input(mha_seq_len, mha_d_model);
+    
+    // Row 0: alternating pattern
+    mha_input.setValue(0, 0, 1.0); mha_input.setValue(0, 1, 0.0); mha_input.setValue(0, 2, 1.0); mha_input.setValue(0, 3, 0.0);
+    mha_input.setValue(0, 4, 0.5); mha_input.setValue(0, 5, 0.5); mha_input.setValue(0, 6, 0.5); mha_input.setValue(0, 7, 0.5);
+    
+    // Row 1: reverse pattern
+    mha_input.setValue(1, 0, 0.0); mha_input.setValue(1, 1, 1.0); mha_input.setValue(1, 2, 0.0); mha_input.setValue(1, 3, 1.0);
+    mha_input.setValue(1, 4, 0.2); mha_input.setValue(1, 5, 0.8); mha_input.setValue(1, 6, 0.3); mha_input.setValue(1, 7, 0.7);
+    
+    // Row 2: moderate values
+    mha_input.setValue(2, 0, 0.3); mha_input.setValue(2, 1, 0.3); mha_input.setValue(2, 2, 0.3); mha_input.setValue(2, 3, 0.3);
+    mha_input.setValue(2, 4, 0.6); mha_input.setValue(2, 5, 0.6); mha_input.setValue(2, 6, 0.6); mha_input.setValue(2, 7, 0.6);
+    
+    // Row 3: higher values
+    mha_input.setValue(3, 0, 0.8); mha_input.setValue(3, 1, 0.8); mha_input.setValue(3, 2, 0.8); mha_input.setValue(3, 3, 0.8);
+    mha_input.setValue(3, 4, 0.9); mha_input.setValue(3, 5, 0.9); mha_input.setValue(3, 6, 0.9); mha_input.setValue(3, 7, 0.9);
+    
+    std::cout << "Input shape: [" << mha_input.getRows() << ", " << mha_input.getCols() << "]" << std::endl;
+    std::cout << "Input:" << std::endl;
+    mha_input.display();
+    
+    // Create multi-head attention
+    MultiHeadAttention mha(mha_d_model, mha_num_heads);
+    
+    // Forward pass
+    Tensor mha_output = mha.forward(mha_input);
+    
+    std::cout << "\nOutput shape: [" << mha_output.getRows() << ", " << mha_output.getCols() << "]" << std::endl;
+    std::cout << "Output:" << std::endl;
+    mha_output.display();
+    
+    // Verify dimensions
+    if (mha_output.getRows() == mha_seq_len && mha_output.getCols() == mha_d_model) {
+        std::cout << "\n✅ Output dimensions are correct!" << std::endl;
+    } else {
+        std::cout << "\n❌ Output dimensions are wrong!" << std::endl;
+    }
+
+    std::cout << "\n=== Testing Concatenation Bug ===" << std::endl;
+    Tensor test_a(4, 4);
+    Tensor test_b(4, 4);
+    test_a.fill(0.5);
+    test_b.fill(-0.5);
+
+    std::cout << "Before concatenation:" << std::endl;
+    std::cout << "test_a sample: " << test_a.getValue(0,0) << std::endl;
+    std::cout << "test_b sample: " << test_b.getValue(0,0) << std::endl;
+
+    Tensor concatenated = test_a.concatenate(test_b, 1);
+    std::cout << "After concatenation sample: " << concatenated.getValue(0,0) << std::endl;
+    std::cout << "Concatenated shape: [" << concatenated.getRows() << ", " << concatenated.getCols() << "]" << std::endl;
+    concatenated.display(); // Show the whole matrix
 
     return 0;
 }
