@@ -212,5 +212,72 @@ int main() {
         std::cout << "Correctly caught exception: " << e.what() << std::endl;
     }
 
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Concatenate ===" << std::endl;
+    Tensor mat1(2, 3);
+    Tensor mat2(2, 3);
+
+    mat1.setValue(0, 0, 1); mat1.setValue(0, 1, 2); mat1.setValue(0, 2, 3);
+    mat1.setValue(1, 0, 4); mat1.setValue(1, 1, 5); mat1.setValue(1, 2, 6);
+
+    mat2.setValue(0, 0, 7); mat2.setValue(0, 1, 8); mat2.setValue(0, 2, 9);
+    mat2.setValue(1, 0, 10); mat2.setValue(1, 1, 11); mat2.setValue(1, 2, 12);
+
+    std::cout << "Matrix 1 (2x3):" << std::endl;
+    mat1.display();
+
+    std::cout << "\nMatrix 2 (2x3):" << std::endl;
+    mat2.display();
+
+    Tensor concat_vertical = mat1.concatenate(mat2, 0);
+    std::cout << "\nConcatenate axis=0 (vertical stack, result 4x3):" << std::endl;
+    concat_vertical.display();
+
+    Tensor concat_horizontal = mat1.concatenate(mat2, 1);
+    std::cout << "\nConcatenate axis=1 (horizontal stack, result 2x6):" << std::endl;
+    concat_horizontal.display();
+
+    std::cout << "\nTesting concatenate with different sized matrices:" << std::endl;
+    Tensor tall(3, 2);
+    Tensor wide(1, 2);
+
+    tall.setValue(0, 0, 1); tall.setValue(0, 1, 2);
+    tall.setValue(1, 0, 3); tall.setValue(1, 1, 4);
+    tall.setValue(2, 0, 5); tall.setValue(2, 1, 6);
+
+    wide.setValue(0, 0, 7); wide.setValue(0, 1, 8);
+
+    std::cout << "Tall matrix (3x2):" << std::endl;
+    tall.display();
+
+    std::cout << "\nWide matrix (1x2):" << std::endl;
+    wide.display();
+
+    Tensor concat_mixed = tall.concatenate(wide, 0);
+    std::cout << "\nConcatenate tall+wide axis=0 (result 4x2):" << std::endl;
+    concat_mixed.display();
+
+    std::cout << "\nTesting concatenate error cases:" << std::endl;
+    try {
+        Tensor incompatible = mat1.concatenate(tall, 0);
+        std::cout << "ERROR: Should have thrown exception!" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "Correctly caught axis=0 dimension mismatch: " << e.what() << std::endl;
+    }
+
+    try {
+        Tensor incompatible = mat1.concatenate(tall, 1);
+        std::cout << "ERROR: Should have thrown exception!" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "Correctly caught axis=1 dimension mismatch: " << e.what() << std::endl;
+    }
+
+    try {
+        Tensor invalid_axis = mat1.concatenate(mat2, 2);
+        std::cout << "ERROR: Should have thrown exception!" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "Correctly caught invalid axis: " << e.what() << std::endl;
+    }
+
     return 0;
 }

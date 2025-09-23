@@ -196,22 +196,46 @@ Tensor Tensor::slice(int start_row, int num_rows, int start_col, int num_cols) c
 
 Tensor Tensor::concatenate(const Tensor& other, int axis) const {
     if (axis == 0 && this->cols != other.cols) {
-        throw std::invalid_argument("Columns do not match");
+        throw std::invalid_argument("Columns do not match for axis=0 concatenation");
     } 
     if (axis == 1 && this->rows != other.rows) {
-        throw std::invalid_argument("Rows do not match");
+        throw std::invalid_argument("Rows do not match for axis=1 concatenation");
+    }
+    if (axis != 0 && axis != 1) {
+        throw std::invalid_argument("Invalid axis: must be 0 or 1");
     }
 
     if (axis == 0) {
         Tensor result(this->rows + other.rows, this->cols);
+        
         for (int i = 0; i < this->rows; i++) {
-            result.setValue(i, i, this->getValue(i, ))
+            for (int j = 0; j < this->cols; j++) {
+                result.setValue(i, j, this->getValue(i, j));
+            }
         }
-    } else if (axis == 1) {
-        Tensor result(this->rows, this->cols + other.cols);
+        
+        for (int i = 0; i < other.rows; i++) {
+            for (int j = 0; j < other.cols; j++) {
+                result.setValue(this->rows + i, j, other.getValue(i, j));
+            }
+        }
+        
+        return result;
     } else {
-        throw std::invalid_argument("Invalid axis");
+        Tensor result(this->rows, this->cols + other.cols);
+        
+        for (int i = 0; i < this->rows; i++) {
+            for (int j = 0; j < this->cols; j++) {
+                result.setValue(i, j, this->getValue(i, j));
+            }
+        }
+        
+        for (int i = 0; i < other.rows; i++) {
+            for (int j = 0; j < other.cols; j++) {
+                result.setValue(i, this->cols + j, other.getValue(i, j));
+            }
+        }
+        
+        return result;
     }
-
-    return result;
 }
