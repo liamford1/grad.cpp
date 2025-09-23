@@ -364,5 +364,33 @@ int main() {
     std::cout << "Concatenated shape: [" << concatenated.getRows() << ", " << concatenated.getCols() << "]" << std::endl;
     concatenated.display(); // Show the whole matrix
 
+    std::cout << "\n=== Testing Assignment Operator ===" << std::endl;
+
+    // Test 1: Basic assignment
+    Tensor assign1(2, 2);
+    assign1.fill(5.0);
+    std::cout << "Original tensor (filled with 5.0):" << std::endl;
+    assign1.display();
+
+    Tensor assign2(3, 3);  // Different size!
+    assign2.fill(10.0);
+    std::cout << "\nSecond tensor before assignment (3x3, filled with 10.0):" << std::endl;
+    assign2.display();
+
+    assign2 = assign1;  // This uses your assignment operator!
+    std::cout << "\nAfter assignment (assign2 = assign1):" << std::endl;
+    assign2.display();
+
+    // Test 2: Self-assignment (should do nothing)
+    assign1 = assign1;
+    std::cout << "\nAfter self-assignment (assign1 = assign1):" << std::endl;
+    assign1.display();
+
+    // Test 3: Chained assignment
+    Tensor assign3(1, 1);
+    assign3 = assign2 = assign1;  // This should work!
+    std::cout << "\nAfter chained assignment (assign3 = assign2 = assign1):" << std::endl;
+    assign3.display();
+
     return 0;
 }

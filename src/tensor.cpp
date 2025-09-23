@@ -24,6 +24,24 @@ Tensor::Tensor(const Tensor& other) {
     }
 }
 
+Tensor& Tensor::operator=(const Tensor& other) {
+    if (this == &other) {
+        return *this;
+    }
+
+    delete[] data;
+
+    this->rows = other.rows;
+    this->cols = other.cols;
+    this->data = new float[rows * cols];
+
+    for (int i = 0; i < rows * cols; i++) {
+        this->data[i] = other.data[i];
+    }
+
+    return *this;
+}
+
 Tensor::~Tensor() {
     delete[] data;
 }
