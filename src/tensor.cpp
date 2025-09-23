@@ -13,6 +13,16 @@ Tensor::Tensor(int rows, int cols) {
     }
 }
 
+Tensor::Tensor(const Tensor& other) {
+    this->rows = other.rows;
+    this->cols = other.cols;
+    this->data = new float[rows * cols];
+
+    for (int i = 0; i < rows * cols; i++) {
+        this->data[i] = other.data[i];
+    }
+}
+
 Tensor::~Tensor() {
     delete[] data;
 }

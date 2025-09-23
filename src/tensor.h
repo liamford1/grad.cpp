@@ -8,7 +8,7 @@ class Tensor {
         int cols;
     public:
         Tensor(int rows, int cols);
-
+        Tensor(const Tensor& other);
         ~Tensor();
 
         float getValue(int row, int col) const;
