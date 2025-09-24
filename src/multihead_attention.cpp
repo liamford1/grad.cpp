@@ -25,7 +25,6 @@ Tensor MultiHeadAttention::forward(const Tensor& input) const {
 
     int head_size = d_model / num_heads;
     
-    
     Tensor result(input.getRows(), d_model);
     
     for (int i = 0; i < num_heads; i++) {
@@ -36,6 +35,8 @@ Tensor MultiHeadAttention::forward(const Tensor& input) const {
         Tensor V_head = V.slice(0, V.getRows(), start_col, head_size);
         
         Tensor scores = Q_head.matmul(K_head.transpose());
+        scores = scores.scale(1.0f / sqrt(head_size));
+        scores = scores.causal_mask();
         Tensor attention_weights = scores.softmax();
         Tensor attended_values = attention_weights.matmul(V_head);
         
@@ -45,6 +46,5 @@ Tensor MultiHeadAttention::forward(const Tensor& input) const {
             }
         }
     }
-    
     return result.matmul(W_o);
 }
