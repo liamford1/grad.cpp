@@ -14,6 +14,7 @@ add_executable(transformer
     src/linear.cpp
     src/feedforward.cpp
     src/transformer_block.cpp
+    src/token_embedding.cpp
 )
 
 target_include_directories(transformer PRIVATE src)

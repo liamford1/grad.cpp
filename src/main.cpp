@@ -5,6 +5,7 @@
 #include "linear.h"
 #include "feedforward.h"
 #include "transformer_block.h"
+#include "token_embedding.h"
 #include <iostream>
 
 int main() {
@@ -185,6 +186,35 @@ int main() {
     std::cout << "Multi-block pipeline input: [" << pipeline_input.getRows() << ", " << pipeline_input.getCols() << "]" << std::endl;
     std::cout << "Multi-block pipeline output: [" << after_block2.getRows() << ", " << after_block2.getCols() << "]" << std::endl;
     std::cout << "Multi-block pipeline works: " << (after_block2.getRows() == 6 && after_block2.getCols() == 8 ? "YES" : "NO") << std::endl;
+
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Token Embeddings ===" << std::endl;
+
+    // Create token embedding layer: vocab_size=5, d_model=8 (matching our tests)
+    TokenEmbedding token_emb(5, 8);
+
+    // Create input token sequence [seq_len=4, 1] 
+    Tensor token_ids(4, 1);
+    token_ids.setValue(0, 0, 0);  // Token 0
+    token_ids.setValue(1, 0, 1);  // Token 1  
+    token_ids.setValue(2, 0, 2);  // Token 2
+    token_ids.setValue(3, 0, 1);  // Token 1 (repeat)
+
+    Tensor embeddings = token_emb.forward(token_ids);
+
+    std::cout << "Token IDs shape: [" << token_ids.getRows() << ", " << token_ids.getCols() << "]" << std::endl;
+    std::cout << "Embeddings shape: [" << embeddings.getRows() << ", " << embeddings.getCols() << "]" << std::endl;
+    std::cout << "Embedding dimensions correct: " << (embeddings.getRows() == 4 && embeddings.getCols() == 8 ? "YES" : "NO") << std::endl;
+
+    // Test that same token produces same embedding
+    bool same_token_same_embedding = true;
+    for (int dim = 0; dim < 8; dim++) {
+        if (embeddings.getValue(1, dim) != embeddings.getValue(3, dim)) {
+            same_token_same_embedding = false;
+            break;
+        }
+    }
+    std::cout << "Same tokens produce same embeddings: " << (same_token_same_embedding ? "YES" : "NO") << std::endl;
 
     // =================================================================
     // SUMMARY
