@@ -13,6 +13,7 @@ add_executable(transformer
     src/layer_norm.cpp
     src/linear.cpp
     src/feedforward.cpp
+    src/transformer_block.cpp
 )
 
 target_include_directories(transformer PRIVATE src)
