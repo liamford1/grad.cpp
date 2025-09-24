@@ -11,6 +11,7 @@ add_executable(transformer
     src/attention.cpp
     src/multihead_attention.cpp
     src/layer_norm.cpp
+    src/linear.cpp
 )
 
 target_include_directories(transformer PRIVATE src)

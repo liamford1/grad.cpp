@@ -2,6 +2,7 @@
 #include "attention.h"
 #include "multihead_attention.h"
 #include "layer_norm.h"
+#include "linear.h"
 #include <iostream>
 
 int main() {
@@ -35,6 +36,46 @@ int main() {
     
     std::cout << "Assignment works: " << (copy.getValue(0,0) == 5.0 ? "YES" : "NO") << std::endl;
     std::cout << "Correct size: " << (copy.getRows() == 2 && copy.getCols() == 2 ? "YES" : "NO") << std::endl;
+
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Broadcasting ===" << std::endl;
+    
+    Tensor A_broadcast(3, 4);
+    Tensor B_broadcast(1, 4);
+    A_broadcast.fill(2.0f);
+    B_broadcast.fill(0.5f);
+    
+    Tensor C_broadcast = A_broadcast.add(B_broadcast);  // [3,4] + [1,4] should work
+    std::cout << "Broadcasting [3,4] + [1,4]: " << (C_broadcast.getRows() == 3 && C_broadcast.getCols() == 4 ? "PASS" : "FAIL") << std::endl;
+    std::cout << "Values correct: " << (C_broadcast.getValue(0,0) == 2.5f && C_broadcast.getValue(2,3) == 2.5f ? "PASS" : "FAIL") << std::endl;
+    
+    // Test another broadcasting case
+    Tensor D(2, 3);
+    Tensor E(2, 1);
+    D.fill(1.0f);
+    E.fill(3.0f);
+    
+    Tensor F = D.add(E);  // [2,3] + [2,1] should work
+    std::cout << "Broadcasting [2,3] + [2,1]: " << (F.getRows() == 2 && F.getCols() == 3 ? "PASS" : "FAIL") << std::endl;
+    std::cout << "Values correct: " << (F.getValue(0,0) == 4.0f && F.getValue(1,2) == 4.0f ? "PASS" : "FAIL") << std::endl;
+
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Linear Layer ===" << std::endl;
+
+    Tensor linear_input(3, 4);  // [seq_len=3, input_dim=4]
+    linear_input.fill(1.0f);
+
+    Linear linear_layer(4, 6, true);  // input_dim=4, output_dim=6, bias=true
+    Tensor linear_output = linear_layer.forward(linear_input);
+
+    std::cout << "Linear input shape: [" << linear_input.getRows() << ", " << linear_input.getCols() << "]" << std::endl;
+    std::cout << "Linear output shape: [" << linear_output.getRows() << ", " << linear_output.getCols() << "]" << std::endl;
+    std::cout << "Dimensions correct: " << (linear_output.getRows() == 3 && linear_output.getCols() == 6 ? "YES" : "NO") << std::endl;
+
+    // Test without bias
+    Linear linear_no_bias(4, 6, false);
+    Tensor output_no_bias = linear_no_bias.forward(linear_input);
+    std::cout << "No-bias layer works: " << (output_no_bias.getRows() == 3 && output_no_bias.getCols() == 6 ? "YES" : "NO") << std::endl;
 
     // =================================================================
     // TRANSFORMER COMPONENT TESTS
@@ -109,6 +150,8 @@ int main() {
     
     std::cout << "\n=== TRANSFORMER STATUS ===" << std::endl;
     std::cout << "✓ Tensor operations working" << std::endl;
+    std::cout << "✓ Broadcasting implemented" << std::endl;
+    std::cout << "✓ Linear layers implemented" << std::endl;
     std::cout << "✓ Multi-head attention implemented" << std::endl;
     std::cout << "✓ Layer normalization working" << std::endl;
     std::cout << "✓ Components integrate successfully" << std::endl;
