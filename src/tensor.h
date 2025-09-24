@@ -32,6 +32,7 @@ class Tensor {
         Tensor concatenate(const Tensor& other, int axis) const;
 
         void xavier(int fan_in, int fan_out);
+        Tensor causal_mask() const;
         
         int getRows() const { return rows; }
         int getCols() const { return cols; }

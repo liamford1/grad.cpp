@@ -169,14 +169,19 @@ Tensor Tensor::softmax() const {
     Tensor result(this->rows, this->cols);
     
     for (int i = 0; i < this->rows; i++) {
-        float sum = 0.0f;
 
+        float max_val = getValue(i, 0);
         for (int j = 0; j < this->cols; j++) {
-            sum += exp(getValue(i, j));
+            max_val = std::max(max_val, getValue(i, j));
+        }
+
+        float sum = 0.0f;
+        for (int j = 0; j < this->cols; j++) {
+            sum += exp(getValue(i, j) - max_val);
         }
 
         for (int j = 0; j < this->cols; j++) {
-            result.setValue(i, j, exp(getValue(i, j)) / sum);
+            result.setValue(i, j, exp(getValue(i, j) - max_val) / sum);
         }
     }
 
@@ -289,4 +294,19 @@ void Tensor::xavier(int fan_in, int fan_out) {
     for (int i = 0; i < rows * cols; i++) {
         data[i] = dis(gen);
     }
+}
+
+Tensor Tensor::causal_mask() const {
+    Tensor result(this->rows, this->cols);
+
+    for (int i = 0; i < this->rows; i++) {
+        for (int j = 0; j < this->cols; j++) {
+            if (j <= i) {
+                result.setValue(i, j, getValue(i, j));
+            } else {
+                result.setValue(i, j, -1e9f);
+            }
+        }
+    }
+    return result;
 }
