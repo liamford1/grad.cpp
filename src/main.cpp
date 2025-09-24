@@ -4,6 +4,7 @@
 #include "layer_norm.h"
 #include "linear.h"
 #include "feedforward.h"
+#include "transformer_block.h"
 #include <iostream>
 
 int main() {
@@ -97,6 +98,24 @@ int main() {
     Tensor ffn_output_custom = ffn_custom.forward(ffn_input);
     std::cout << "Custom FFN works: " << (ffn_output_custom.getRows() == 4 && ffn_output_custom.getCols() == 8 ? "YES" : "NO") << std::endl;
 
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Transformer Block ===" << std::endl;
+
+    Tensor tb_input(4, 8);  // [seq_len=4, d_model=8]
+    tb_input.fill(0.3f);
+
+    TransformerBlock transformer_block(8, 2);  // d_model=8, num_heads=2, default FFN
+    Tensor tb_output = transformer_block.forward(tb_input);
+
+    std::cout << "TransformerBlock input shape: [" << tb_input.getRows() << ", " << tb_input.getCols() << "]" << std::endl;
+    std::cout << "TransformerBlock output shape: [" << tb_output.getRows() << ", " << tb_output.getCols() << "]" << std::endl;
+    std::cout << "TransformerBlock works: " << (tb_output.getRows() == 4 && tb_output.getCols() == 8 ? "YES" : "NO") << std::endl;
+
+    // Test with custom FFN hidden dimension
+    TransformerBlock tb_custom(8, 2, 16);  // Custom FFN hidden_dim = 16
+    Tensor tb_custom_output = tb_custom.forward(tb_input);
+    std::cout << "Custom TransformerBlock works: " << (tb_custom_output.getRows() == 4 && tb_custom_output.getCols() == 8 ? "YES" : "NO") << std::endl;
+
     // =================================================================
     // TRANSFORMER COMPONENT TESTS
     // =================================================================
@@ -151,18 +170,21 @@ int main() {
               << " " << ln_output.getValue(1,2) << " " << ln_output.getValue(1,3) << std::endl;
 
     // -----------------------------------------------------------------
-    std::cout << "\n=== Testing Full Pipeline: MHA + LayerNorm ===" << std::endl;
+    std::cout << "\n=== Testing Complete Transformer Pipeline ===" << std::endl;
     
-    MultiHeadAttention mha2(d_model, num_heads);
-    LayerNorm layer_norm2(d_model);
+    Tensor pipeline_input(6, 8);  // [seq_len=6, d_model=8] 
+    pipeline_input.fill(0.2f);
     
-    Tensor attention_output = mha2.forward(mha_input);
-    std::cout << "Attention output range: " << attention_output.getValue(0,0) << " to " << attention_output.getValue(3,7) << std::endl;
+    // Chain multiple transformer blocks
+    TransformerBlock block1(8, 2);
+    TransformerBlock block2(8, 2);
     
-    Tensor normalized_output = layer_norm2.forward(attention_output);
-    std::cout << "Normalized output range: " << normalized_output.getValue(0,0) << " to " << normalized_output.getValue(3,7) << std::endl;
+    Tensor after_block1 = block1.forward(pipeline_input);
+    Tensor after_block2 = block2.forward(after_block1);
     
-    std::cout << "Pipeline works: " << (normalized_output.getRows() == seq_len && normalized_output.getCols() == d_model ? "YES" : "NO") << std::endl;
+    std::cout << "Multi-block pipeline input: [" << pipeline_input.getRows() << ", " << pipeline_input.getCols() << "]" << std::endl;
+    std::cout << "Multi-block pipeline output: [" << after_block2.getRows() << ", " << after_block2.getCols() << "]" << std::endl;
+    std::cout << "Multi-block pipeline works: " << (after_block2.getRows() == 6 && after_block2.getCols() == 8 ? "YES" : "NO") << std::endl;
 
     // =================================================================
     // SUMMARY
@@ -175,8 +197,10 @@ int main() {
     std::cout << "✓ Feed-forward networks implemented" << std::endl;
     std::cout << "✓ Multi-head attention implemented" << std::endl;
     std::cout << "✓ Layer normalization working" << std::endl;
+    std::cout << "✓ Transformer blocks with residual connections implemented" << std::endl;
+    std::cout << "✓ Multi-block transformer pipeline working" << std::endl;
     std::cout << "✓ Components integrate successfully" << std::endl;
-    std::cout << "\nNext steps: Residual connections, positional encoding, or transformer blocks" << std::endl;
+    std::cout << "\nNext steps: Positional encoding, embeddings, or full transformer model" << std::endl;
 
     return 0;
 }
