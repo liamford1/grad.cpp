@@ -6,6 +6,7 @@
 #include "feedforward.h"
 #include "transformer_block.h"
 #include "token_embedding.h"
+#include "positional_encoding.h"
 #include <iostream>
 
 int main() {
@@ -215,6 +216,53 @@ int main() {
         }
     }
     std::cout << "Same tokens produce same embeddings: " << (same_token_same_embedding ? "YES" : "NO") << std::endl;
+
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Positional Encoding ===" << std::endl;
+
+    // Create positional encoding: max_seq_len=10, d_model=8
+    PositionalEncoding pos_enc(10, 8);
+
+    // Use the embeddings from previous test
+    Tensor embeddings_with_pos = pos_enc.forward(embeddings);
+
+    std::cout << "Input embeddings shape: [" << embeddings.getRows() << ", " << embeddings.getCols() << "]" << std::endl;
+    std::cout << "Output with positional encoding shape: [" << embeddings_with_pos.getRows() << ", " << embeddings_with_pos.getCols() << "]" << std::endl;
+    std::cout << "Positional encoding dimensions correct: " << (embeddings_with_pos.getRows() == 4 && embeddings_with_pos.getCols() == 8 ? "YES" : "NO") << std::endl;
+
+    // Check that positional encoding was actually added (values should be different)
+    bool pos_encoding_added = false;
+    for (int i = 0; i < embeddings.getRows(); i++) {
+        for (int j = 0; j < embeddings.getCols(); j++) {
+            if (embeddings.getValue(i, j) != embeddings_with_pos.getValue(i, j)) {
+                pos_encoding_added = true;
+                break;
+            }
+        }
+        if (pos_encoding_added) break;
+    }
+    std::cout << "Positional encoding was added: " << (pos_encoding_added ? "YES" : "NO") << std::endl;
+
+    // Test that same positions get same positional patterns
+    TokenEmbedding token_emb2(5, 8);
+    Tensor token_ids2(4, 1);
+    token_ids2.setValue(0, 0, 3); token_ids2.setValue(1, 0, 4); 
+    token_ids2.setValue(2, 0, 0); token_ids2.setValue(3, 0, 2);
+
+    Tensor embeddings2 = token_emb2.forward(token_ids2);
+    Tensor embeddings2_with_pos = pos_enc.forward(embeddings2);
+
+    // Position 0 should get same positional encoding regardless of token
+    bool same_position_same_encoding = true;
+    for (int dim = 0; dim < 8; dim++) {
+        float pos_diff1 = embeddings_with_pos.getValue(0, dim) - embeddings.getValue(0, dim);
+        float pos_diff2 = embeddings2_with_pos.getValue(0, dim) - embeddings2.getValue(0, dim);
+        if (abs(pos_diff1 - pos_diff2) > 1e-6) {  // Small tolerance for float precision
+            same_position_same_encoding = false;
+            break;
+        }
+    }
+    std::cout << "Same positions get same positional encoding: " << (same_position_same_encoding ? "YES" : "NO") << std::endl;
 
     // =================================================================
     // SUMMARY
