@@ -19,8 +19,6 @@ LayerNorm::~LayerNorm() {}
 Tensor LayerNorm::forward(const Tensor& input) const {
     Tensor result(input.getRows(), input.getCols());
 
-    
-
     for (int i = 0; i < input.getRows(); i++) {
         float mean = 0.0f;
         float variance = 0.0f;
