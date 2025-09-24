@@ -1,5 +1,5 @@
-#include "tensor.h"
-#include "multihead_attention.h"
+#include "transformer/tensor.h"
+#include "transformer/multihead_attention.h"
 #include <iostream>
 
 MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads) : 

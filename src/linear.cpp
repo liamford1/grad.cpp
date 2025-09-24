@@ -1,5 +1,5 @@
-#include "tensor.h"
-#include "linear.h"
+#include "transformer/tensor.h"
+#include "transformer/linear.h"
 #include <iostream>
 
 Linear::Linear(int input_dim, int output_dim, bool use_bias) :
