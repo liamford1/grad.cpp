@@ -15,7 +15,6 @@ class Attention {
         Tensor W_o;
     public:
         Attention(int d_model, int d_k, int d_v);
-
         ~Attention();
 
         Tensor forward(const Tensor& input) const;
