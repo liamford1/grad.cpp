@@ -3,6 +3,7 @@
 #include "multihead_attention.h"
 #include "layer_norm.h"
 #include "linear.h"
+#include "feedforward.h"
 #include <iostream>
 
 int main() {
@@ -76,6 +77,25 @@ int main() {
     Linear linear_no_bias(4, 6, false);
     Tensor output_no_bias = linear_no_bias.forward(linear_input);
     std::cout << "No-bias layer works: " << (output_no_bias.getRows() == 3 && output_no_bias.getCols() == 6 ? "YES" : "NO") << std::endl;
+
+    // -----------------------------------------------------------------
+    std::cout << "\n=== Testing Feed-Forward Network ===" << std::endl;
+
+    Tensor ffn_input(4, 8);  // [seq_len=4, d_model=8]
+    ffn_input.fill(0.5f);
+
+    // Test with default hidden_dim (4 * d_model = 32)
+    FeedForward ffn_default(8);
+    Tensor ffn_output_default = ffn_default.forward(ffn_input);
+
+    std::cout << "FFN input shape: [" << ffn_input.getRows() << ", " << ffn_input.getCols() << "]" << std::endl;
+    std::cout << "FFN output shape: [" << ffn_output_default.getRows() << ", " << ffn_output_default.getCols() << "]" << std::endl;
+    std::cout << "Default FFN works: " << (ffn_output_default.getRows() == 4 && ffn_output_default.getCols() == 8 ? "YES" : "NO") << std::endl;
+
+    // Test with custom hidden_dim
+    FeedForward ffn_custom(8, 16);  // Custom hidden_dim = 16 instead of 32
+    Tensor ffn_output_custom = ffn_custom.forward(ffn_input);
+    std::cout << "Custom FFN works: " << (ffn_output_custom.getRows() == 4 && ffn_output_custom.getCols() == 8 ? "YES" : "NO") << std::endl;
 
     // =================================================================
     // TRANSFORMER COMPONENT TESTS
@@ -152,10 +172,11 @@ int main() {
     std::cout << "✓ Tensor operations working" << std::endl;
     std::cout << "✓ Broadcasting implemented" << std::endl;
     std::cout << "✓ Linear layers implemented" << std::endl;
+    std::cout << "✓ Feed-forward networks implemented" << std::endl;
     std::cout << "✓ Multi-head attention implemented" << std::endl;
     std::cout << "✓ Layer normalization working" << std::endl;
     std::cout << "✓ Components integrate successfully" << std::endl;
-    std::cout << "\nNext steps: Feed-forward networks, positional encoding, or residual connections" << std::endl;
+    std::cout << "\nNext steps: Residual connections, positional encoding, or transformer blocks" << std::endl;
 
     return 0;
 }

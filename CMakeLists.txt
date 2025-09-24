@@ -12,6 +12,7 @@ add_executable(transformer
     src/multihead_attention.cpp
     src/layer_norm.cpp
     src/linear.cpp
+    src/feedforward.cpp
 )
 
 target_include_directories(transformer PRIVATE src)
