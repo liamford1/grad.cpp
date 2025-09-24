@@ -18,4 +18,4 @@ add_executable(transformer
     src/positional_encoding.cpp
 )
 
-target_include_directories(transformer PRIVATE src)
+target_include_directories(transformer PRIVATE include)

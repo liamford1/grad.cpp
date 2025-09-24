@@ -1,5 +1,5 @@
-#include "tensor.h"
-#include "attention.h"
+#include "transformer/tensor.h"
+#include "transformer/attention.h"
 #include <iostream>
 
 Attention::Attention(int d_model, int d_k, int d_v) : 

@@ -1,5 +1,5 @@
-#include "tensor.h"
-#include "token_embedding.h"
+#include "transformer/tensor.h"
+#include "transformer/token_embedding.h"
 #include <iostream>
 
 TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :

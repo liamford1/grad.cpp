@@ -1,6 +1,6 @@
-#include "tensor.h"
-#include "linear.h"
-#include "feedforward.h"
+#include "transformer/tensor.h"
+#include "transformer/linear.h"
+#include "transformer/feedforward.h"
 #include <iostream>
 
 FeedForward::FeedForward(int d_model, int hidden_dim) :

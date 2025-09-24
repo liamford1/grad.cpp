@@ -1,12 +1,12 @@
-#include "tensor.h"
-#include "attention.h"
-#include "multihead_attention.h"
-#include "layer_norm.h"
-#include "linear.h"
-#include "feedforward.h"
-#include "transformer_block.h"
-#include "token_embedding.h"
-#include "positional_encoding.h"
+#include "transformer/tensor.h"
+#include "transformer/attention.h"
+#include "transformer/multihead_attention.h"
+#include "transformer/layer_norm.h"
+#include "transformer/linear.h"
+#include "transformer/feedforward.h"
+#include "transformer/transformer_block.h"
+#include "transformer/token_embedding.h"
+#include "transformer/positional_encoding.h"
 #include <iostream>
 
 int main() {

@@ -1,5 +1,5 @@
-#include "tensor.h"
-#include "layer_norm.h"
+#include "transformer/tensor.h"
+#include "transformer/layer_norm.h"
 #include <iostream>
 #include <cmath>
 

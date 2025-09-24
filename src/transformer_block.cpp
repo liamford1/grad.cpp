@@ -1,8 +1,8 @@
-#include "tensor.h"
-#include "multihead_attention.h"
-#include "layer_norm.h"
-#include "feedforward.h"
-#include "transformer_block.h"
+#include "transformer/tensor.h"
+#include "transformer/multihead_attention.h"
+#include "transformer/layer_norm.h"
+#include "transformer/feedforward.h"
+#include "transformer/transformer_block.h"
 #include <iostream>
 
 TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim) :

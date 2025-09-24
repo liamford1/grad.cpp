@@ -1,5 +1,5 @@
-#include "tensor.h"
-#include "positional_encoding.h"
+#include "transformer/tensor.h"
+#include "transformer/positional_encoding.h"
 #include <iostream>
 #include <cmath>
 
