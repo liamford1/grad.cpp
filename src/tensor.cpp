@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <stdexcept>
 
 Tensor::Tensor(int rows, int cols) {
     this->rows = rows;

@@ -2,6 +2,7 @@
 #include "transformer/positional_encoding.h"
 #include <iostream>
 #include <cmath>
+#include <stdexcept>
 
 PositionalEncoding::PositionalEncoding(int max_len, int d_model) : 
     max_len(max_len),
