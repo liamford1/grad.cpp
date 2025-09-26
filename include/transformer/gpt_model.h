@@ -18,6 +18,7 @@ class GPTModel {
         int num_layers;
         int num_heads;
         int max_len;
+        float dropout_rate;
 
         TokenEmbedding token_embedding;
         PositionalEncoding pos_encoding;
@@ -25,7 +26,7 @@ class GPTModel {
         LayerNorm final_norm;
         Linear output_projection;
     public:
-        GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len);
+        GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len, float dropout_rate = 0.1f);
         ~GPTModel() = default;
         Tensor forward(const Tensor& token_ids, bool training = false) const;
 };

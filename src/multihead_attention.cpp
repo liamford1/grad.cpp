@@ -1,12 +1,14 @@
 #include "transformer/tensor.h"
+#include "transformer/activations.h"
 #include "transformer/multihead_attention.h"
 #include <iostream>
 #include <cmath>
 #include <stdexcept>
 
-MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads) : 
+MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout_rate) : 
     d_model(d_model),
     num_heads(num_heads),
+    dropout_rate(dropout_rate),
     W_q(d_model, d_model),
     W_k(d_model, d_model), 
     W_v(d_model, d_model),
@@ -22,7 +24,7 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads) :
 
 MultiHeadAttention::~MultiHeadAttention() {}
 
-Tensor MultiHeadAttention::forward(const Tensor& input) const {
+Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
     Tensor Q = input.matmul(W_q);
     Tensor K = input.matmul(W_k);
     Tensor V = input.matmul(W_v);
@@ -42,6 +44,7 @@ Tensor MultiHeadAttention::forward(const Tensor& input) const {
         scores = scores.scale(1.0f / sqrt(head_size));
         scores = scores.causal_mask();
         Tensor attention_weights = scores.softmax();
+        attention_weights = dropout(attention_weights, dropout_rate, training);
         Tensor attended_values = attention_weights.matmul(V_head);
         
         for (int row = 0; row < input.getRows(); row++) {
@@ -50,5 +53,6 @@ Tensor MultiHeadAttention::forward(const Tensor& input) const {
             }
         }
     }
-    return result.matmul(W_o);
+    Tensor output = result.matmul(W_o);
+    return dropout(output, dropout_rate, training);
 }

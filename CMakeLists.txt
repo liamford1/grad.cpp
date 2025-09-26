@@ -17,6 +17,7 @@ add_executable(transformer
     src/token_embedding.cpp
     src/positional_encoding.cpp
     src/gpt_model.cpp
+    src/activations.cpp
 )
 
 target_include_directories(transformer PRIVATE include)
