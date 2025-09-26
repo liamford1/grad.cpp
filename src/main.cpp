@@ -370,6 +370,21 @@ bool testBPETokenizer() {
     std::string test_text = "hello world";
     tokenizer.train(test_text);
     
+    // BPE training test with specific text
+    std::string bpe_test_text = "hello hello world world";
+    BPETokenizer bpe_tokenizer(20); // Small vocab for testing
+    bpe_tokenizer.train(bpe_test_text);
+
+    // Test that vocab grew beyond just characters
+    bool vocab_grew = (bpe_tokenizer.getCurrentVocabSize() > 11); // More than chars + special tokens
+    printTestResult("BPE training increases vocab size", vocab_grew);
+    all_passed &= vocab_grew;
+
+    // Test basic encoding/decoding (you'll need to implement these next)
+    // For now, just test that training completes
+    bool bpe_training_completed = true;
+    printTestResult("BPE merge training completes", bpe_training_completed);
+    all_passed &= bpe_training_completed;
     // Should have 8 unique chars + 3 special tokens = 11
     // (Need a way to check actual vocab size after training)
     bool training_completed = true; // For now, just check it doesn't crash

@@ -1,6 +1,7 @@
 #include "tokenizer/bpe_tokenizer.h"
 #include <iostream>
 #include <set>
+#include <sstream>
 
 BPETokenizer::BPETokenizer(int vocab_size) : vocab_size(vocab_size) {
     vocab[pad_token] = pad_token_id;
@@ -25,7 +26,72 @@ void BPETokenizer::train(const std::string& training_text) {
         id_to_token[curr_id] = char_str;
         curr_id++;
     }
-    std::cout << "Vocab size after character collection: " << vocab.size() << std::endl;
+    
+    std::vector<std::string> words;
+    std::istringstream iss(training_text);
+    std::string word;
+    while (iss >> word) {
+        words.push_back(word);
+    }
+
+    std::vector<std::vector<std::string>> word_tokens;
+    for (const std::string& word : words) {
+        std::vector<std::string> chars;
+        for (char c : word) {
+            chars.push_back(std::string(1, c));
+        }
+        word_tokens.push_back(chars);
+    }
+
+    while(vocab.size() < vocab_size) {
+        auto pair_counts = countPairs(word_tokens);
+
+        if (pair_counts.empty()) { break; }
+
+        std::pair<std::string, std::string> most_freq_pair;
+        int max_count = 0;
+
+        for (const auto& entry : pair_counts) {
+            if (entry.second > max_count) {
+                max_count = entry.second;
+                most_freq_pair = entry.first;
+            }
+        }
+
+        std::string merged_token = most_freq_pair.first + most_freq_pair.second;
+        vocab[merged_token] = curr_id;
+        id_to_token[curr_id] = merged_token;
+        merges.push_back(most_freq_pair);
+        curr_id++;
+
+        for (auto& word : word_tokens) {
+            std::vector<std::string> new_word;
+            for (size_t i = 0; i < word.size(); i++) {
+                if (i < word.size() - 1 && word[i] == most_freq_pair.first && word[i + 1] == most_freq_pair.second) {
+                    new_word.push_back(merged_token);
+                    i++;
+                } else {
+                    new_word.push_back(word[i]);
+                }
+            }
+            word = new_word;
+        }
+    }
+}
+
+std::unordered_map<std::pair<std::string, std::string>, int, PairHash> BPETokenizer::countPairs(const std::vector<std::vector<std::string>>& word_tokens) {
+    std::unordered_map<std::pair<std::string, std::string>, int, PairHash> pair_counts;
+    for (const auto& word : word_tokens) {
+        for (size_t i = 0; i < word.size() - 1; i++) {
+            std::pair<std::string, std::string> pair = {word[i], word[i + 1]};
+            pair_counts[pair]++;
+        }
+    }
+    return pair_counts;
+}
+
+int BPETokenizer::getCurrentVocabSize() const {
+    return vocab.size();
 }
 
 int BPETokenizer::getVocabSize() const {

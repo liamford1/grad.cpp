@@ -5,6 +5,12 @@
 #include <string>
 #include <unordered_map>
 
+struct PairHash {
+    size_t operator()(const std::pair<std::string, std::string>& p) const {
+        return std::hash<std::string>()(p.first) ^ (std::hash<std::string>()(p.second) << 1);
+    }
+};
+
 class BPETokenizer {
     private:
         std::unordered_map<std::string, int> vocab;
@@ -19,12 +25,15 @@ class BPETokenizer {
         std::string pad_token = "<pad>";
         std::string eos_token = "<eos>";
         std::string unk_token = "<unk>";
+
+        std::unordered_map<std::pair<std::string, std::string>, int, PairHash> countPairs(const std::vector<std::vector<std::string>>& word_tokens);
     public:
         BPETokenizer(int vocab_size);
         void train(const std::string& training_text);
         std::vector<int> encode(const std::string& text);
         std::string decode(const std::vector<int>& tokens);
         
+        int getCurrentVocabSize() const;
         int getVocabSize() const;
 };
 
