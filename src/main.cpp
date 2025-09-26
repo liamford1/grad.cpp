@@ -4,6 +4,7 @@
 #include "transformer/transformer_block.h"
 #include "transformer/gpt_model.h"
 #include "transformer/activations.h"
+#include "tokenizer/bpe_tokenizer.h"
 #include <iostream>
 #include <chrono>
 #include <vector>
@@ -355,6 +356,29 @@ void demonstrateTextGeneration() {
     }
 }
 
+bool testBPETokenizer() {
+    printSectionHeader("BPE TOKENIZER TESTING");
+    bool all_passed = true;
+    
+    // Basic constructor test
+    BPETokenizer tokenizer(100);
+    bool constructor_correct = (tokenizer.getVocabSize() == 100);
+    printTestResult("Constructor sets vocab size", constructor_correct);
+    all_passed &= constructor_correct;
+    
+    // Character collection test
+    std::string test_text = "hello world";
+    tokenizer.train(test_text);
+    
+    // Should have 8 unique chars + 3 special tokens = 11
+    // (Need a way to check actual vocab size after training)
+    bool training_completed = true; // For now, just check it doesn't crash
+    printTestResult("Training completes without error", training_completed);
+    all_passed &= training_completed;
+    
+    return all_passed;
+}
+
 int main() {
     std::cout << "🚀 COMPREHENSIVE TRANSFORMER FROM SCRATCH AUDIT 🚀" << std::endl;
     std::cout << "Testing all components with edge cases and performance metrics..." << std::endl;
@@ -367,6 +391,7 @@ int main() {
     all_tests_passed &= testPositionalEncoding();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
+    all_tests_passed &= testBPETokenizer();
     
     // Performance benchmarking
     benchmarkPerformance();
@@ -378,16 +403,6 @@ int main() {
     printSectionHeader("FINAL STATUS REPORT");
     if (all_tests_passed) {
         std::cout << "🎉 ALL TESTS PASSED! 🎉" << std::endl;
-        std::cout << "✓ Tensor operations fully functional" << std::endl;
-        std::cout << "✓ Token embeddings working correctly" << std::endl;
-        std::cout << "✓ Positional encoding implemented properly" << std::endl;
-        std::cout << "✓ Transformer blocks operational" << std::endl;
-        std::cout << "✓ Complete GPT model ready for production" << std::endl;
-        std::cout << "✓ Error handling implemented" << std::endl;
-        std::cout << "✓ Performance benchmarks completed" << std::endl;
-        std::cout << "✓ Text generation capabilities demonstrated" << std::endl;
-        std::cout << "\n🚀 TRANSFORMER IS PRODUCTION READY! 🚀" << std::endl;
-        std::cout << "Ready for: text generation, fine-tuning, scaling, and deployment!" << std::endl;
     } else {
         std::cout << "❌ SOME TESTS FAILED ❌" << std::endl;
         std::cout << "Please review the failed tests above." << std::endl;
