@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <stdexcept>
 
 Tensor::Tensor(int rows, int cols) {
     this->rows = rows;
@@ -147,18 +148,6 @@ Tensor Tensor::transpose() const {
     for (int i = 0; i < this->rows; i++) {
         for (int j = 0; j < this->cols; j++) {
             result.setValue(j, i, this->getValue(i, j));
-        }
-    }
-
-    return result;
-}
-
-Tensor Tensor::relu() const {
-    Tensor result(this->rows, this->cols);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            result.setValue(i, j, std::max(0.0f, this->getValue(i, j)));
         }
     }
 

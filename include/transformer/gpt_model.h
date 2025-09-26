@@ -6,6 +6,10 @@
 #include "positional_encoding.h"
 #include "transformer_block.h"
 #include "linear.h"
+#include "layer_norm.h"
+
+#include <vector>
+#include <memory>
 
 class GPTModel {
     private:
@@ -17,12 +21,13 @@ class GPTModel {
 
         TokenEmbedding token_embedding;
         PositionalEncoding pos_encoding;
-        TransformerBlock** transformer_blocks;
+        std::vector<std::unique_ptr<TransformerBlock>> transformer_blocks;
+        LayerNorm final_norm;
         Linear output_projection;
     public:
         GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len);
-        ~GPTModel();
-        Tensor forward(const Tensor& token_ids) const;
+        ~GPTModel() = default;
+        Tensor forward(const Tensor& token_ids, bool training = false) const;
 };
 
 #endif

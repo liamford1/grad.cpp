@@ -1,6 +1,8 @@
 #include "transformer/tensor.h"
 #include "transformer/multihead_attention.h"
 #include <iostream>
+#include <cmath>
+#include <stdexcept>
 
 MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads) : 
     d_model(d_model),
@@ -9,7 +11,9 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads) :
     W_k(d_model, d_model), 
     W_v(d_model, d_model),
     W_o(d_model, d_model) {
-
+    if (num_heads == 0 || (d_model % num_heads) != 0) {
+        throw std::invalid_argument("d_model must be divisible by num_heads and num_heads > 0");
+    }
     W_q.xavier(d_model, d_model);
     W_k.xavier(d_model, d_model);
     W_v.xavier(d_model, d_model);
