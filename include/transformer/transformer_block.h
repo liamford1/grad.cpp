@@ -12,9 +12,10 @@ class TransformerBlock {
         FeedForward ffn;
         LayerNorm norm1;
         LayerNorm norm2;
+        float dropout_rate;
     public:
-        TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim = -1);
-        Tensor forward(const Tensor& input) const;
+        TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim = -1, float dropout_rate = 0.1f);
+        Tensor forward(const Tensor& input, bool training = false) const;
 };
 
 #endif
