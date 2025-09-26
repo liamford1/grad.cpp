@@ -154,18 +154,6 @@ Tensor Tensor::transpose() const {
     return result;
 }
 
-Tensor Tensor::relu() const {
-    Tensor result(this->rows, this->cols);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            result.setValue(i, j, std::max(0.0f, this->getValue(i, j)));
-        }
-    }
-
-    return result;
-}
-
 Tensor Tensor::softmax() const {
     Tensor result(this->rows, this->cols);
     

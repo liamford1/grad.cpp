@@ -23,7 +23,6 @@ class Tensor {
 
         Tensor transpose() const;
         Tensor softmax() const;
-        Tensor relu() const;
         void fill(float value);
         Tensor scale(float scaler) const;
 
