@@ -255,15 +255,25 @@ Tensor Tensor::elementwise(const Tensor& other) const {
 }
 
 Tensor Tensor::transpose() const {
-    Tensor result(this->cols, this->rows);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            result.setValue(j, i, this->getValue(i, j));
+    if (!this->is_3d) {
+        Tensor result(this->cols, this->rows);
+        for (int i = 0; i < this->rows; i++) {
+            for (int j = 0; j < this->cols; j++) {
+                result.setValue(j, i, this->getValue(i, j));
+            }
         }
+        return result;
+    } else {
+        Tensor result(this->batch_size, this->cols, this->rows);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, j, i, this->getValue(b, i, j));
+                }
+            }
+        }
+        return result;
     }
-
-    return result;
 }
 
 Tensor Tensor::softmax() const {

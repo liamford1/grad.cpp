@@ -266,6 +266,31 @@ bool test3DTensorOperations() {
     
     printTestResult("3D softmax normalization", softmax_3d_correct);
     all_passed &= softmax_3d_correct;
+    // Test 3D transpose
+    Tensor transpose_3d(2, 3, 4);  // [2, 3, 4]
+    
+    // Fill with identifiable values
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                transpose_3d.setValue(b, i, j, b * 100 + i * 10 + j);
+            }
+        }
+    }
+    
+    Tensor transposed = transpose_3d.transpose();  // Should be [2, 4, 3]
+    
+    bool transpose_3d_correct = (transposed.getBatchSize() == 2 && 
+                                transposed.getRows() == 4 && 
+                                transposed.getCols() == 3);
+    printTestResult("3D transpose dimensions", transpose_3d_correct);
+    all_passed &= transpose_3d_correct;
+    
+    // Check that transposition actually worked
+    bool transpose_values_correct = (transpose_3d.getValue(0, 1, 2) == transposed.getValue(0, 2, 1) &&
+                                    transpose_3d.getValue(1, 2, 3) == transposed.getValue(1, 3, 2));
+    printTestResult("3D transpose values", transpose_values_correct);
+    all_passed &= transpose_values_correct;
 
     return all_passed;
 }
