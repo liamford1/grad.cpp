@@ -461,6 +461,64 @@ bool testPositionalEncoding() {
     return all_passed;
 }
 
+bool testBatchedPositionalEncoding() {
+    printSectionHeader("BATCHED POSITIONAL ENCODING TESTING");
+    bool all_passed = true;
+    
+    PositionalEncoding pos_enc(16, 8);
+    
+    // Test with 3D input [batch_size, seq_len, d_model]
+    Tensor batch_embeddings(2, 4, 8);  // 2 sequences of length 4
+    batch_embeddings.fill(0.1f);
+    
+    // Set some different values for each batch
+    batch_embeddings.setValue(0, 0, 0, 1.0f);
+    batch_embeddings.setValue(1, 0, 0, 2.0f);
+    
+    Tensor batch_result = pos_enc.forward(batch_embeddings);
+    
+    bool batch_dimensions_correct = (batch_result.getBatchSize() == 2 && 
+                                    batch_result.getRows() == 4 && 
+                                    batch_result.getCols() == 8);
+    printTestResult("Batch positional encoding dimensions [2, 4, 8]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that positional encoding is applied (values should change)
+    // Use position [0,1,1] which should have a more significant positional encoding
+    float original_val = batch_embeddings.getValue(0, 1, 1);
+    float modified_val = batch_result.getValue(0, 1, 1);
+    bool pos_encoding_applied = (std::abs(modified_val - original_val) > 1e-6f);
+    printTestResult("Positional encoding modifies batch values", pos_encoding_applied);
+    all_passed &= pos_encoding_applied;
+    
+    // Test that same positions have same positional encoding across batches
+    // (but different embedding values should still result in different final values)
+    float pos_diff_batch0 = batch_result.getValue(0, 1, 0) - batch_embeddings.getValue(0, 1, 0);
+    float pos_diff_batch1 = batch_result.getValue(1, 1, 0) - batch_embeddings.getValue(1, 1, 0);
+    bool same_positional_encoding = (std::abs(pos_diff_batch0 - pos_diff_batch1) < 1e-6f);
+    printTestResult("Same positional encoding across batches", same_positional_encoding);
+    all_passed &= same_positional_encoding;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_embeddings(4, 8);
+    legacy_embeddings.fill(0.1f);
+    legacy_embeddings.setValue(0, 0, 1.0f);
+    
+    Tensor legacy_result = pos_enc.forward(legacy_embeddings);
+    bool legacy_compatibility = (legacy_result.getRows() == 4 && 
+                                legacy_result.getCols() == 8 && 
+                                !legacy_result.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    // Verify that 2D and 3D give same results for equivalent inputs
+    bool results_consistent = (std::abs(legacy_result.getValue(0, 0) - batch_result.getValue(0, 0, 0)) < 1e-6f);
+    printTestResult("2D and 3D results consistent", results_consistent);
+    all_passed &= results_consistent;
+    
+    return all_passed;
+}
+
 // Test transformer block
 bool testTransformerBlock() {
     printSectionHeader("TRANSFORMER BLOCK TESTING");
@@ -828,6 +886,7 @@ int main() {
     all_tests_passed &= testTokenEmbeddings();
     all_tests_passed &= testBatchedTokenEmbeddings();
     all_tests_passed &= testPositionalEncoding();
+    all_tests_passed &= testBatchedPositionalEncoding();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
     all_tests_passed &= testModelSerialization();
