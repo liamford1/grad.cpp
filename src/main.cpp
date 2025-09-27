@@ -312,6 +312,60 @@ bool test3DTensorOperations() {
     return all_passed;
 }
 
+// Test batched token embeddings
+bool testBatchedTokenEmbeddings() {
+    printSectionHeader("BATCHED TOKEN EMBEDDING TESTING");
+    bool all_passed = true;
+    
+    TokenEmbedding token_emb(10, 8);
+    
+    // Test batch format [batch_size, seq_len]
+    Tensor batch_token_ids(2, 3);  // 2 sequences of length 3
+    batch_token_ids.setValue(0, 0, 1); batch_token_ids.setValue(0, 1, 2); batch_token_ids.setValue(0, 2, 3);
+    batch_token_ids.setValue(1, 0, 4); batch_token_ids.setValue(1, 1, 5); batch_token_ids.setValue(1, 2, 6);
+    
+    Tensor batch_embeddings = token_emb.forward(batch_token_ids);
+    bool batch_dimensions_correct = (batch_embeddings.getBatchSize() == 2 && 
+                                    batch_embeddings.getRows() == 3 && 
+                                    batch_embeddings.getCols() == 8);
+    printTestResult("Batch embedding dimensions [2, 3, 8]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that different sequences in batch have different embeddings
+    bool different_sequences = (batch_embeddings.getValue(0, 0, 0) != batch_embeddings.getValue(1, 0, 0));
+    printTestResult("Different sequences have different embeddings", different_sequences);
+    all_passed &= different_sequences;
+    
+    // Test that same tokens produce same embeddings across batches
+    Tensor same_token_batch(2, 2);
+    same_token_batch.setValue(0, 0, 7); same_token_batch.setValue(0, 1, 8);
+    same_token_batch.setValue(1, 0, 7); same_token_batch.setValue(1, 1, 8);  // Same tokens
+    
+    Tensor same_token_embeddings = token_emb.forward(same_token_batch);
+    bool same_tokens_same_embeddings = true;
+    for (int j = 0; j < 8; j++) {
+        if (same_token_embeddings.getValue(0, 0, j) != same_token_embeddings.getValue(1, 0, j)) {
+            same_tokens_same_embeddings = false;
+            break;
+        }
+    }
+    printTestResult("Same tokens produce same embeddings across batches", same_tokens_same_embeddings);
+    all_passed &= same_tokens_same_embeddings;
+    
+    // Test backward compatibility - legacy format should still work
+    Tensor legacy_token_ids(3, 1);
+    legacy_token_ids.setValue(0, 0, 1); legacy_token_ids.setValue(1, 0, 2); legacy_token_ids.setValue(2, 0, 3);
+    
+    Tensor legacy_embeddings = token_emb.forward(legacy_token_ids);
+    bool legacy_compatibility = (legacy_embeddings.getRows() == 3 && 
+                                legacy_embeddings.getCols() == 8 && 
+                                !legacy_embeddings.getIs3D());
+    printTestResult("Legacy format [seq_len, 1] still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    return all_passed;
+}
+
 // Test token embeddings with edge cases
 bool testTokenEmbeddings() {
     printSectionHeader("TOKEN EMBEDDING TESTING");
@@ -772,6 +826,7 @@ int main() {
     all_tests_passed &= testTensorOperations();
     all_tests_passed &= test3DTensorOperations();  
     all_tests_passed &= testTokenEmbeddings();
+    all_tests_passed &= testBatchedTokenEmbeddings();
     all_tests_passed &= testPositionalEncoding();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
