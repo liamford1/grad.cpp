@@ -439,13 +439,28 @@ Tensor Tensor::causal_mask() const {
 
 Tensor Tensor::create_casual_mask(int seq_len) {
     Tensor mask(seq_len, seq_len);
-
     for (int i = 0; i < seq_len; i++) {
         for (int j = 0; j < seq_len; j++) {
             if (j > i) {
                 mask.setValue(i, j, -1e9f);
             } else {
                 mask.setValue(i, j, 0.0f);
+            }
+        }
+    }
+    return mask;
+}
+
+Tensor Tensor::create_casual_mask_batch(int batch_size, int seq_len) {
+    Tensor mask(batch_size, seq_len, seq_len);
+    for (int b = 0; b < batch_size; b++) {
+        for (int i = 0; i < seq_len; i++) {
+            for (int j = 0; j < seq_len; j++) {
+                if (j > i) {
+                    mask.setValue(b, i, j, -1e9f);
+                } else {
+                    mask.setValue(b, i, j, 0.0f);
+                }
             }
         }
     }

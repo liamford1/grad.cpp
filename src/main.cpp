@@ -292,6 +292,23 @@ bool test3DTensorOperations() {
     printTestResult("3D transpose values", transpose_values_correct);
     all_passed &= transpose_values_correct;
 
+    // Test batch causal mask
+    Tensor batch_mask = Tensor::create_casual_mask_batch(2, 3);
+    
+    bool batch_mask_correct = (batch_mask.getBatchSize() == 2 && 
+                              batch_mask.getRows() == 3 && 
+                              batch_mask.getCols() == 3);
+    printTestResult("Batch causal mask dimensions", batch_mask_correct);
+    all_passed &= batch_mask_correct;
+    
+    // Check causal mask values for both batches
+    bool batch_mask_values = (batch_mask.getValue(0, 0, 1) == -1e9f &&  // Future token masked
+                             batch_mask.getValue(0, 1, 0) == 0.0f &&     // Past token visible
+                             batch_mask.getValue(1, 0, 1) == -1e9f &&    // Same for batch 1
+                             batch_mask.getValue(1, 1, 0) == 0.0f);
+    printTestResult("Batch causal mask values", batch_mask_values);
+    all_passed &= batch_mask_values;
+
     return all_passed;
 }
 

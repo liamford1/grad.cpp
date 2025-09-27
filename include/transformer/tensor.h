@@ -39,6 +39,7 @@ class Tensor {
         void xavier(int fan_in, int fan_out);
         Tensor causal_mask() const;
         static Tensor create_casual_mask(int seq_len);
+        static Tensor create_casual_mask_batch(int batch_size, int seq_len);
         
         int getRows() const { return rows; }
         int getCols() const { return cols; }
