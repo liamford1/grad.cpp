@@ -207,7 +207,34 @@ bool test3DTensorOperations() {
                                result3d2d.getValue(0, 1, 1) == 154.0f);
     printTestResult("3D × 2D first batch values", first_batch_correct);
     all_passed &= first_batch_correct;
+
+    // Test 3D + 2D addition (broadcasting)
+    Tensor a3d_add(2, 2, 3);
+    Tensor b2d_add(2, 3);
     
+    a3d_add.fill(5.0f);
+    b2d_add.fill(2.0f);
+    
+    Tensor result_add = a3d_add.add(b2d_add);
+    bool add_3d_2d_correct = (result_add.getBatchSize() == 2 && 
+                             result_add.getValue(0, 1, 1) == 7.0f && 
+                             result_add.getValue(1, 1, 1) == 7.0f);
+    printTestResult("3D + 2D addition (broadcasting)", add_3d_2d_correct);
+    all_passed &= add_3d_2d_correct;
+    
+    // Test 3D + 3D addition
+    Tensor a3d_add2(2, 2, 3);
+    Tensor b3d_add(2, 2, 3);
+    
+    a3d_add2.fill(3.0f);
+    b3d_add.fill(4.0f);
+    
+    Tensor result_add_3d = a3d_add2.add(b3d_add);
+    bool add_3d_3d_correct = (result_add_3d.getValue(0, 1, 1) == 7.0f && 
+                             result_add_3d.getValue(1, 0, 2) == 7.0f);
+    printTestResult("3D + 3D addition", add_3d_3d_correct);
+    all_passed &= add_3d_3d_correct;
+
     return all_passed;
 }
 

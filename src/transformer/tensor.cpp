@@ -153,29 +153,73 @@ Tensor Tensor::matmul(const Tensor& other) const {
 }
 
 Tensor Tensor::add(const Tensor& other) const {
-    bool rows_compatible = (rows == other.rows) || (rows == 1) || (other.rows == 1);
-    bool cols_compatible = (cols == other.cols) || (cols == 1) || (other.cols == 1);
+    if (!this->is_3d && !other.is_3d) {
+        bool rows_compatible = (rows == other.rows) || (rows == 1) || (other.rows == 1);
+        bool cols_compatible = (cols == other.cols) || (cols == 1) || (other.cols == 1);
 
-    if (!rows_compatible || !cols_compatible) {
-        throw std::invalid_argument("Shapes not broadcastable");
-    }
-
-    int result_rows = std::max(this->rows, other.rows);
-    int result_cols = std::max(this->cols, other.cols);
-    Tensor result(result_rows, result_cols);
-
-    for (int i = 0; i < result_rows; i++) {
-        for (int j = 0; j < result_cols; j++) {
-            int this_i = (this->rows == 1) ? 0 : i;
-            int this_j = (this->cols == 1) ? 0 : j;
-            int other_i = (other.rows == 1) ? 0 : i;
-            int other_j = (other.cols == 1) ? 0 : j;
-            
-            result.setValue(i, j, this->getValue(this_i, this_j) + other.getValue(other_i, other_j));
+        if (!rows_compatible || !cols_compatible) {
+            throw std::invalid_argument("Shapes not broadcastable");
         }
-    }
 
-    return result;
+        int result_rows = std::max(this->rows, other.rows);
+        int result_cols = std::max(this->cols, other.cols);
+        Tensor result(result_rows, result_cols);
+        for (int i = 0; i < result_rows; i++) {
+            for (int j = 0; j < result_cols; j++) {
+                int this_i = (this->rows == 1) ? 0 : i;
+                int this_j = (this->cols == 1) ? 0 : j;
+                int other_i = (other.rows == 1) ? 0 : i;
+                int other_j = (other.cols == 1) ? 0 : j;
+                
+                result.setValue(i, j, this->getValue(this_i, this_j) + other.getValue(other_i, other_j));
+            }
+        }
+        return result;
+    } else if (this->is_3d && !other.is_3d) {
+        if (this->rows != other.rows || this->cols != other.cols) {
+            throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
+        }
+        
+        Tensor result(this->batch_size, this->rows, this->cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, i, j, this->getValue(b, i, j) + other.getValue(i, j));
+                }
+            }
+        }
+        return result;
+    } else if (!this->is_3d && other.is_3d) {
+        if (this->rows != other.rows || this->cols != other.cols) {
+            throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
+        }
+        
+        Tensor result(other.batch_size, this->rows, this->cols);
+        for (int b = 0; b < other.batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, i, j, this->getValue(i, j) + other.getValue(b, i, j));
+                }
+            }
+        }
+        return result;
+    } else if (this->is_3d && other.is_3d) {
+        if (this->batch_size != other.batch_size || this->rows != other.rows || this->cols != other.cols) {
+            throw std::invalid_argument("3D tensor dimensions don't match");
+        }
+        
+        Tensor result(this->batch_size, this->rows, this->cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, i, j, this->getValue(b, i, j) + other.getValue(b, i, j));
+                }
+            }
+        }
+        return result;
+    } else {
+        throw std::invalid_argument("Unsupported addition configuration");
+    }
 }
 
 Tensor Tensor::subtract(const Tensor& other) const {
