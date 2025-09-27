@@ -519,6 +519,71 @@ bool testBatchedPositionalEncoding() {
     return all_passed;
 }
 
+// Test batched linear layers
+bool testBatchedLinearLayers() {
+    printSectionHeader("BATCHED LINEAR LAYER TESTING");
+    bool all_passed = true;
+    
+    Linear linear_layer(4, 3, true);  // 4 input dims, 3 output dims, with bias
+    
+    // Test with 3D input [batch_size, seq_len, input_dim]
+    Tensor batch_input(2, 3, 4);  // 2 sequences of length 3, with 4 features each
+    
+    // Fill with identifiable values
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                batch_input.setValue(b, i, j, (b + 1) * 0.1f + (i + 1) * 0.01f + (j + 1) * 0.001f);
+            }
+        }
+    }
+    
+    Tensor batch_output = linear_layer.forward(batch_input);
+    
+    // Test output dimensions
+    bool batch_dimensions_correct = (batch_output.getBatchSize() == 2 && 
+                                    batch_output.getRows() == 3 && 
+                                    batch_output.getCols() == 3);
+    printTestResult("Batch linear layer dimensions [2, 3, 3]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that different batches produce different outputs
+    bool different_batch_outputs = (batch_output.getValue(0, 0, 0) != batch_output.getValue(1, 0, 0));
+    printTestResult("Different batch inputs produce different outputs", different_batch_outputs);
+    all_passed &= different_batch_outputs;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_input(3, 4);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            legacy_input.setValue(i, j, (i + 1) * 0.01f + (j + 1) * 0.001f);
+        }
+    }
+    
+    Tensor legacy_output = linear_layer.forward(legacy_input);
+    bool legacy_compatibility = (legacy_output.getRows() == 3 && 
+                                legacy_output.getCols() == 3 && 
+                                !legacy_output.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    // Test linear layer without bias
+    Linear no_bias_layer(4, 3, false);
+    Tensor no_bias_output = no_bias_layer.forward(batch_input);
+    bool no_bias_dimensions = (no_bias_output.getBatchSize() == 2 && 
+                              no_bias_output.getRows() == 3 && 
+                              no_bias_output.getCols() == 3);
+    printTestResult("Linear layer without bias works", no_bias_dimensions);
+    all_passed &= no_bias_dimensions;
+    
+    // Test that bias makes a difference (when bias is used)
+    bool bias_makes_difference = (batch_output.getValue(0, 0, 0) != no_bias_output.getValue(0, 0, 0));
+    printTestResult("Bias parameter affects output", bias_makes_difference);
+    all_passed &= bias_makes_difference;
+    
+    return all_passed;
+}
+
 // Test transformer block
 bool testTransformerBlock() {
     printSectionHeader("TRANSFORMER BLOCK TESTING");
@@ -887,6 +952,7 @@ int main() {
     all_tests_passed &= testBatchedTokenEmbeddings();
     all_tests_passed &= testPositionalEncoding();
     all_tests_passed &= testBatchedPositionalEncoding();
+    all_tests_passed &= testBatchedLinearLayers();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
     all_tests_passed &= testModelSerialization();
