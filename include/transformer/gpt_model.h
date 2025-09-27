@@ -10,6 +10,9 @@
 
 #include <vector>
 #include <memory>
+#include <fstream>
+#include <iostream>
+#include <string>
 
 class GPTModel {
     private:
@@ -29,6 +32,15 @@ class GPTModel {
         GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len, float dropout_rate = 0.1f);
         ~GPTModel() = default;
         Tensor forward(const Tensor& token_ids, bool training = false) const;
+
+        bool save(const std::string& filepath) const;
+        static GPTModel load(const std::string& filepath);
+
+        GPTModel(const GPTModel&) = delete;
+        GPTModel& operator=(const GPTModel&) = delete;
+        
+        GPTModel(GPTModel&&) = default;
+        GPTModel& operator=(GPTModel&&) = default;
 };
 
 #endif

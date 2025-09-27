@@ -12,8 +12,15 @@ class LayerNorm {
     public:
         LayerNorm(int d_model);
         ~LayerNorm();
-
         Tensor forward(const Tensor& input) const;
+
+        const Tensor& getGamma() const { return gamma; }
+        const Tensor& getBeta() const { return beta; }
+
+        void setParams(const Tensor& new_gamma, const Tensor& new_beta) {
+            gamma = new_gamma;
+            beta = new_beta;
+        }
 };
 
 #endif
