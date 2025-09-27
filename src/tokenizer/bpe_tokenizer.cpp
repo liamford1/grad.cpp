@@ -79,6 +79,48 @@ void BPETokenizer::train(const std::string& training_text) {
     }
 }
 
+std::vector<int> BPETokenizer::encode(const std::string& text) {
+    std::vector<std::string> words;
+    std::istringstream iss(text);
+    std::string word;
+    while (iss >> word) {
+        words.push_back(word);
+    }
+
+    std::vector<int> token_ids;
+
+    for (const std::string& word : words) {
+        std::vector<std::string> word_tokens;
+        for (char c : word) {
+            word_tokens.push_back(std::string(1, c));
+        }
+
+        for (const auto& merge_pair : merges) {
+            std::vector<std::string> new_word_tokens;
+
+            for(size_t i = 0; i < word_tokens.size(); i++) {
+                if (i < word_tokens.size() - 1 && word_tokens[i] == merge_pair.first && word_tokens[i+1] == merge_pair.second) {
+                    new_word_tokens.push_back(merge_pair.first + merge_pair.second);
+                    i++;
+                } else {
+                    new_word_tokens.push_back(word_tokens[i]);
+                }
+            }
+            word_tokens = new_word_tokens;
+        }
+
+        for (const std::string& token : word_tokens) {
+            auto it = vocab.find(token);
+            if (it != vocab.end()) {
+                token_ids.push_back(it->second);
+            } else {
+                token_ids.push_back(unk_token_id);
+            }
+        }
+    }
+    return token_ids;
+}
+
 std::unordered_map<std::pair<std::string, std::string>, int, PairHash> BPETokenizer::countPairs(const std::vector<std::vector<std::string>>& word_tokens) {
     std::unordered_map<std::pair<std::string, std::string>, int, PairHash> pair_counts;
     for (const auto& word : word_tokens) {

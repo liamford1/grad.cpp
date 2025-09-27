@@ -385,11 +385,20 @@ bool testBPETokenizer() {
     bool bpe_training_completed = true;
     printTestResult("BPE merge training completes", bpe_training_completed);
     all_passed &= bpe_training_completed;
-    // Should have 8 unique chars + 3 special tokens = 11
-    // (Need a way to check actual vocab size after training)
-    bool training_completed = true; // For now, just check it doesn't crash
-    printTestResult("Training completes without error", training_completed);
-    all_passed &= training_completed;
+
+    // Test encoding
+    std::string encode_test = "hello";
+    std::vector<int> encoded = bpe_tokenizer.encode(encode_test);
+
+    std::cout << "Encoded 'hello': ";
+    for (int id : encoded) {
+        std::cout << id << " ";
+    }
+    std::cout << std::endl;
+
+    bool encoding_works = !encoded.empty();
+    printTestResult("Encoding produces tokens", encoding_works);
+    all_passed &= encoding_works;
     
     return all_passed;
 }
