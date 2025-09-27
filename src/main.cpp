@@ -178,6 +178,35 @@ bool test3DTensorOperations() {
     xavier_done:
     printTestResult("3D tensor Xavier initialization", xavier_works);
     all_passed &= xavier_works;
+    // Test 3D × 2D matrix multiplication
+    Tensor a3d(2, 2, 3);  // 2 batches of 2×3 matrices
+    Tensor b2d(3, 2);     // Single 3×2 matrix
+    
+    // Fill first batch of a3d
+    a3d.setValue(0, 0, 0, 1); a3d.setValue(0, 0, 1, 2); a3d.setValue(0, 0, 2, 3);
+    a3d.setValue(0, 1, 0, 4); a3d.setValue(0, 1, 1, 5); a3d.setValue(0, 1, 2, 6);
+    
+    // Fill second batch differently
+    a3d.setValue(1, 0, 0, 2); a3d.setValue(1, 0, 1, 3); a3d.setValue(1, 0, 2, 4);
+    a3d.setValue(1, 1, 0, 5); a3d.setValue(1, 1, 1, 6); a3d.setValue(1, 1, 2, 7);
+    
+    // Fill b2d
+    b2d.setValue(0, 0, 7); b2d.setValue(0, 1, 8);
+    b2d.setValue(1, 0, 9); b2d.setValue(1, 1, 10);
+    b2d.setValue(2, 0, 11); b2d.setValue(2, 1, 12);
+    
+    Tensor result3d2d = a3d.matmul(b2d);
+    bool matmul_3d_2d_correct = (result3d2d.getBatchSize() == 2 && 
+                                result3d2d.getRows() == 2 && 
+                                result3d2d.getCols() == 2);
+    printTestResult("3D × 2D matrix multiplication", matmul_3d_2d_correct);
+    all_passed &= matmul_3d_2d_correct;
+    
+    // Verify first batch result: should be same as [1,2,3; 4,5,6] × [7,8; 9,10; 11,12] = [58,64; 139,154]
+    bool first_batch_correct = (result3d2d.getValue(0, 0, 0) == 58.0f && 
+                               result3d2d.getValue(0, 1, 1) == 154.0f);
+    printTestResult("3D × 2D first batch values", first_batch_correct);
+    all_passed &= first_batch_correct;
     
     return all_passed;
 }

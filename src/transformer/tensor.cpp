@@ -95,23 +95,61 @@ void Tensor::display() const {
 }
 
 Tensor Tensor::matmul(const Tensor& other) const {
-    if (this->cols != other.rows) {
-        throw std::invalid_argument("Matrix dimensions do not match for multiplication");
-    }
-
-    Tensor result(this->rows, other.cols);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < other.cols; j++) {
-            float sum = 0.0f;
-            for (int k = 0; k < this->cols; k++) {
-                sum += this->getValue(i, k) * other.getValue(k, j);
-            }
-            result.setValue(i, j, sum);
+    if (!this->is_3d && !other.is_3d) {
+        if (this->cols != other.rows) {
+            throw std::invalid_argument("Matrix dimensions do not match for multiplication");
         }
-    }
 
-    return result;
+        Tensor result(this->rows, other.cols);
+        for (int i = 0; i < this->rows; i++) {
+            for (int j = 0; j < other.cols; j++) {
+                float sum = 0.0f;
+                for (int k = 0; k < this->cols; k++) {
+                    sum += this->getValue(i, k) * other.getValue(k, j);
+                }
+                result.setValue(i, j, sum);
+            }
+        }
+        return result;
+    } else if (this->is_3d && !other.is_3d) {
+        if (this->cols != other.rows) {
+            throw std::invalid_argument("Matrix dimensions do not match for batch multiplication");
+        }
+        
+        Tensor result(this->batch_size, this->rows, other.cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < other.cols; j++) {
+                    float sum = 0.0f;
+                    for (int k = 0; k < this->cols; k++) {
+                        sum += this->getValue(b, i, k) * other.getValue(k, j);
+                    }
+                    result.setValue(b, i, j, sum);
+                }
+            }
+        }
+        return result;
+    } else if (this->is_3d && other.is_3d) {
+        if (this->batch_size != other.batch_size || this->cols != other.rows) {
+            throw std::invalid_argument("Batch matrix dimensions do not match");
+        }
+        
+        Tensor result(this->batch_size, this->rows, other.cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < other.cols; j++) {
+                    float sum = 0.0f;
+                    for (int k = 0; k < this->cols; k++) {
+                        sum += this->getValue(b, i, k) * other.getValue(b, k, j);
+                    }
+                    result.setValue(b, i, j, sum);
+                }
+            }
+        }
+        return result;
+    } else {
+        throw std::invalid_argument("Unsupported matrix multiplication configuration");
+    }
 }
 
 Tensor Tensor::add(const Tensor& other) const {
