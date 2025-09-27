@@ -121,6 +121,18 @@ std::vector<int> BPETokenizer::encode(const std::string& text) {
     return token_ids;
 }
 
+std::string BPETokenizer::decode(const std::vector<int>& token_ids) {
+    std::string result;
+
+    for (int id : token_ids) {
+        auto it = id_to_token.find(id);
+        if (it != id_to_token.end()) {
+            result += it->second;
+        }
+    }
+    return result;
+}
+
 std::unordered_map<std::pair<std::string, std::string>, int, PairHash> BPETokenizer::countPairs(const std::vector<std::vector<std::string>>& word_tokens) {
     std::unordered_map<std::pair<std::string, std::string>, int, PairHash> pair_counts;
     for (const auto& word : word_tokens) {

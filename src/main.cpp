@@ -399,6 +399,13 @@ bool testBPETokenizer() {
     bool encoding_works = !encoded.empty();
     printTestResult("Encoding produces tokens", encoding_works);
     all_passed &= encoding_works;
+
+    // Test decode
+    std::string decoded = bpe_tokenizer.decode(encoded);
+    std::cout << "Decoded back: '" << decoded << "'" << std::endl;
+    bool roundtrip_works = (decoded == encode_test);
+    printTestResult("Encode/decode roundtrip", roundtrip_works);
+    all_passed &= roundtrip_works;
     
     return all_passed;
 }
