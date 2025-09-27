@@ -30,6 +30,7 @@ Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
     Tensor V = input.matmul(W_v);
 
     int head_size = d_model / num_heads;
+    int seq_len = input.getRows();
     
     Tensor result(input.getRows(), d_model);
     
@@ -42,7 +43,10 @@ Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
         
         Tensor scores = Q_head.matmul(K_head.transpose());
         scores = scores.scale(1.0f / sqrt(head_size));
-        scores = scores.causal_mask();
+
+        Tensor casual_mask = Tensor::create_casual_mask(seq_len);
+        scores = scores.add(casual_mask);
+
         Tensor attention_weights = scores.softmax();
         attention_weights = dropout(attention_weights, dropout_rate, training);
         Tensor attended_values = attention_weights.matmul(V_head);

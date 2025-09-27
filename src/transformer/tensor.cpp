@@ -299,3 +299,18 @@ Tensor Tensor::causal_mask() const {
     }
     return result;
 }
+
+Tensor Tensor::create_casual_mask(int seq_len) {
+    Tensor mask(seq_len, seq_len);
+
+    for (int i = 0; i < seq_len; i++) {
+        for (int j = 0; j < seq_len; j++) {
+            if (j > i) {
+                mask.setValue(i, j, -1e9f);
+            } else {
+                mask.setValue(i, j, 0.0f);
+            }
+        }
+    }
+    return mask;
+}
