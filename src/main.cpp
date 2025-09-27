@@ -4,6 +4,7 @@
 #include "transformer/transformer_block.h"
 #include "transformer/gpt_model.h"
 #include "transformer/activations.h"
+#include "tokenizer/bpe_tokenizer.h"
 #include <iostream>
 #include <chrono>
 #include <vector>
@@ -355,6 +356,60 @@ void demonstrateTextGeneration() {
     }
 }
 
+bool testBPETokenizer() {
+    printSectionHeader("BPE TOKENIZER TESTING");
+    bool all_passed = true;
+    
+    // Basic constructor test
+    BPETokenizer tokenizer(100);
+    bool constructor_correct = (tokenizer.getVocabSize() == 100);
+    printTestResult("Constructor sets vocab size", constructor_correct);
+    all_passed &= constructor_correct;
+    
+    // Character collection test
+    std::string test_text = "hello world";
+    tokenizer.train(test_text);
+    
+    // BPE training test with specific text
+    std::string bpe_test_text = "hello hello world world";
+    BPETokenizer bpe_tokenizer(20); // Small vocab for testing
+    bpe_tokenizer.train(bpe_test_text);
+
+    // Test that vocab grew beyond just characters
+    bool vocab_grew = (bpe_tokenizer.getCurrentVocabSize() > 11); // More than chars + special tokens
+    printTestResult("BPE training increases vocab size", vocab_grew);
+    all_passed &= vocab_grew;
+
+    // Test basic encoding/decoding (you'll need to implement these next)
+    // For now, just test that training completes
+    bool bpe_training_completed = true;
+    printTestResult("BPE merge training completes", bpe_training_completed);
+    all_passed &= bpe_training_completed;
+
+    // Test encoding
+    std::string encode_test = "hello";
+    std::vector<int> encoded = bpe_tokenizer.encode(encode_test);
+
+    std::cout << "Encoded 'hello': ";
+    for (int id : encoded) {
+        std::cout << id << " ";
+    }
+    std::cout << std::endl;
+
+    bool encoding_works = !encoded.empty();
+    printTestResult("Encoding produces tokens", encoding_works);
+    all_passed &= encoding_works;
+
+    // Test decode
+    std::string decoded = bpe_tokenizer.decode(encoded);
+    std::cout << "Decoded back: '" << decoded << "'" << std::endl;
+    bool roundtrip_works = (decoded == encode_test);
+    printTestResult("Encode/decode roundtrip", roundtrip_works);
+    all_passed &= roundtrip_works;
+    
+    return all_passed;
+}
+
 int main() {
     std::cout << "🚀 COMPREHENSIVE TRANSFORMER FROM SCRATCH AUDIT 🚀" << std::endl;
     std::cout << "Testing all components with edge cases and performance metrics..." << std::endl;
@@ -367,6 +422,7 @@ int main() {
     all_tests_passed &= testPositionalEncoding();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
+    all_tests_passed &= testBPETokenizer();
     
     // Performance benchmarking
     benchmarkPerformance();
@@ -378,16 +434,6 @@ int main() {
     printSectionHeader("FINAL STATUS REPORT");
     if (all_tests_passed) {
         std::cout << "🎉 ALL TESTS PASSED! 🎉" << std::endl;
-        std::cout << "✓ Tensor operations fully functional" << std::endl;
-        std::cout << "✓ Token embeddings working correctly" << std::endl;
-        std::cout << "✓ Positional encoding implemented properly" << std::endl;
-        std::cout << "✓ Transformer blocks operational" << std::endl;
-        std::cout << "✓ Complete GPT model ready for production" << std::endl;
-        std::cout << "✓ Error handling implemented" << std::endl;
-        std::cout << "✓ Performance benchmarks completed" << std::endl;
-        std::cout << "✓ Text generation capabilities demonstrated" << std::endl;
-        std::cout << "\n🚀 TRANSFORMER IS PRODUCTION READY! 🚀" << std::endl;
-        std::cout << "Ready for: text generation, fine-tuning, scaling, and deployment!" << std::endl;
     } else {
         std::cout << "❌ SOME TESTS FAILED ❌" << std::endl;
         std::cout << "Please review the failed tests above." << std::endl;

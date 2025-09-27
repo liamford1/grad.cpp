@@ -7,17 +7,18 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
 
 add_executable(transformer
     src/main.cpp
-    src/tensor.cpp
-    src/attention.cpp
-    src/multihead_attention.cpp
-    src/layer_norm.cpp
-    src/linear.cpp
-    src/feedforward.cpp
-    src/transformer_block.cpp
-    src/token_embedding.cpp
-    src/positional_encoding.cpp
-    src/gpt_model.cpp
-    src/activations.cpp
+    src/transformer/tensor.cpp
+    src/transformer/attention.cpp
+    src/transformer/multihead_attention.cpp
+    src/transformer/layer_norm.cpp
+    src/transformer/linear.cpp
+    src/transformer/feedforward.cpp
+    src/transformer/transformer_block.cpp
+    src/transformer/token_embedding.cpp
+    src/transformer/positional_encoding.cpp
+    src/transformer/gpt_model.cpp
+    src/transformer/activations.cpp
+    src/tokenizer/bpe_tokenizer.cpp
 )
 
 target_include_directories(transformer PRIVATE include)
