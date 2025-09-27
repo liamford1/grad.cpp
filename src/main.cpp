@@ -234,6 +234,38 @@ bool test3DTensorOperations() {
                              result_add_3d.getValue(1, 0, 2) == 7.0f);
     printTestResult("3D + 3D addition", add_3d_3d_correct);
     all_passed &= add_3d_3d_correct;
+    // Test 3D softmax
+    Tensor softmax_3d(2, 2, 3);
+    
+    // Set different values for each batch
+    softmax_3d.setValue(0, 0, 0, 1.0f); softmax_3d.setValue(0, 0, 1, 2.0f); softmax_3d.setValue(0, 0, 2, 3.0f);
+    softmax_3d.setValue(0, 1, 0, 4.0f); softmax_3d.setValue(0, 1, 1, 5.0f); softmax_3d.setValue(0, 1, 2, 6.0f);
+    
+    softmax_3d.setValue(1, 0, 0, 2.0f); softmax_3d.setValue(1, 0, 1, 3.0f); softmax_3d.setValue(1, 0, 2, 1.0f);
+    softmax_3d.setValue(1, 1, 0, 5.0f); softmax_3d.setValue(1, 1, 1, 4.0f); softmax_3d.setValue(1, 1, 2, 6.0f);
+    
+    Tensor softmax_result = softmax_3d.softmax();
+    
+    // Check that each row sums to approximately 1.0
+    bool softmax_3d_correct = true;
+    float tolerance = 1e-6f;
+    
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 2; i++) {
+            float row_sum = 0.0f;
+            for (int j = 0; j < 3; j++) {
+                row_sum += softmax_result.getValue(b, i, j);
+            }
+            if (std::abs(row_sum - 1.0f) > tolerance) {
+                softmax_3d_correct = false;
+                break;
+            }
+        }
+        if (!softmax_3d_correct) break;
+    }
+    
+    printTestResult("3D softmax normalization", softmax_3d_correct);
+    all_passed &= softmax_3d_correct;
 
     return all_passed;
 }

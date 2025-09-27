@@ -267,26 +267,41 @@ Tensor Tensor::transpose() const {
 }
 
 Tensor Tensor::softmax() const {
-    Tensor result(this->rows, this->cols);
-    
-    for (int i = 0; i < this->rows; i++) {
-
-        float max_val = getValue(i, 0);
-        for (int j = 0; j < this->cols; j++) {
-            max_val = std::max(max_val, getValue(i, j));
+    if (!this->is_3d) {
+        Tensor result(this->rows, this->cols);
+        for (int i = 0; i < this->rows; i++) {
+            float max_val = getValue(i, 0);
+            for (int j = 0; j < this->cols; j++) {
+                max_val = std::max(max_val, getValue(i, j));
+            }
+            float sum = 0.0f;
+            for (int j = 0; j < this->cols; j++) {
+                sum += exp(getValue(i, j) - max_val);
+            }
+            for (int j = 0; j < this->cols; j++) {
+                result.setValue(i, j, exp(getValue(i, j) - max_val) / sum);
+            }
         }
-
-        float sum = 0.0f;
-        for (int j = 0; j < this->cols; j++) {
-            sum += exp(getValue(i, j) - max_val);
+        return result;
+    } else {
+        Tensor result(this->batch_size, this->rows, this->cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                float max_val = getValue(b, i, 0);
+                for (int j = 1; j < this->cols; j++) {
+                    max_val = std::max(max_val, getValue(b, i, j));
+                }
+                float sum = 0.0f;
+                for (int j = 0; j < this->cols; j++) {
+                    sum += exp(getValue(b, i, j) - max_val);
+                }
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, i, j, exp(getValue(b, i, j) - max_val) / sum);
+                }
+            }
         }
-
-        for (int j = 0; j < this->cols; j++) {
-            result.setValue(i, j, exp(getValue(i, j) - max_val) / sum);
-        }
+        return result;
     }
-
-    return result;
 }
 
 void Tensor::fill(float value) {
