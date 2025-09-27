@@ -16,6 +16,16 @@ class TransformerBlock {
     public:
         TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim = -1, float dropout_rate = 0.1f);
         Tensor forward(const Tensor& input, bool training = false) const;
+
+        const MultiHeadAttention& getAttention() const { return attention; }
+        const FeedForward& getFFN() const { return ffn; }
+        const LayerNorm& getNorm1() const { return norm1; }
+        const LayerNorm& getNorm2() const { return norm2; }
+        
+        MultiHeadAttention& getAttentionRef() { return attention; }
+        FeedForward& getFeedForwardRef() { return ffn; }
+        LayerNorm& getNorm1Ref() { return norm1; }
+        LayerNorm& getNorm2Ref() { return norm2; }
 };
 
 #endif

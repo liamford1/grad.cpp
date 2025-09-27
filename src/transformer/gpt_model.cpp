@@ -41,3 +41,175 @@ Tensor GPTModel::forward(const Tensor& token_ids, bool training) const {
     Tensor logits = output_projection.forward(normalized_output);
     return logits;
 }
+
+void writeTensorToBinary(std::ofstream& file, const Tensor& tensor) {
+    int rows = tensor.getRows();
+    int cols = tensor.getCols();
+
+    file.write(reinterpret_cast<const char*>(&rows), sizeof(int));
+    file.write(reinterpret_cast<const char*>(&cols), sizeof(int));
+
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            float value = tensor.getValue(i, j);
+            file.write(reinterpret_cast<const char*>(&value), sizeof(float));
+        }
+    }
+}
+
+Tensor readTensorFromBinary(std::ifstream& file) {
+    int rows;
+    int cols;
+
+    file.read(reinterpret_cast<char*>(&rows), sizeof(int));
+    file.read(reinterpret_cast<char*>(&cols), sizeof(int));
+
+    Tensor tensor(rows, cols);
+
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            float value;
+            file.read(reinterpret_cast<char*>(&value), sizeof(float));
+            tensor.setValue(i, j, value);
+        }
+    }
+    return tensor;
+}
+
+bool GPTModel::save(const std::string& filepath) const {
+    std::ofstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file for writing: " << filepath << std::endl;
+        return false;
+    }
+
+    try {
+        uint32_t magic = 0x4750544D;
+        uint32_t version = 1;
+        file.write(reinterpret_cast<const char*>(&magic), sizeof(uint32_t));
+        file.write(reinterpret_cast<const char*>(&version), sizeof(uint32_t));
+
+        file.write(reinterpret_cast<const char*>(&vocab_size), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&d_model), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&num_layers), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&num_heads), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&max_len), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&dropout_rate), sizeof(float));
+
+        writeTensorToBinary(file, token_embedding.getEmbeddingTable());
+
+        for (int i = 0; i < num_layers; i++) {
+            const TransformerBlock* block = transformer_blocks[i].get();
+            
+            const MultiHeadAttention& attention = block->getAttention();
+            writeTensorToBinary(file, attention.getW_q());
+            writeTensorToBinary(file, attention.getW_k());
+            writeTensorToBinary(file, attention.getW_v());
+            writeTensorToBinary(file, attention.getW_o());
+            
+            const FeedForward& ff = block->getFFN();
+            writeTensorToBinary(file, ff.getLayer1Weights());
+            writeTensorToBinary(file, ff.getLayer1Bias());
+            writeTensorToBinary(file, ff.getLayer2Weights());
+            writeTensorToBinary(file, ff.getLayer2Bias());
+            
+            const LayerNorm& norm1 = block->getNorm1();
+            const LayerNorm& norm2 = block->getNorm2();
+            writeTensorToBinary(file, norm1.getGamma());
+            writeTensorToBinary(file, norm1.getBeta());
+            writeTensorToBinary(file, norm2.getGamma());
+            writeTensorToBinary(file, norm2.getBeta());
+        }
+
+        writeTensorToBinary(file, final_norm.getGamma());
+        writeTensorToBinary(file, final_norm.getBeta());
+        
+        writeTensorToBinary(file, output_projection.getWeights());
+        writeTensorToBinary(file, output_projection.getBias());
+        
+        file.close();
+        std::cout << "Model saved successfully to: " << filepath << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error saving model: " << e.what() << std::endl;
+        file.close();
+        return false;
+    }
+}
+
+GPTModel GPTModel::load(const std::string& filepath) {
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Error: Could not open file for reading: " + filepath);
+    }
+
+    try {
+        uint32_t magic;
+        uint32_t version;
+        file.read(reinterpret_cast<char*>(&magic), sizeof(uint32_t));
+        file.read(reinterpret_cast<char*>(&version), sizeof(uint32_t));
+
+        if (magic != 0x4750544D) {
+            throw std::runtime_error("Invalid file format: wrong magic number");
+        }
+        if (version != 1) {
+            throw std::runtime_error("Unsupported file version: " + std::to_string(version)); 
+        }
+
+        int vocab_size, d_model, num_layers, num_heads, max_len;
+        float dropout_rate;
+        file.read(reinterpret_cast<char*>(&vocab_size), sizeof(int));
+        file.read(reinterpret_cast<char*>(&d_model), sizeof(int));
+        file.read(reinterpret_cast<char*>(&num_layers), sizeof(int));
+        file.read(reinterpret_cast<char*>(&num_heads), sizeof(int));
+        file.read(reinterpret_cast<char*>(&max_len), sizeof(int));
+        file.read(reinterpret_cast<char*>(&dropout_rate), sizeof(float));
+
+        GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, dropout_rate);
+        Tensor embedding_table = readTensorFromBinary(file);
+        model.token_embedding.setEmbeddingTable(embedding_table);
+
+        for (int i = 0; i < num_layers; i++) {
+            TransformerBlock* block = model.transformer_blocks[i].get();
+            
+            MultiHeadAttention& attention = block->getAttentionRef();
+            Tensor wq = readTensorFromBinary(file);
+            Tensor wk = readTensorFromBinary(file);
+            Tensor wv = readTensorFromBinary(file);
+            Tensor wo = readTensorFromBinary(file);
+            attention.setWeights(wq, wk, wv, wo);
+            
+            FeedForward& ff = block->getFeedForwardRef();
+            Tensor layer1_weights = readTensorFromBinary(file);
+            Tensor layer1_bias = readTensorFromBinary(file);
+            Tensor layer2_weights = readTensorFromBinary(file);
+            Tensor layer2_bias = readTensorFromBinary(file);
+            ff.setWeights(layer1_weights, layer1_bias, layer2_weights, layer2_bias);
+            
+            LayerNorm& norm1 = block->getNorm1Ref();
+            LayerNorm& norm2 = block->getNorm2Ref();
+            Tensor gamma1 = readTensorFromBinary(file);
+            Tensor beta1 = readTensorFromBinary(file);
+            Tensor gamma2 = readTensorFromBinary(file);
+            Tensor beta2 = readTensorFromBinary(file);
+            norm1.setParams(gamma1, beta1);
+            norm2.setParams(gamma2, beta2);
+        }
+
+        Tensor final_gamma = readTensorFromBinary(file);
+        Tensor final_beta = readTensorFromBinary(file);
+        model.final_norm.setParams(final_gamma, final_beta);
+        
+        Tensor output_weights = readTensorFromBinary(file);
+        Tensor output_bias = readTensorFromBinary(file);
+        model.output_projection.setWeights(output_weights, output_bias);
+        
+        file.close();
+        std::cout << "Model loaded successfully from: " << filepath << std::endl;
+        return model;
+
+    } catch (const std::exception& e) {
+        file.close();
+        throw std::runtime_error("Error loading model: " + std::string(e.what()));
+    }
+}

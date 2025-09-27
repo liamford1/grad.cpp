@@ -11,6 +11,7 @@
 #include <random>
 #include <iomanip>
 #include <stdexcept>
+#include <cstdio>
 
 // Utility functions for comprehensive testing
 void printSectionHeader(const std::string& title) {
@@ -410,6 +411,147 @@ bool testBPETokenizer() {
     return all_passed;
 }
 
+// Add this test function to your main.cpp
+
+bool testModelSerialization() {
+    printSectionHeader("MODEL SERIALIZATION TESTING");
+    bool all_passed = true;
+    
+    // Test model save functionality
+    GPTModel original_model(20, 16, 2, 2, 32, 0.1f);
+    
+    // Create some test input to get consistent outputs
+    Tensor test_input(3, 1);
+    test_input.setValue(0, 0, 1);
+    test_input.setValue(1, 0, 5);
+    test_input.setValue(2, 0, 3);
+    
+    // Get output from original model
+    Tensor original_output = original_model.forward(test_input);
+    
+    // Test save operation
+    std::string test_filepath = "test_model.bin";
+    bool save_success = original_model.save(test_filepath);
+    printTestResult("Model save operation", save_success);
+    all_passed &= save_success;
+    
+    if (save_success) {
+        // Test load operation
+        bool load_success = false;
+        GPTModel loaded_model(1, 1, 1, 1, 1); // Dummy initialization
+        
+        try {
+            loaded_model = GPTModel::load(test_filepath);
+            load_success = true;
+        } catch (const std::exception& e) {
+            std::cout << "    Load failed: " << e.what() << std::endl;
+        }
+        
+        printTestResult("Model load operation", load_success);
+        all_passed &= load_success;
+        
+        if (load_success) {
+            // Test that loaded model produces same output
+            Tensor loaded_output = loaded_model.forward(test_input);
+            
+            bool outputs_match = true;
+            float tolerance = 1e-6f;
+            
+            if (loaded_output.getRows() != original_output.getRows() || 
+                loaded_output.getCols() != original_output.getCols()) {
+                outputs_match = false;
+            } else {
+                for (int i = 0; i < original_output.getRows(); i++) {
+                    for (int j = 0; j < original_output.getCols(); j++) {
+                        float diff = std::abs(original_output.getValue(i, j) - loaded_output.getValue(i, j));
+                        if (diff > tolerance) {
+                            outputs_match = false;
+                            break;
+                        }
+                    }
+                    if (!outputs_match) break;
+                }
+            }
+            
+            printTestResult("Loaded model produces identical output", outputs_match);
+            all_passed &= outputs_match;
+            
+            // Test with different input to ensure it's not just memorized
+            Tensor test_input2(2, 1);
+            test_input2.setValue(0, 0, 7);
+            test_input2.setValue(1, 0, 2);
+            
+            Tensor original_output2 = original_model.forward(test_input2);
+            Tensor loaded_output2 = loaded_model.forward(test_input2);
+            
+            bool outputs_match2 = true;
+            if (loaded_output2.getRows() != original_output2.getRows() || 
+                loaded_output2.getCols() != original_output2.getCols()) {
+                outputs_match2 = false;
+            } else {
+                for (int i = 0; i < original_output2.getRows(); i++) {
+                    for (int j = 0; j < original_output2.getCols(); j++) {
+                        float diff = std::abs(original_output2.getValue(i, j) - loaded_output2.getValue(i, j));
+                        if (diff > tolerance) {
+                            outputs_match2 = false;
+                            break;
+                        }
+                    }
+                    if (!outputs_match2) break;
+                }
+            }
+            
+            printTestResult("Consistency across different inputs", outputs_match2);
+            all_passed &= outputs_match2;
+        }
+        
+        // Test error handling for invalid files
+        bool error_handling_correct = false;
+        try {
+            GPTModel::load("nonexistent_file.bin");
+        } catch (const std::exception& e) {
+            error_handling_correct = true;
+        }
+        printTestResult("Error handling for missing files", error_handling_correct);
+        all_passed &= error_handling_correct;
+        
+        // Clean up test file
+        std::remove(test_filepath.c_str());
+    }
+    
+    return all_passed;
+}
+
+// Also add this performance test for serialization
+void benchmarkSerialization() {
+    std::cout << "\n  SERIALIZATION PERFORMANCE:" << std::endl;
+    
+    // Test serialization performance
+    GPTModel benchmark_model(1000, 128, 6, 8, 512);
+    std::string benchmark_file = "benchmark_model.bin";
+    
+    double save_time = measureTime([&]() {
+        benchmark_model.save(benchmark_file);
+    });
+    std::cout << "  Model save (6 layers, 128 dims): " << std::fixed << std::setprecision(2) << save_time << " ms" << std::endl;
+    
+    double load_time = measureTime([&]() {
+        GPTModel loaded = GPTModel::load(benchmark_file);
+    });
+    std::cout << "  Model load (6 layers, 128 dims): " << std::fixed << std::setprecision(2) << load_time << " ms" << std::endl;
+    
+    // Check file size
+    std::ifstream file(benchmark_file, std::ios::binary | std::ios::ate);
+    if (file.is_open()) {
+        std::streamsize size = file.tellg();
+        file.close();
+        std::cout << "  Model file size: " << std::fixed << std::setprecision(2) << (size / 1024.0 / 1024.0) << " MB" << std::endl;
+    }
+    
+    // Clean up
+    std::remove(benchmark_file.c_str());
+}
+
 int main() {
     std::cout << "🚀 COMPREHENSIVE TRANSFORMER FROM SCRATCH AUDIT 🚀" << std::endl;
     std::cout << "Testing all components with edge cases and performance metrics..." << std::endl;
@@ -422,10 +564,12 @@ int main() {
     all_tests_passed &= testPositionalEncoding();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
+    all_tests_passed &= testModelSerialization();
     all_tests_passed &= testBPETokenizer();
     
     // Performance benchmarking
     benchmarkPerformance();
+    benchmarkSerialization();
     
     // Demonstrate practical usage
     demonstrateTextGeneration();

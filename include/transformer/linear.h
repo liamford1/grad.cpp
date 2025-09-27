@@ -13,8 +13,15 @@ class Linear {
     public:
         Linear(int input_dim, int output_dim, bool use_bias = true);
         ~Linear();
-
         Tensor forward(const Tensor& input) const;
+
+        const Tensor& getWeights() const { return weights; }
+        const Tensor& getBias() const { return bias; }
+
+        void setWeights(const Tensor& new_weights, const Tensor& new_bias) {
+            weights = new_weights;
+            bias = new_bias;
+        }
 };
 
 #endif
