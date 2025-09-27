@@ -6,14 +6,20 @@ class Tensor {
         float* data;
         int rows;
         int cols;
+
+        int batch_size;
+        bool is_3d;
     public:
         Tensor(int rows, int cols);
+        Tensor(int batch_size, int rows, int cols);
         Tensor(const Tensor& other);
         Tensor& operator=(const Tensor& other);
         ~Tensor();
 
         float getValue(int row, int col) const;
+        float getValue(int batch, int row, int col) const;
         void setValue(int row, int col, float value);
+        void setValue(int batch, int row, int col, float value);
         void display() const;
 
         Tensor matmul(const Tensor& other) const;
@@ -36,6 +42,9 @@ class Tensor {
         
         int getRows() const { return rows; }
         int getCols() const { return cols; }
+
+        int getBatchSize() const { return batch_size; }
+        bool getIs3D() const { return is_3d; }
 };
 
 #endif

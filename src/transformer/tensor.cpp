@@ -8,9 +8,23 @@
 Tensor::Tensor(int rows, int cols) {
     this->rows = rows;
     this->cols = cols;
-    this->data = new float[rows * cols];
+    this->batch_size = 1;
+    this->is_3d = false;
+    this->data = new float[batch_size * rows * cols];
 
-    for (int i = 0; i < rows * cols; i++) {
+    for (int i = 0; i < batch_size * rows * cols; i++) {
+        data[i] = 0.0f;
+    }
+}
+
+Tensor::Tensor(int batch_size, int rows, int cols) {
+    this->rows = rows;
+    this->cols = cols;
+    this->batch_size = batch_size;
+    this->is_3d = true;
+    this->data = new float[batch_size * rows * cols];
+
+    for (int i = 0; i < batch_size * rows * cols; i++) {
         data[i] = 0.0f;
     }
 }
@@ -18,9 +32,11 @@ Tensor::Tensor(int rows, int cols) {
 Tensor::Tensor(const Tensor& other) {
     this->rows = other.rows;
     this->cols = other.cols;
-    this->data = new float[rows * cols];
+    this->batch_size = other.batch_size;
+    this->is_3d = other.is_3d;
+    this->data = new float[batch_size * rows * cols];
 
-    for (int i = 0; i < rows * cols; i++) {
+    for (int i = 0; i < batch_size * rows * cols; i++) {
         this->data[i] = other.data[i];
     }
 }
@@ -29,17 +45,17 @@ Tensor& Tensor::operator=(const Tensor& other) {
     if (this == &other) {
         return *this;
     }
-
     delete[] data;
 
     this->rows = other.rows;
     this->cols = other.cols;
-    this->data = new float[rows * cols];
+    this->batch_size = other.batch_size;
+    this->is_3d = other.is_3d;
+    this->data = new float[batch_size * rows * cols];
 
-    for (int i = 0; i < rows * cols; i++) {
+    for (int i = 0; i < batch_size * rows * cols; i++) {
         this->data[i] = other.data[i];
     }
-
     return *this;
 }
 
@@ -51,8 +67,22 @@ float Tensor::getValue(int row, int col) const {
     return data[row * this->cols + col];
 }
 
+float Tensor::getValue(int batch, int row, int col) const {
+    if (batch >= batch_size || row >= rows || col >= cols) {
+        throw std::out_of_range("Tensor index out of bounds");
+    }
+    return data[batch * rows * cols + row * cols + col];
+}
+
 void Tensor::setValue(int row, int col, float value) {
     data[row * this->cols + col] = value;
+}
+
+void Tensor::setValue(int batch, int row, int col, float value) {
+    if (batch >= batch_size || row >= rows || col >= cols) {
+        throw std::out_of_range("Tensor index out of bounds");
+    }
+    data[batch * rows * cols + row * cols + col] = value;
 }
 
 void Tensor::display() const {
@@ -178,7 +208,7 @@ Tensor Tensor::softmax() const {
 }
 
 void Tensor::fill(float value) {
-    for (int i = 0; i < this->rows * this->cols; i++) {
+    for (int i = 0; i < this->batch_size * this->rows * this->cols; i++) {
        data[i] = value;
     }
 }
@@ -280,7 +310,7 @@ void Tensor::xavier(int fan_in, int fan_out) {
     float limit = std::sqrt(6.0f / (fan_in + fan_out));
     std::uniform_real_distribution<float> dis(-limit, limit);
 
-    for (int i = 0; i < rows * cols; i++) {
+    for (int i = 0; i < batch_size * rows * cols; i++) {
         data[i] = dis(gen);
     }
 }

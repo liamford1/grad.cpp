@@ -103,6 +103,85 @@ bool testTensorOperations() {
     return all_passed;
 }
 
+// Test 3D tensor operations
+bool test3DTensorOperations() {
+    printSectionHeader("3D TENSOR OPERATIONS TESTING");
+    bool all_passed = true;
+    
+    // Test 3D tensor creation
+    Tensor t3d(2, 3, 4);  // batch_size=2, rows=3, cols=4
+    bool creation_correct = (t3d.getBatchSize() == 2 && t3d.getRows() == 3 && t3d.getCols() == 4 && t3d.getIs3D());
+    printTestResult("3D tensor creation", creation_correct);
+    all_passed &= creation_correct;
+    
+    // Test 3D fill operation
+    t3d.fill(5.0f);
+    bool fill_correct = (t3d.getValue(0, 1, 2) == 5.0f && t3d.getValue(1, 2, 3) == 5.0f);
+    printTestResult("3D tensor fill operation", fill_correct);
+    all_passed &= fill_correct;
+    
+    // Test 3D setValue/getValue
+    t3d.setValue(0, 1, 2, 10.0f);
+    t3d.setValue(1, 2, 1, 20.0f);
+    bool accessor_correct = (t3d.getValue(0, 1, 2) == 10.0f && t3d.getValue(1, 2, 1) == 20.0f);
+    printTestResult("3D tensor accessors", accessor_correct);
+    all_passed &= accessor_correct;
+    
+    // Test that 2D operations still work (backward compatibility)
+    Tensor t2d(3, 4);
+    t2d.fill(1.0f);
+    t2d.setValue(1, 2, 7.0f);
+    bool backward_compat = (!t2d.getIs3D() && t2d.getBatchSize() == 1 && t2d.getValue(1, 2) == 7.0f);
+    printTestResult("2D backward compatibility", backward_compat);
+    all_passed &= backward_compat;
+    
+    // Test copy constructor with 3D tensor
+    Tensor t3d_copy = t3d;
+    bool copy_correct = (t3d_copy.getValue(0, 1, 2) == 10.0f && t3d_copy.getValue(1, 2, 1) == 20.0f);
+    printTestResult("3D tensor copy constructor", copy_correct);
+    all_passed &= copy_correct;
+    
+    // Test assignment operator with 3D tensor
+    Tensor t3d_assigned(1, 1, 1);
+    t3d_assigned = t3d;
+    bool assignment_correct = (t3d_assigned.getValue(0, 1, 2) == 10.0f && t3d_assigned.getValue(1, 2, 1) == 20.0f);
+    printTestResult("3D tensor assignment operator", assignment_correct);
+    all_passed &= assignment_correct;
+    
+    // Test bounds checking
+    bool bounds_check_correct = false;
+    try {
+        t3d.getValue(2, 1, 1); // batch index out of bounds
+    } catch (const std::out_of_range& e) {
+        bounds_check_correct = true;
+    }
+    printTestResult("3D tensor bounds checking", bounds_check_correct);
+    all_passed &= bounds_check_correct;
+    
+    // Test Xavier initialization with 3D tensor
+    Tensor t3d_xavier(2, 3, 4);
+    t3d_xavier.xavier(12, 4);
+    bool xavier_works = true;
+    // Check that not all values are the same (xavier should randomize)
+    float first_val = t3d_xavier.getValue(0, 0, 0);
+    for (int b = 0; b < 2 && xavier_works; b++) {
+        for (int i = 0; i < 3 && xavier_works; i++) {
+            for (int j = 0; j < 4 && xavier_works; j++) {
+                if (t3d_xavier.getValue(b, i, j) != first_val) {
+                    xavier_works = true;
+                    goto xavier_done; // Found a different value, xavier is working
+                }
+            }
+        }
+    }
+    xavier_works = false; // All values were the same
+    xavier_done:
+    printTestResult("3D tensor Xavier initialization", xavier_works);
+    all_passed &= xavier_works;
+    
+    return all_passed;
+}
+
 // Test token embeddings with edge cases
 bool testTokenEmbeddings() {
     printSectionHeader("TOKEN EMBEDDING TESTING");
@@ -559,7 +638,9 @@ int main() {
     bool all_tests_passed = true;
     
     // Run all test suites
+    // Run all test suites
     all_tests_passed &= testTensorOperations();
+    all_tests_passed &= test3DTensorOperations();  
     all_tests_passed &= testTokenEmbeddings();
     all_tests_passed &= testPositionalEncoding();
     all_tests_passed &= testTransformerBlock();
