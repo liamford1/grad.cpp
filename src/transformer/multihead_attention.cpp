@@ -43,7 +43,7 @@ Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
             Tensor V_head = V.slice(0, V.getRows(), start_col, head_size);
             
             Tensor scores = Q_head.matmul(K_head.transpose());
-            scores = scores.scale(1.0f / sqrt(head_size));
+            scores = scores.scale(1.0f / std::sqrt(head_size));
 
             Tensor casual_mask = Tensor::create_casual_mask(seq_len);
             scores = scores.add(casual_mask);
@@ -72,7 +72,7 @@ Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
         Tensor result(batch_size, seq_len, d_model);
 
         for (int i = 0; i < num_heads; i++) {
-            int start_col = input.getRows();
+            int start_col = i * head_size;
 
             Tensor Q_head(batch_size, seq_len, head_size);
             Tensor K_head(batch_size, seq_len, head_size);
@@ -90,7 +90,7 @@ Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
 
             Tensor K_transposed = K_head.transpose();
             Tensor scores = Q_head.matmul(K_transposed);
-            scores = scores.scale(1.0f / sqrt(head_size));
+            scores = scores.scale(1.0f / std::sqrt(head_size));
 
             Tensor casual_mask = Tensor::create_casual_mask_batch(batch_size, seq_len);
             scores = scores.add(casual_mask);

@@ -223,35 +223,63 @@ Tensor Tensor::add(const Tensor& other) const {
 }
 
 Tensor Tensor::subtract(const Tensor& other) const {
-    if (this->rows != other.rows || this->cols != other.cols) {
-        throw std::invalid_argument("Matrix dimensions do not match for subtraction");
-    }
-
-    Tensor result(this->rows, this->cols);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            result.setValue(i, j, this->getValue(i, j) - other.getValue(i, j));
+    if (!this->is_3d && !other.is_3d) {
+        if (this->rows != other.rows || this->cols != other.cols) {
+            throw std::invalid_argument("Matrix dimensions do not match for subtraction");
         }
+        Tensor result(this->rows, this->cols);
+        for (int i = 0; i < this->rows; i++) {
+            for (int j = 0; j < this->cols; j++) {
+                result.setValue(i, j, this->getValue(i, j) - other.getValue(i, j));
+            }
+        }
+        return result;
+    } else if (this->is_3d && other.is_3d) {
+        if (this->batch_size != other.batch_size || this->rows != other.rows || this->cols != other.cols) {
+            throw std::invalid_argument("3D tensor dimensions don't match for subtraction");
+        }
+        Tensor result(this->batch_size, this->rows, this->cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, i, j, this->getValue(b, i, j) - other.getValue(b, i, j));
+                }
+            }
+        }
+        return result;
+    } else {
+        throw std::invalid_argument("Cannot subtract tensors with different dimensionalities");
     }
-
-    return result;
 }
 
 Tensor Tensor::elementwise(const Tensor& other) const {
-    if (this->rows != other.rows || this->cols != other.cols) {
-        throw std::invalid_argument("Matrix dimensions do not match for elementwise multiply");
-    }
-
-    Tensor result(this->rows, this->cols);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            result.setValue(i, j, this->getValue(i, j) * other.getValue(i, j));
+    if (!this->is_3d && !other.is_3d) {
+        if (this->rows != other.rows || this->cols != other.cols) {
+            throw std::invalid_argument("Matrix dimensions do not match for elementwise multiply");
         }
+        Tensor result(this->rows, this->cols);
+        for (int i = 0; i < this->rows; i++) {
+            for (int j = 0; j < this->cols; j++) {
+                result.setValue(i, j, this->getValue(i, j) * other.getValue(i, j));
+            }
+        }
+        return result;
+    } else if (this->is_3d && other.is_3d) {
+        if (this->batch_size != other.batch_size || this->rows != other.rows || this->cols != other.cols) {
+            throw std::invalid_argument("3D tensor dimensions don't match for elementwise multiply");
+        }
+        Tensor result(this->batch_size, this->rows, this->cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, i, j, this->getValue(b, i, j) * other.getValue(b, i, j));
+                }
+            }
+        }
+        return result;
+    } else {
+        throw std::invalid_argument("Cannot perform elementwise multiply on tensors with different dimensionalities");
     }
-
-    return result;
 }
 
 Tensor Tensor::transpose() const {
@@ -321,15 +349,25 @@ void Tensor::fill(float value) {
 }
 
 Tensor Tensor::scale(float scaler) const {
-    Tensor result(this->rows, this->cols);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            result.setValue(i, j, this->getValue(i ,j) * scaler);
+    if (!this->is_3d) {
+        Tensor result(this->rows, this->cols);
+        for (int i = 0; i < this->rows; i++) {
+            for (int j = 0; j < this->cols; j++) {
+                result.setValue(i, j, this->getValue(i, j) * scaler);
+            }
         }
+        return result;
+    } else {
+        Tensor result(this->batch_size, this->rows, this->cols);
+        for (int b = 0; b < this->batch_size; b++) {
+            for (int i = 0; i < this->rows; i++) {
+                for (int j = 0; j < this->cols; j++) {
+                    result.setValue(b, i, j, this->getValue(b, i, j) * scaler);
+                }
+            }
+        }
+        return result;
     }
-
-    return result;
 }
 
 Tensor Tensor::reshape(int new_rows, int new_cols) const {
