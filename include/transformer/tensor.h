@@ -6,7 +6,6 @@ class Tensor {
         float* data;
         int rows;
         int cols;
-
         int batch_size;
         bool is_3d;
     public:
@@ -47,6 +46,13 @@ class Tensor {
 
         int getBatchSize() const { return batch_size; }
         bool getIs3D() const { return is_3d; }
+
+        int numel() const {
+            return is_3d ? batch_size * rows * cols : rows * cols;
+        }
+
+        float* raw() { return data; }
+        const float* raw() const { return data; }
 };
 
 #endif
