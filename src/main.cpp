@@ -618,6 +618,88 @@ bool testTransformerBlock() {
     return all_passed;
 }
 
+// Test batched multi-head attention
+bool testBatchedMultiHeadAttention() {
+    printSectionHeader("BATCHED MULTI-HEAD ATTENTION TESTING");
+    bool all_passed = true;
+    
+    MultiHeadAttention mha(8, 2, 0.0f);  // d_model=8, num_heads=2, no dropout for testing
+    
+    // Test with 3D input [batch_size, seq_len, d_model]
+    Tensor batch_input(2, 4, 8);  // 2 sequences of length 4
+    
+    // Fill with different values for each batch
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 8; j++) {
+                batch_input.setValue(b, i, j, (b + 1) * 0.1f + (i + 1) * 0.01f + (j + 1) * 0.001f);
+            }
+        }
+    }
+    
+    Tensor batch_output = mha.forward(batch_input, false);
+    
+    // Test output dimensions
+    bool batch_dimensions_correct = (batch_output.getBatchSize() == 2 && 
+                                    batch_output.getRows() == 4 && 
+                                    batch_output.getCols() == 8);
+    printTestResult("Batch attention dimensions [2, 4, 8]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that different batches produce different outputs
+    bool different_batch_outputs = (batch_output.getValue(0, 0, 0) != batch_output.getValue(1, 0, 0));
+    printTestResult("Different batch inputs produce different outputs", different_batch_outputs);
+    all_passed &= different_batch_outputs;
+    
+    // Test that output values are reasonable (not NaN or infinite)
+    bool values_reasonable = true;
+    for (int b = 0; b < 2 && values_reasonable; b++) {
+        for (int i = 0; i < 4 && values_reasonable; i++) {
+            for (int j = 0; j < 8 && values_reasonable; j++) {
+                float val = batch_output.getValue(b, i, j);
+                if (std::isnan(val) || std::isinf(val)) {
+                    values_reasonable = false;
+                }
+            }
+        }
+    }
+    printTestResult("Attention output values are reasonable", values_reasonable);
+    all_passed &= values_reasonable;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_input(4, 8);
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 8; j++) {
+            legacy_input.setValue(i, j, 0.1f + (i + 1) * 0.01f + (j + 1) * 0.001f);
+        }
+    }
+    
+    Tensor legacy_output = mha.forward(legacy_input, false);
+    bool legacy_compatibility = (legacy_output.getRows() == 4 && 
+                                legacy_output.getCols() == 8 && 
+                                !legacy_output.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    // Test that causal masking works (later positions shouldn't affect earlier ones)
+    Tensor causal_test_input(1, 3, 8);
+    causal_test_input.fill(1.0f);
+    
+    // Set last position to very different values
+    for (int j = 0; j < 8; j++) {
+        causal_test_input.setValue(0, 2, j, 100.0f);  // Very large values at last position
+    }
+    
+    Tensor causal_output = mha.forward(causal_test_input, false);
+    
+    // First position should not be significantly affected by last position due to causal masking
+    bool causal_masking_works = (std::abs(causal_output.getValue(0, 0, 0)) < 50.0f);
+    printTestResult("Causal masking prevents future information leakage", causal_masking_works);
+    all_passed &= causal_masking_works;
+    
+    return all_passed;
+}
+
 // Test complete GPT model with various configurations
 bool testGPTModel() {
     printSectionHeader("GPT MODEL TESTING");
@@ -953,6 +1035,7 @@ int main() {
     all_tests_passed &= testPositionalEncoding();
     all_tests_passed &= testBatchedPositionalEncoding();
     all_tests_passed &= testBatchedLinearLayers();
+    all_tests_passed &= testBatchedMultiHeadAttention();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
     all_tests_passed &= testModelSerialization();
