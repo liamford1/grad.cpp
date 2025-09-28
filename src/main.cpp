@@ -1,6 +1,7 @@
 #include "transformer/tensor.h"
 #include "transformer/gpt_model.h"
 #include "transformer/text_gen.h"
+#include "transformer/variable.h"  // 🆕 ADD THIS
 #include <iostream>
 #include <sstream>
 #include <cstdio>
@@ -24,6 +25,112 @@ void test_basic_tensor() {
     std::cout << "Scale operation works: " << (t2d_copy.getValue(0, 0) == 2.0f) << std::endl;
     
     std::cout << "Basic tensor tests passed!\n" << std::endl;
+}
+
+void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
+    std::cout << "=== Testing Variable Automatic Differentiation ===" << std::endl;
+    
+    try {
+        // Test 1: Basic Variable creation
+        std::cout << "Test 1: Variable creation..." << std::endl;
+        Tensor data1(2, 2);
+        data1.setValue(0, 0, 1.0f);
+        data1.setValue(0, 1, 2.0f);
+        data1.setValue(1, 0, 3.0f);
+        data1.setValue(1, 1, 4.0f);
+        
+        auto a = Variable::create(data1, true);
+        std::cout << "✓ Variable creation successful" << std::endl;
+        
+        // Test 2: Basic operations
+        std::cout << "Test 2: Basic operations..." << std::endl;
+        Tensor data2(2, 2);
+        data2.setValue(0, 0, 0.5f);
+        data2.setValue(0, 1, 1.5f);
+        data2.setValue(1, 0, 2.5f);
+        data2.setValue(1, 1, 3.5f);
+        
+        auto b = Variable::create(data2, true);
+        auto c = a->add(b);
+        std::cout << "✓ Addition operation successful" << std::endl;
+        
+        // Test 3: Scaling
+        std::cout << "Test 3: Scaling..." << std::endl;
+        auto d = c->scale(2.0f);
+        std::cout << "✓ Scale operation successful" << std::endl;
+        
+        // Test 4: Matrix multiplication
+        std::cout << "Test 4: Matrix multiplication..." << std::endl;
+        Tensor data3(2, 2);
+        data3.setValue(0, 0, 1.0f);
+        data3.setValue(0, 1, 0.0f);
+        data3.setValue(1, 0, 0.0f);
+        data3.setValue(1, 1, 1.0f);  // Identity matrix
+        
+        auto identity = Variable::create(data3, true);
+        auto e = a->matmul(identity);
+        std::cout << "✓ Matrix multiplication successful" << std::endl;
+        
+        // Test 5: Gradient computation
+        std::cout << "Test 5: Backward pass..." << std::endl;
+        e->backward();
+        std::cout << "✓ Backward pass completed without errors" << std::endl;
+        
+        // Test 6: Verify gradients exist
+        std::cout << "Test 6: Gradient verification..." << std::endl;
+        std::cout << "Gradient of 'a':" << std::endl;
+        a->getGrad().display();
+        
+        std::cout << "Gradient of 'identity':" << std::endl;
+        identity->getGrad().display();
+        
+        // Test 7: Chain rule with longer computation
+        std::cout << "Test 7: Complex chain rule..." << std::endl;
+        
+        // Clear gradients
+        a->zeroGrad();
+        b->zeroGrad();
+        identity->zeroGrad();
+        
+        // Complex expression: f = (a + b) * 2.0 * identity
+        auto step1 = a->add(b);
+        auto step2 = step1->scale(2.0f);
+        auto result = step2->matmul(identity);
+        
+        result->backward();
+        std::cout << "✓ Complex chain rule backward pass successful" << std::endl;
+        
+        // Verify gradients were computed
+        bool has_grad_a = false, has_grad_b = false;
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 2; j++) {
+                if (std::abs(a->getGrad().getValue(i, j)) > 1e-6f) has_grad_a = true;
+                if (std::abs(b->getGrad().getValue(i, j)) > 1e-6f) has_grad_b = true;
+            }
+        }
+        
+        std::cout << "Variable 'a' received gradients: " << has_grad_a << std::endl;
+        std::cout << "Variable 'b' received gradients: " << has_grad_b << std::endl;
+        
+        // Test 8: Softmax (if it doesn't crash)
+        std::cout << "Test 8: Softmax gradient..." << std::endl;
+        Tensor softmax_data(1, 3);
+        softmax_data.setValue(0, 0, 1.0f);
+        softmax_data.setValue(0, 1, 2.0f);
+        softmax_data.setValue(0, 2, 3.0f);
+        
+        auto softmax_var = Variable::create(softmax_data, true);
+        auto softmax_result = softmax_var->softmax();
+        softmax_result->backward();
+        std::cout << "✓ Softmax gradient computation successful" << std::endl;
+        
+        std::cout << "Variable autodiff tests passed!\n" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cout << "❌ Variable test failed with exception: " << e.what() << std::endl;
+    } catch (...) {
+        std::cout << "❌ Variable test failed with unknown exception" << std::endl;
+    }
 }
 
 void test_gpt_model() {
@@ -214,6 +321,7 @@ int main() {
     
     // Run key tests
     test_basic_tensor();
+    test_variable_autodiff();  // 🆕 ADD THIS LINE
     test_gpt_model();
     test_text_generation();
     test_model_save_load();

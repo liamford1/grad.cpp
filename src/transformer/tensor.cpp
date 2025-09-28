@@ -5,6 +5,15 @@
 #include <random>
 #include <stdexcept>
 
+Tensor::Tensor() {
+    this->rows = 1;
+    this->cols = 1; 
+    this->batch_size = 1;
+    this->is_3d = false;
+    this->data = new float[1];
+    this->data[0] = 0.0f;
+}
+
 Tensor::Tensor(int rows, int cols) {
     this->rows = rows;
     this->cols = cols;

@@ -10,6 +10,7 @@ class Tensor {
         int batch_size;
         bool is_3d;
     public:
+        Tensor();
         Tensor(int rows, int cols);
         Tensor(int batch_size, int rows, int cols);
         Tensor(const Tensor& other);
