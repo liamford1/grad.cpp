@@ -29,7 +29,8 @@ class Variable : public std::enable_shared_from_this<Variable> {
         Tensor& getData() { return data; }
         const Tensor& getGrad() const { return grad; }
         Tensor& getGrad() { return grad; }
-        
+
+        bool hasGrad() const { return grad.numel() > 0; }
         bool requiresGrad() const { return requires_grad; }
         
         std::shared_ptr<Variable> matmul(std::shared_ptr<Variable> other) const;
@@ -38,6 +39,8 @@ class Variable : public std::enable_shared_from_this<Variable> {
         std::shared_ptr<Variable> softmax() const;
 
         std::shared_ptr<Variable> cross_entropy_loss(std::shared_ptr<Variable> targets) const;
+        std::shared_ptr<Variable> gelu() const;
+        std::shared_ptr<Variable> dropout(float rate, bool training) const;
         
         void backward();
         void zeroGrad();

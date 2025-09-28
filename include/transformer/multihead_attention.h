@@ -1,7 +1,8 @@
-#ifndef MULTIHEAD_ATTENTION_H
-#define MULTIHEAD_ATTENTION_H
+#pragma once
 
 #include "tensor.h"
+#include "variable.h"
+#include <memory>
 
 class MultiHeadAttention {
     private:
@@ -16,7 +17,7 @@ class MultiHeadAttention {
     public:
         MultiHeadAttention(int d_model, int num_heads, float dropout_rate = 0.1f);
         ~MultiHeadAttention();
-        Tensor forward(const Tensor& input, bool training = false) const;
+        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
 
         const Tensor& getW_q() const { return W_q; }
         const Tensor& getW_k() const { return W_k; }
@@ -30,5 +31,3 @@ class MultiHeadAttention {
             W_o = wo;
         }
 };
-
-#endif

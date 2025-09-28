@@ -1,7 +1,7 @@
-#ifndef TOKEN_EMBEDDING_H
-#define TOKEN_EMBEDDING_H
-
+#pragma once
 #include "tensor.h"
+#include "variable.h"
+#include <memory>
 
 class TokenEmbedding {
     private:
@@ -11,7 +11,7 @@ class TokenEmbedding {
     public:
         TokenEmbedding(int vocab_size, int d_model);
         ~TokenEmbedding();
-        Tensor forward(const Tensor& input_ids) const;
+        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input_ids) const;
 
         int getVocabSize() const { return vocab_size; }
         int getDModel() const { return d_model; }
@@ -22,5 +22,3 @@ class TokenEmbedding {
             embedding_table = new_embedding_table;
         }
 };
-
-#endif

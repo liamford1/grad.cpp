@@ -1,11 +1,67 @@
 #include "transformer/tensor.h"
 #include "transformer/gpt_model.h"
 #include "transformer/text_gen.h"
-#include "transformer/variable.h"  // 🆕 ADD THIS
+#include "transformer/variable.h"
+#include "transformer/linear.h"
 #include <iostream>
 #include <sstream>
 #include <cstdio>
 #include <vector>
+
+void test_linear_layer() {
+    std::cout << "=== Testing Linear Layer ===" << std::endl;
+
+    try {
+        // Input: batch of 2 samples, each with 3 features
+        Tensor input_data(2, 3);
+        input_data.setValue(0, 0, 1.0f);
+        input_data.setValue(0, 1, 2.0f);
+        input_data.setValue(0, 2, 3.0f);
+        input_data.setValue(1, 0, 4.0f);
+        input_data.setValue(1, 1, 5.0f);
+        input_data.setValue(1, 2, 6.0f);
+
+        auto input = Variable::create(input_data, true);
+
+        // Linear layer: 3 -> 4
+        Linear linear(3, 4);
+
+        auto output = linear.forward(input);
+
+        // Check shape
+        const Tensor& out_data = output->getData();
+        std::cout << "Output shape: " 
+                  << out_data.getRows() << "x" 
+                  << out_data.getCols() << std::endl;
+
+        bool shape_correct = (out_data.getRows() == 2 && out_data.getCols() == 4);
+        std::cout << "Shape correct: " << shape_correct << std::endl;
+
+        // Run backward to test autograd
+        output->backward();
+        std::cout << "✓ Backward pass completed successfully" << std::endl;
+
+        // Check gradients exist for weights and bias
+        if (linear.getWeights()->hasGrad()) {
+            std::cout << "✓ Weights received gradients" << std::endl;
+        } else {
+            std::cout << "❌ No gradients for weights" << std::endl;
+        }
+
+        if (linear.getBias() && linear.getBias()->hasGrad()) {
+            std::cout << "✓ Bias received gradients" << std::endl;
+        } else if (linear.getBias()) {
+            std::cout << "❌ No gradients for bias" << std::endl;
+        } else {
+            std::cout << "Bias not used" << std::endl;
+        }
+
+        std::cout << "Linear layer tests passed!\n" << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cout << "❌ Linear test failed: " << e.what() << std::endl;
+    }
+}
 
 void test_basic_tensor() {
     std::cout << "=== Testing Basic Tensor Operations ===" << std::endl;
@@ -145,26 +201,27 @@ void test_gpt_model() {
     
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len);
     
-    // Test with some token sequence
-    Tensor input(3, 1);  // 3 tokens
-    input.setValue(0, 0, 1);
-    input.setValue(1, 0, 5);
-    input.setValue(2, 0, 10);
-    
-    Tensor output = model.forward(input);
-    
-    std::cout << "Input shape: " << input.getRows() << "x" << input.getCols() << std::endl;
-    std::cout << "Output shape: " << output.getRows() << "x" << output.getCols() << std::endl;
+    // Change to:
+    Tensor input_tensor(3, 1);
+    input_tensor.setValue(0, 0, 1);
+    input_tensor.setValue(1, 0, 5);
+    input_tensor.setValue(2, 0, 10);
+    auto input = Variable::create(input_tensor, false);
+
+    auto output = model.forward(input);
+
+    std::cout << "Input shape: " << input->getData().getRows() << "x" << input->getData().getCols() << std::endl;
+    std::cout << "Output shape: " << output->getData().getRows() << "x" << output->getData().getCols() << std::endl;
     std::cout << "Expected output shape: 3x" << vocab_size << std::endl;
     
-    bool shape_correct = (output.getRows() == 3 && output.getCols() == vocab_size);
+    bool shape_correct = (output->getData().getRows() == 3 && output->getData().getCols());
     std::cout << "Output shape correct: " << shape_correct << std::endl;
     
     // Check output values are reasonable (not NaN/inf)
     bool values_reasonable = true;
     for (int i = 0; i < 3 && values_reasonable; i++) {
         for (int j = 0; j < vocab_size && values_reasonable; j++) {
-            float val = output.getValue(i, j);
+            float val = output->getData().getValue(i, j);
             if (std::isnan(val) || std::isinf(val)) {
                 values_reasonable = false;
             }
@@ -230,13 +287,14 @@ void test_model_save_load() {
         try {
             GPTModel loaded = GPTModel::load(filepath);
             
-            // Test same input produces same output
-            Tensor test_input(2, 1);
-            test_input.setValue(0, 0, 1);
-            test_input.setValue(1, 0, 3);
-            
-            Tensor original_output = original.forward(test_input);
-            Tensor loaded_output = loaded.forward(test_input);
+            // Change to:
+            Tensor test_tensor(2, 1);
+            test_tensor.setValue(0, 0, 1);
+            test_tensor.setValue(1, 0, 3);
+            auto test_input = Variable::create(test_tensor, false);
+
+            auto original_output = original.forward(test_input);
+            auto loaded_output = loaded.forward(test_input);
             
             // Check if outputs match (within tolerance)
             bool outputs_match = true;
@@ -244,7 +302,7 @@ void test_model_save_load() {
             
             for (int i = 0; i < 2 && outputs_match; i++) {
                 for (int j = 0; j < 10 && outputs_match; j++) {
-                    float diff = std::abs(original_output.getValue(i, j) - loaded_output.getValue(i, j));
+                    float diff = std::abs(original_output->getData().getValue(i, j) - loaded_output->getData().getValue(i, j));
                     if (diff > tolerance) {
                         outputs_match = false;
                     }
@@ -449,7 +507,8 @@ int main() {
     
     // Run key tests
     test_basic_tensor();
-    test_variable_autodiff();  // 🆕 ADD THIS LINE
+    test_variable_autodiff();
+    test_linear_layer();
     test_gpt_model();
     test_text_generation();
     test_model_save_load();

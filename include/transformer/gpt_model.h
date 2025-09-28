@@ -31,7 +31,7 @@ class GPTModel {
     public:
         GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len, float dropout_rate = 0.1f);
         ~GPTModel() = default;
-        Tensor forward(const Tensor& token_ids, bool training = false) const;
+        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> token_ids, bool training = false) const;
 
         bool save(const std::string& filepath) const;
         static GPTModel load(const std::string& filepath);

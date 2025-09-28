@@ -13,18 +13,20 @@ TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
 
 TokenEmbedding::~TokenEmbedding() {}
 
-Tensor TokenEmbedding::forward(const Tensor& input_ids) const {
-    if (input_ids.getIs3D()) {
+std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> input_ids) const {
+    Tensor input_tensor = input_ids->getData();
+
+    if (input_tensor.getIs3D()) {
         throw std::invalid_argument("input_ids shoudl be 2D tensor not 3D");
     }
 
-    if(input_ids.getCols() == 1) {
-        int seq_len = input_ids.getRows();
+    if(input_tensor.getCols() == 1) {
+        int seq_len = input_tensor.getRows();
 
         Tensor result(seq_len, d_model);
 
         for (int i = 0; i < seq_len; i++) {
-            int token_id = static_cast<int>(input_ids.getValue(i, 0));
+            int token_id = static_cast<int>(input_tensor.getValue(i, 0));
 
             if (token_id < 0 || token_id >= vocab_size) {
                 throw std::out_of_range("Token ID out of vocabulary range");
@@ -34,15 +36,15 @@ Tensor TokenEmbedding::forward(const Tensor& input_ids) const {
                 result.setValue(i, j, embedding_table.getValue(token_id, j));
             }
         }
-        return result;
+        return Variable::create(result, input_ids->requiresGrad());
     } else {
-        int batch_size = input_ids.getRows();
-        int seq_len = input_ids.getCols();
+        int batch_size = input_tensor.getRows();
+        int seq_len = input_tensor.getCols();
 
         Tensor result(batch_size, seq_len, d_model);
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {
-                int token_id = static_cast<int>(input_ids.getValue(b, i));
+                int token_id = static_cast<int>(input_tensor.getValue(b, i));
 
                 if(token_id < 0 || token_id >= vocab_size) {
                     throw std::out_of_range("Token Id out of vocab range");
@@ -52,7 +54,7 @@ Tensor TokenEmbedding::forward(const Tensor& input_ids) const {
                 }
             }
         }
-        return result;
+        return Variable::create(result, input_ids->requiresGrad());
     }
 }
 

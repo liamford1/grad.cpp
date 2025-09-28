@@ -15,7 +15,7 @@ class TransformerBlock {
         float dropout_rate;
     public:
         TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim = -1, float dropout_rate = 0.1f);
-        Tensor forward(const Tensor& input, bool training = false) const;
+        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
 
         const MultiHeadAttention& getAttention() const { return attention; }
         const FeedForward& getFFN() const { return ffn; }

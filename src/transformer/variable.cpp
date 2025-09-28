@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
+#include <random>
 
 Variable::Variable(const Tensor& data, bool requires_grad) 
     : data(data), requires_grad(requires_grad) {
@@ -239,6 +240,70 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
     } else {
         throw std::runtime_error("Batched cross-entropy not yet implemented");
     }
+}
+
+std::shared_ptr<Variable> Variable::gelu() const {
+    Tensor result = this->data;
+    for (int i = 0; i < result.numel(); i++) {
+        float x = result.raw()[i];
+        float cube = x * x * x;
+        float gelu_val = 0.5f * x * (1.0f + std::tanh(0.79788456f * (x + 0.044715f * cube)));
+        result.raw()[i] = gelu_val;
+    }
+    auto output = createOutput(result, this->requires_grad);
+    
+    if (this->requires_grad) {
+        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        output->addChild(self_ptr);
+        output->setBackwardFn([self_ptr, output]() {
+            if (self_ptr->requires_grad) {
+                Tensor grad_tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
+                for (int i = 0; i < self_ptr->data.numel(); i++) {
+                    float x = self_ptr->data.raw()[i];
+                    float cube = x * x * x;
+                    float tanh_val = std::tanh(0.79788456f * (x + 0.044715f * cube));
+                    float sech_sq = 1.0f - tanh_val * tanh_val;
+                    float grad_val = 0.5f * (1.0f + tanh_val + x * sech_sq * 0.79788456f * (1.0f + 3.0f * 0.044715f * x * x));
+                    grad_tensor.raw()[i] = grad_val * output->grad.raw()[i];
+                }
+                self_ptr->grad = self_ptr->grad.add(grad_tensor);
+            }
+        });
+    }
+    return output;
+}
+
+std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) const {
+    if (!training || dropout_rate == 0.0f) {
+        return std::const_pointer_cast<Variable>(shared_from_this());
+    }
+    Tensor result = this->data;
+    float scale = 1.0f / (1.0f - dropout_rate);
+    
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+    
+    for (int i = 0; i < result.numel(); i++) {
+        if (dis(gen) < dropout_rate) {
+            result.raw()[i] = 0.0f;
+        } else {
+            result.raw()[i] *= scale;
+        }
+    }
+    auto output = createOutput(result, this->requires_grad);
+    
+    if (this->requires_grad) {
+        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        output->addChild(self_ptr);
+        output->setBackwardFn([self_ptr, output, scale]() {
+            if (self_ptr->requires_grad) {
+                Tensor grad_tensor = output->grad.scale(scale);
+                self_ptr->grad = self_ptr->grad.add(grad_tensor);
+            }
+        });
+    }
+    return output;
 }
 
 void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, 
