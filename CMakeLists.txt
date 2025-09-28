@@ -18,6 +18,7 @@ add_executable(transformer
     src/transformer/positional_encoding.cpp
     src/transformer/gpt_model.cpp
     src/transformer/activations.cpp
+    src/transformer/text_gen.cpp
     src/tokenizer/bpe_tokenizer.cpp
 )
 
