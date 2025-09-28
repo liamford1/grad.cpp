@@ -316,6 +316,134 @@ void demo_text_generation() {
     }
 }
 
+void test_cross_entropy_loss() {
+    std::cout << "=== Testing Cross-Entropy Loss ===" << std::endl;
+    
+    try {
+        // Test 1: Simple case with known values
+        std::cout << "Test 1: Basic cross-entropy computation..." << std::endl;
+        
+        // Create predictions (probabilities after softmax)
+        Tensor pred_data(2, 3);  // 2 tokens, 3 classes
+        pred_data.setValue(0, 0, 0.7f);  // Token 0: high prob for class 0
+        pred_data.setValue(0, 1, 0.2f);  
+        pred_data.setValue(0, 2, 0.1f);
+        
+        pred_data.setValue(1, 0, 0.1f);  // Token 1: high prob for class 1
+        pred_data.setValue(1, 1, 0.8f);
+        pred_data.setValue(1, 2, 0.1f);
+        
+        // Create targets (correct class indices)
+        Tensor target_data(2, 1);
+        target_data.setValue(0, 0, 0.0f);  // Token 0 should be class 0
+        target_data.setValue(1, 0, 1.0f);  // Token 1 should be class 1
+        
+        auto predictions = Variable::create(pred_data, true);
+        auto targets = Variable::create(target_data, false);
+        
+        // Compute loss
+        auto loss = predictions->cross_entropy_loss(targets);
+        
+        float loss_value = loss->getData().getValue(0, 0);
+        std::cout << "Computed loss: " << loss_value << std::endl;
+        
+        // Expected: -log(0.7) + -log(0.8) / 2 ≈ 0.268
+        float expected = (-std::log(0.7f) + -std::log(0.8f)) / 2.0f;
+        std::cout << "Expected loss: " << expected << std::endl;
+        
+        bool loss_correct = std::abs(loss_value - expected) < 0.01f;
+        std::cout << "Loss computation correct: " << loss_correct << std::endl;
+        
+        // Test 2: Gradient computation
+        std::cout << "Test 2: Cross-entropy gradients..." << std::endl;
+        predictions->zeroGrad();
+        loss->backward();
+        
+        std::cout << "Gradients for predictions:" << std::endl;
+        predictions->getGrad().display();
+        
+        // Test 3: Perfect predictions (low loss)
+        std::cout << "Test 3: Perfect predictions..." << std::endl;
+        
+        Tensor perfect_pred(2, 3);
+        perfect_pred.setValue(0, 0, 0.99f);  // Almost certain
+        perfect_pred.setValue(0, 1, 0.005f);
+        perfect_pred.setValue(0, 2, 0.005f);
+        
+        perfect_pred.setValue(1, 0, 0.005f);
+        perfect_pred.setValue(1, 1, 0.99f);   // Almost certain
+        perfect_pred.setValue(1, 2, 0.005f);
+        
+        auto perfect_var = Variable::create(perfect_pred, true);
+        auto perfect_loss = perfect_var->cross_entropy_loss(targets);
+        
+        float perfect_loss_value = perfect_loss->getData().getValue(0, 0);
+        std::cout << "Perfect prediction loss: " << perfect_loss_value << std::endl;
+        
+        bool low_loss = perfect_loss_value < 0.1f;  // Should be very low
+        std::cout << "Perfect predictions give low loss: " << low_loss << std::endl;
+        
+        // Test 4: Bad predictions (high loss)
+        std::cout << "Test 4: Bad predictions..." << std::endl;
+        
+        Tensor bad_pred(2, 3);
+        bad_pred.setValue(0, 0, 0.1f);   // Wrong class has high prob
+        bad_pred.setValue(0, 1, 0.8f);   
+        bad_pred.setValue(0, 2, 0.1f);
+        
+        bad_pred.setValue(1, 0, 0.9f);   // Wrong class has high prob  
+        bad_pred.setValue(1, 1, 0.05f);
+        bad_pred.setValue(1, 2, 0.05f);
+        
+        auto bad_var = Variable::create(bad_pred, true);
+        auto bad_loss = bad_var->cross_entropy_loss(targets);
+        
+        float bad_loss_value = bad_loss->getData().getValue(0, 0);
+        std::cout << "Bad prediction loss: " << bad_loss_value << std::endl;
+        
+        bool high_loss = bad_loss_value > 1.0f;  // Should be high
+        std::cout << "Bad predictions give high loss: " << high_loss << std::endl;
+        
+        // Test 5: Integration with softmax
+        std::cout << "Test 5: Integration with softmax..." << std::endl;
+        
+        Tensor logit_data(2, 3);
+        logit_data.setValue(0, 0, 2.0f);   // High logit for correct class
+        logit_data.setValue(0, 1, 0.1f);
+        logit_data.setValue(0, 2, 0.1f);
+        
+        logit_data.setValue(1, 0, 0.1f);
+        logit_data.setValue(1, 1, 1.5f);   // High logit for correct class
+        logit_data.setValue(1, 2, 0.1f);
+        
+        auto logits = Variable::create(logit_data, true);
+        auto probs = logits->softmax();
+        auto integrated_loss = probs->cross_entropy_loss(targets);
+        
+        integrated_loss->backward();
+        
+        std::cout << "Gradients flow back to logits:" << std::endl;
+        logits->getGrad().display();
+        
+        bool has_gradients = false;
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 3; j++) {
+                if (std::abs(logits->getGrad().getValue(i, j)) > 1e-6f) {
+                    has_gradients = true;
+                    break;
+                }
+            }
+        }
+        
+        std::cout << "Gradients computed for logits: " << has_gradients << std::endl;
+        
+        std::cout << "Cross-entropy loss tests passed!\n" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cout << "❌ Cross-entropy test failed: " << e.what() << std::endl;
+    }
+}
+
 int main() {
     std::cout << "🤖 TRANSFORMER FROM SCRATCH - CORE TESTING 🤖\n" << std::endl;
     
@@ -325,6 +453,7 @@ int main() {
     test_gpt_model();
     test_text_generation();
     test_model_save_load();
+    test_cross_entropy_loss();
     
     // Show practical demo
     demo_text_generation();

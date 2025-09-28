@@ -36,6 +36,8 @@ class Variable : public std::enable_shared_from_this<Variable> {
         std::shared_ptr<Variable> add(std::shared_ptr<Variable> other) const;
         std::shared_ptr<Variable> scale(float factor) const;
         std::shared_ptr<Variable> softmax() const;
+
+        std::shared_ptr<Variable> cross_entropy_loss(std::shared_ptr<Variable> targets) const;
         
         void backward();
         void zeroGrad();

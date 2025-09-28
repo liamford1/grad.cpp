@@ -175,6 +175,72 @@ std::shared_ptr<Variable> Variable::softmax() const {
     return output;
 }
 
+std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable> targets) const {
+    if (!this->data.getIs3D() && !targets->data.getIs3D()) {
+        Tensor loss_tensor(1, 1);
+        float total_loss = 0.0f;
+        
+        if (targets->data.getCols() == 1) { 
+            for (int i = 0; i < this->data.getRows(); i++) {
+                int target_idx = static_cast<int>(targets->data.getValue(i, 0));
+                if (target_idx >= 0 && target_idx < this->data.getCols()) {
+                    float prob = std::max(this->data.getValue(i, target_idx), 1e-15f);
+                    total_loss -= std::log(prob);
+                }
+            }
+        } else {
+            for (int i = 0; i < this->data.getRows(); i++) {
+                for (int j = 0; j < this->data.getCols(); j++) {
+                    if (targets->data.getValue(i, j) > 0.0f) {
+                        float prob = std::max(this->data.getValue(i, j), 1e-15f);
+                        total_loss -= targets->data.getValue(i, j) * std::log(prob);
+                    }
+                }
+            }
+        }
+        total_loss /= this->data.getRows();
+        loss_tensor.setValue(0, 0, total_loss);
+        auto output = createOutput(loss_tensor, this->requires_grad || targets->requires_grad);
+        
+        if (output->requires_grad) {
+            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+
+            output->addChild(self_ptr);
+            output->addChild(targets);
+            output->setBackwardFn([self_ptr, targets, output]() {
+                if (self_ptr->requires_grad) {
+                    if (targets->data.getCols() == 1) {
+                        Tensor grad_tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
+                        grad_tensor.fill(0.0f);
+                        float scale = 1.0f / self_ptr->data.getRows();
+                        
+                        for (int i = 0; i < self_ptr->data.getRows(); i++) {
+                            int target_idx = static_cast<int>(targets->data.getValue(i, 0));
+                            if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
+                                for (int j = 0; j < self_ptr->data.getCols(); j++) {
+                                    float grad_val = self_ptr->data.getValue(i, j) * scale;
+                                    if (j == target_idx) {
+                                        grad_val -= scale;
+                                    }
+                                    grad_tensor.setValue(i, j, grad_val);
+                                }
+                            }
+                        }
+                        self_ptr->grad = self_ptr->grad.add(grad_tensor);
+                    } else {
+                        Tensor diff = self_ptr->data.subtract(targets->data);
+                        Tensor scaled_diff = diff.scale(1.0f / self_ptr->data.getRows());
+                        self_ptr->grad = self_ptr->grad.add(scaled_diff);
+                    }
+                }
+            });
+        }
+        return output;
+    } else {
+        throw std::runtime_error("Batched cross-entropy not yet implemented");
+    }
+}
+
 void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, 
                               std::unordered_set<Variable*>& visited) const {
     if (visited.find(const_cast<Variable*>(this)) != visited.end()) {
