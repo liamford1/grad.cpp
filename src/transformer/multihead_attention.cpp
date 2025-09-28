@@ -24,16 +24,18 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout
 
 MultiHeadAttention::~MultiHeadAttention() {}
 
-Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
-    if (!input.getIs3D()) {
-        int seq_len = input.getRows();
+std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> input, bool training) const {
+    Tensor input_tensor = input->getData();
 
-        Tensor Q = input.matmul(W_q);
-        Tensor K = input.matmul(W_k);
-        Tensor V = input.matmul(W_v);
+    if (!input_tensor.getIs3D()) {
+        int seq_len = input_tensor.getRows();
+
+        Tensor Q = input_tensor.matmul(W_q);
+        Tensor K = input_tensor.matmul(W_k);
+        Tensor V = input_tensor.matmul(W_v);
 
         int head_size = d_model / num_heads;
-        Tensor result(input.getRows(), d_model);
+        Tensor result(input_tensor.getRows(), d_model);
 
         for (int i = 0; i < num_heads; i++) {
             int start_col = i * head_size;
@@ -52,21 +54,22 @@ Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
             attention_weights = dropout(attention_weights, dropout_rate, training);
             Tensor attended_values = attention_weights.matmul(V_head);
             
-            for (int row = 0; row < input.getRows(); row++) {
+            for (int row = 0; row < input_tensor.getRows(); row++) {
                 for (int col = 0; col < head_size; col++) {
                     result.setValue(row, start_col + col, attended_values.getValue(row, col));
                 }
             }
         }
         Tensor output = result.matmul(W_o);
-        return dropout(output, dropout_rate, training);
+        output = dropout(output, dropout_rate, training);
+        return Variable::create(output, input->requiresGrad());
     } else {
-        int batch_size = input.getBatchSize();
-        int seq_len = input.getRows();
+        int batch_size = input_tensor.getBatchSize();
+        int seq_len = input_tensor.getRows();
 
-        Tensor Q = input.matmul(W_q);
-        Tensor K = input.matmul(W_k);
-        Tensor V = input.matmul(W_v);
+        Tensor Q = input_tensor.matmul(W_q);
+        Tensor K = input_tensor.matmul(W_k);
+        Tensor V = input_tensor.matmul(W_v);
 
         int head_size = d_model / num_heads;
         Tensor result(batch_size, seq_len, d_model);
@@ -108,6 +111,7 @@ Tensor MultiHeadAttention::forward(const Tensor& input, bool training) const {
             }
         }
         Tensor output = result.matmul(W_o);
-        return dropout(output, dropout_rate, training);
+        output = dropout(output, dropout_rate, training);
+        return Variable::create(output, input->requiresGrad());
     }
 }

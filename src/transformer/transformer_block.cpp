@@ -13,14 +13,14 @@ TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_di
     norm1(d_model),
     norm2(d_model) {}
 
-Tensor TransformerBlock::forward(const Tensor& input, bool training) const {
-    Tensor normed1 = norm1.forward(input);
-    Tensor attention_output = attention.forward(normed1, training);
-    attention_output = dropout(attention_output, dropout_rate, training);
-    Tensor residual1 = input.add(attention_output);
+std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> input, bool training) const {
+    auto normed1 = norm1.forward(input);
+    auto attention_output = attention.forward(normed1, training);
+    attention_output = attention_output->dropout(dropout_rate, training);
+    auto residual1 = input->add(attention_output);
 
-    Tensor normed2 = norm2.forward(residual1);
-    Tensor ffn_output = ffn.forward(normed2, training);
-    ffn_output = dropout(ffn_output, dropout_rate, training);
-    return residual1.add(ffn_output);
+    auto normed2 = norm2.forward(residual1);
+    auto ffn_output = ffn.forward(normed2, training);
+    ffn_output = ffn_output->dropout(dropout_rate, training);
+    return residual1->add(ffn_output);
 }

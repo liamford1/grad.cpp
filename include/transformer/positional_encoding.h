@@ -1,7 +1,8 @@
-#ifndef POSITIONAL_ENCODING_H
-#define POSITIONAL_ENCODING_H
+#pragma once
 
 #include "tensor.h"
+#include "variable.h"
+#include <memory>
 
 class PositionalEncoding {
     private:
@@ -13,10 +14,8 @@ class PositionalEncoding {
         PositionalEncoding(int max_len, int d_model);
         ~PositionalEncoding();
 
-        Tensor forward(const Tensor& embeddings) const;
+        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> embeddings) const;
 
         int getMaxLen() const { return max_len; }
         int getDModel() const { return d_model; }
 };
-
-#endif

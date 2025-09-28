@@ -10,11 +10,13 @@ std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int 
     std::vector<int> tokens = prompt_tokens;
 
     for (int i = 0; i < max_tokens; i++) {
-        Tensor input(1, tokens.size());
-        for (size_t j = 0; j < tokens.size(); j++) {
-            input.setValue(0, j, static_cast<float>(tokens[j]));
+        Tensor input_tensor(1, tokens.size());
+        for (size_t i = 0; i < tokens.size(); i++) {
+            input_tensor.setValue(0, i, tokens[i]);
         }
-        Tensor logits = model.forward(input, false);
+        auto input = Variable::create(input_tensor, false);
+        auto logits_var = model.forward(input, false);
+        Tensor logits = logits_var->getData();
 
         int last_token = tokens.size() - 1;
         Tensor last_token_logits(1, logits.getCols());
@@ -39,11 +41,13 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
     std::vector<int> tokens = prompt_tokens;
 
     for (int i = 0; i < max_tokens; i++) {
-        Tensor input(1, tokens.size());
-        for (size_t j = 0; j < tokens.size(); j++) {
-            input.setValue(0, j, static_cast<float>(tokens[j]));
+        Tensor input_tensor(1, tokens.size());
+        for (size_t i = 0; i < tokens.size(); i++) {
+            input_tensor.setValue(0, i, tokens[i]);
         }
-        Tensor logits = model.forward(input, false);
+        auto input = Variable::create(input_tensor, false);
+        auto logits_var = model.forward(input, false);
+        Tensor logits = logits_var->getData();
 
         int last_token = tokens.size() - 1;
         Tensor last_token_logits(1, logits.getCols());

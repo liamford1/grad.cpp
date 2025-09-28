@@ -5,6 +5,14 @@
 #include <random>
 #include <stdexcept>
 
+Tensor::Tensor() {
+    this->rows = 0;
+    this->cols = 0; 
+    this->batch_size = 0;
+    this->is_3d = false;
+    this->data = nullptr;
+}
+
 Tensor::Tensor(int rows, int cols) {
     this->rows = rows;
     this->cols = cols;
@@ -176,7 +184,10 @@ Tensor Tensor::add(const Tensor& other) const {
         }
         return result;
     } else if (this->is_3d && !other.is_3d) {
-        if (this->rows != other.rows || this->cols != other.cols) {
+        bool rows_compatible = (this->rows == other.rows) || (this->rows == 1) || (other.rows == 1);
+        bool cols_compatible = (this->cols == other.cols) || (this->cols == 1) || (other.cols == 1);
+
+        if (!rows_compatible || !cols_compatible) {
             throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
         }
         

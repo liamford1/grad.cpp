@@ -1,7 +1,8 @@
-#ifndef LAYER_NORM_H
-#define LAYER_NORM_H
+#pragma once
 
 #include "tensor.h"
+#include "variable.h"
+#include <memory>
 
 class LayerNorm {
     private:
@@ -12,7 +13,7 @@ class LayerNorm {
     public:
         LayerNorm(int d_model);
         ~LayerNorm();
-        Tensor forward(const Tensor& input) const;
+        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input) const;
 
         const Tensor& getGamma() const { return gamma; }
         const Tensor& getBeta() const { return beta; }
@@ -22,5 +23,3 @@ class LayerNorm {
             beta = new_beta;
         }
 };
-
-#endif

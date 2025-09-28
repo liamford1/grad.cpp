@@ -14,35 +14,37 @@ LayerNorm::LayerNorm(int d_model) :
 
 LayerNorm::~LayerNorm() {}
 
-Tensor LayerNorm::forward(const Tensor& input) const {
-    if (!input.getIs3D()) {
-        Tensor result(input.getRows(), input.getCols());
+std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) const {
+    Tensor input_tensor = input->getData();
 
-        for (int i = 0; i < input.getRows(); i++) {
+    if (!input_tensor.getIs3D()) {
+        Tensor result(input_tensor.getRows(), input_tensor.getCols());
+
+        for (int i = 0; i < input_tensor.getRows(); i++) {
             float mean = 0.0f;
             float variance = 0.0f;
 
             for (int j = 0; j < d_model; j++) {
-                mean += input.getValue(i, j);
+                mean += input_tensor.getValue(i, j);
             }
             mean = mean / d_model;
 
             for (int j = 0; j < d_model; j++) {
-                float diff = input.getValue(i, j) - mean;
+                float diff = input_tensor.getValue(i, j) - mean;
                 variance += diff * diff;
             }
             variance = variance / d_model;
 
             for (int j = 0; j < d_model; j++) {
-                float normalized = (input.getValue(i, j) - mean) / std::sqrt(variance + epsilon);
+                float normalized = (input_tensor.getValue(i, j) - mean) / std::sqrt(variance + epsilon);
                 float output = gamma.getValue(0, j) * normalized + beta.getValue(0, j);
                 result.setValue(i, j, output);
             }
         }
-        return result;
+        return Variable::create(result, input->requiresGrad());
     } else {
-        int batch_size = input.getBatchSize();
-        int seq_len = input.getRows();
+        int batch_size = input_tensor.getBatchSize();
+        int seq_len = input_tensor.getRows();
         
         Tensor result(batch_size, seq_len, d_model);
 
@@ -52,23 +54,23 @@ Tensor LayerNorm::forward(const Tensor& input) const {
                 float variance = 0.0f;
 
                 for (int j = 0; j < d_model; j++) {
-                    mean += input.getValue(b, i, j);
+                    mean += input_tensor.getValue(b, i, j);
                 }
                 mean = mean / d_model;
 
                 for (int j = 0; j < d_model; j++) {
-                    float diff = input.getValue(b, i, j) - mean;
+                    float diff = input_tensor.getValue(b, i, j) - mean;
                     variance += diff * diff;
                 }
                 variance = variance / d_model;
 
                 for (int j = 0; j < d_model; j++) {
-                    float normalized = (input.getValue(b, i, j) - mean) / std::sqrt(variance + epsilon);
+                    float normalized = (input_tensor.getValue(b, i, j) - mean) / std::sqrt(variance + epsilon);
                     float output = gamma.getValue(0, j) * normalized + beta.getValue(0, j);
                     result.setValue(b, i, j, output);
                 }
             }
         }
-        return result;
+        return Variable::create(result, input->requiresGrad());
     }
 }

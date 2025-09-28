@@ -26,19 +26,19 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
     }
 }
 
-Tensor GPTModel::forward(const Tensor& token_ids, bool training) const {
-    Tensor embed_tokens = token_embedding.forward(token_ids);
-    Tensor encode_positions = pos_encoding.forward(embed_tokens);
+std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
+    auto embed_tokens = token_embedding.forward(token_ids);
+    auto encode_positions = pos_encoding.forward(embed_tokens);
 
-    Tensor transformer_output = encode_positions;
+    auto transformer_output = encode_positions;
 
     for (int i = 0; i < num_layers; i++) {
         transformer_output = transformer_blocks[i]->forward(transformer_output, training);
     }
 
-    Tensor normalized_output = final_norm.forward(transformer_output);
+    auto normalized_output = final_norm.forward(transformer_output);
     
-    Tensor logits = output_projection.forward(normalized_output);
+    auto logits = output_projection.forward(normalized_output);
     return logits;
 }
 
@@ -108,10 +108,10 @@ bool GPTModel::save(const std::string& filepath) const {
             writeTensorToBinary(file, attention.getW_o());
             
             const FeedForward& ff = block->getFFN();
-            writeTensorToBinary(file, ff.getLayer1Weights());
-            writeTensorToBinary(file, ff.getLayer1Bias());
-            writeTensorToBinary(file, ff.getLayer2Weights());
-            writeTensorToBinary(file, ff.getLayer2Bias());
+            writeTensorToBinary(file, ff.getLayer1Weights()->getData());
+            writeTensorToBinary(file, ff.getLayer1Bias()->getData());
+            writeTensorToBinary(file, ff.getLayer2Weights()->getData());
+            writeTensorToBinary(file, ff.getLayer2Bias()->getData());
             
             const LayerNorm& norm1 = block->getNorm1();
             const LayerNorm& norm2 = block->getNorm2();
@@ -124,8 +124,8 @@ bool GPTModel::save(const std::string& filepath) const {
         writeTensorToBinary(file, final_norm.getGamma());
         writeTensorToBinary(file, final_norm.getBeta());
         
-        writeTensorToBinary(file, output_projection.getWeights());
-        writeTensorToBinary(file, output_projection.getBias());
+        writeTensorToBinary(file, output_projection.getWeights()->getData());
+        writeTensorToBinary(file, output_projection.getBias()->getData());
         
         file.close();
         std::cout << "Model saved successfully to: " << filepath << std::endl;
@@ -184,7 +184,11 @@ GPTModel GPTModel::load(const std::string& filepath) {
             Tensor layer1_bias = readTensorFromBinary(file);
             Tensor layer2_weights = readTensorFromBinary(file);
             Tensor layer2_bias = readTensorFromBinary(file);
-            ff.setWeights(layer1_weights, layer1_bias, layer2_weights, layer2_bias);
+            auto layer1_weights_var = Variable::create(layer1_weights, true);
+            auto layer1_bias_var = Variable::create(layer1_bias, true);
+            auto layer2_weights_var = Variable::create(layer2_weights, true);
+            auto layer2_bias_var = Variable::create(layer2_bias, true);
+            ff.setWeights(layer1_weights_var, layer1_bias_var, layer2_weights_var, layer2_bias_var);
             
             LayerNorm& norm1 = block->getNorm1Ref();
             LayerNorm& norm2 = block->getNorm2Ref();
@@ -202,7 +206,9 @@ GPTModel GPTModel::load(const std::string& filepath) {
         
         Tensor output_weights = readTensorFromBinary(file);
         Tensor output_bias = readTensorFromBinary(file);
-        model.output_projection.setWeights(output_weights, output_bias);
+        auto output_weights_var = Variable::create(output_weights, true);
+        auto output_bias_var = Variable::create(output_bias, true);
+        model.output_projection.setWeights(output_weights_var, output_bias_var);
         
         file.close();
         std::cout << "Model loaded successfully from: " << filepath << std::endl;
