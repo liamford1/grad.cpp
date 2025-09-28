@@ -700,6 +700,83 @@ bool testBatchedMultiHeadAttention() {
     return all_passed;
 }
 
+// Test batched layer normalization
+bool testBatchedLayerNorm() {
+    printSectionHeader("BATCHED LAYER NORMALIZATION TESTING");
+    bool all_passed = true;
+    
+    LayerNorm layer_norm(4);
+    
+    // Test with 3D input [batch_size, seq_len, d_model]
+    Tensor batch_input(2, 3, 4);
+    
+    // Fill with different values that will need normalization
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                // Create values with different scales to test normalization
+                batch_input.setValue(b, i, j, (b + 1) * 10.0f + (i + 1) * 2.0f + (j + 1) * 0.5f);
+            }
+        }
+    }
+    
+    Tensor batch_output = layer_norm.forward(batch_input);
+    
+    // Test output dimensions
+    bool batch_dimensions_correct = (batch_output.getBatchSize() == 2 && 
+                                    batch_output.getRows() == 3 && 
+                                    batch_output.getCols() == 4);
+    printTestResult("Batch layer norm dimensions [2, 3, 4]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that each sequence position is normalized (mean ≈ 0, std ≈ 1)
+    bool normalization_works = true;
+    float tolerance = 1e-5f;
+    
+    for (int b = 0; b < 2 && normalization_works; b++) {
+        for (int i = 0; i < 3 && normalization_works; i++) {
+            // Compute mean and variance of normalized output
+            float mean = 0.0f;
+            float variance = 0.0f;
+            
+            for (int j = 0; j < 4; j++) {
+                mean += batch_output.getValue(b, i, j);
+            }
+            mean /= 4.0f;
+            
+            for (int j = 0; j < 4; j++) {
+                float diff = batch_output.getValue(b, i, j) - mean;
+                variance += diff * diff;
+            }
+            variance /= 4.0f;
+            
+            // Check if mean is close to 0 and variance is close to 1
+            if (std::abs(mean) > tolerance || std::abs(variance - 1.0f) > 0.1f) {
+                normalization_works = false;
+            }
+        }
+    }
+    printTestResult("Layer normalization produces normalized outputs", normalization_works);
+    all_passed &= normalization_works;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_input(3, 4);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            legacy_input.setValue(i, j, (i + 1) * 2.0f + (j + 1) * 0.5f);
+        }
+    }
+    
+    Tensor legacy_output = layer_norm.forward(legacy_input);
+    bool legacy_compatibility = (legacy_output.getRows() == 3 && 
+                                legacy_output.getCols() == 4 && 
+                                !legacy_output.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    return all_passed;
+}
+
 // Test complete GPT model with various configurations
 bool testGPTModel() {
     printSectionHeader("GPT MODEL TESTING");
@@ -1036,6 +1113,7 @@ int main() {
     all_tests_passed &= testBatchedPositionalEncoding();
     all_tests_passed &= testBatchedLinearLayers();
     all_tests_passed &= testBatchedMultiHeadAttention();
+    all_tests_passed &= testBatchedLayerNorm();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
     all_tests_passed &= testModelSerialization();
