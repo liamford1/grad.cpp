@@ -103,6 +103,269 @@ bool testTensorOperations() {
     return all_passed;
 }
 
+// Test 3D tensor operations
+bool test3DTensorOperations() {
+    printSectionHeader("3D TENSOR OPERATIONS TESTING");
+    bool all_passed = true;
+    
+    // Test 3D tensor creation
+    Tensor t3d(2, 3, 4);  // batch_size=2, rows=3, cols=4
+    bool creation_correct = (t3d.getBatchSize() == 2 && t3d.getRows() == 3 && t3d.getCols() == 4 && t3d.getIs3D());
+    printTestResult("3D tensor creation", creation_correct);
+    all_passed &= creation_correct;
+    
+    // Test 3D fill operation
+    t3d.fill(5.0f);
+    bool fill_correct = (t3d.getValue(0, 1, 2) == 5.0f && t3d.getValue(1, 2, 3) == 5.0f);
+    printTestResult("3D tensor fill operation", fill_correct);
+    all_passed &= fill_correct;
+    
+    // Test 3D setValue/getValue
+    t3d.setValue(0, 1, 2, 10.0f);
+    t3d.setValue(1, 2, 1, 20.0f);
+    bool accessor_correct = (t3d.getValue(0, 1, 2) == 10.0f && t3d.getValue(1, 2, 1) == 20.0f);
+    printTestResult("3D tensor accessors", accessor_correct);
+    all_passed &= accessor_correct;
+    
+    // Test that 2D operations still work (backward compatibility)
+    Tensor t2d(3, 4);
+    t2d.fill(1.0f);
+    t2d.setValue(1, 2, 7.0f);
+    bool backward_compat = (!t2d.getIs3D() && t2d.getBatchSize() == 1 && t2d.getValue(1, 2) == 7.0f);
+    printTestResult("2D backward compatibility", backward_compat);
+    all_passed &= backward_compat;
+    
+    // Test copy constructor with 3D tensor
+    Tensor t3d_copy = t3d;
+    bool copy_correct = (t3d_copy.getValue(0, 1, 2) == 10.0f && t3d_copy.getValue(1, 2, 1) == 20.0f);
+    printTestResult("3D tensor copy constructor", copy_correct);
+    all_passed &= copy_correct;
+    
+    // Test assignment operator with 3D tensor
+    Tensor t3d_assigned(1, 1, 1);
+    t3d_assigned = t3d;
+    bool assignment_correct = (t3d_assigned.getValue(0, 1, 2) == 10.0f && t3d_assigned.getValue(1, 2, 1) == 20.0f);
+    printTestResult("3D tensor assignment operator", assignment_correct);
+    all_passed &= assignment_correct;
+    
+    // Test bounds checking
+    bool bounds_check_correct = false;
+    try {
+        t3d.getValue(2, 1, 1); // batch index out of bounds
+    } catch (const std::out_of_range& e) {
+        bounds_check_correct = true;
+    }
+    printTestResult("3D tensor bounds checking", bounds_check_correct);
+    all_passed &= bounds_check_correct;
+    
+    // Test Xavier initialization with 3D tensor
+    Tensor t3d_xavier(2, 3, 4);
+    t3d_xavier.xavier(12, 4);
+    bool xavier_works = true;
+    // Check that not all values are the same (xavier should randomize)
+    float first_val = t3d_xavier.getValue(0, 0, 0);
+    for (int b = 0; b < 2 && xavier_works; b++) {
+        for (int i = 0; i < 3 && xavier_works; i++) {
+            for (int j = 0; j < 4 && xavier_works; j++) {
+                if (t3d_xavier.getValue(b, i, j) != first_val) {
+                    xavier_works = true;
+                    goto xavier_done; // Found a different value, xavier is working
+                }
+            }
+        }
+    }
+    xavier_works = false; // All values were the same
+    xavier_done:
+    printTestResult("3D tensor Xavier initialization", xavier_works);
+    all_passed &= xavier_works;
+    // Test 3D × 2D matrix multiplication
+    Tensor a3d(2, 2, 3);  // 2 batches of 2×3 matrices
+    Tensor b2d(3, 2);     // Single 3×2 matrix
+    
+    // Fill first batch of a3d
+    a3d.setValue(0, 0, 0, 1); a3d.setValue(0, 0, 1, 2); a3d.setValue(0, 0, 2, 3);
+    a3d.setValue(0, 1, 0, 4); a3d.setValue(0, 1, 1, 5); a3d.setValue(0, 1, 2, 6);
+    
+    // Fill second batch differently
+    a3d.setValue(1, 0, 0, 2); a3d.setValue(1, 0, 1, 3); a3d.setValue(1, 0, 2, 4);
+    a3d.setValue(1, 1, 0, 5); a3d.setValue(1, 1, 1, 6); a3d.setValue(1, 1, 2, 7);
+    
+    // Fill b2d
+    b2d.setValue(0, 0, 7); b2d.setValue(0, 1, 8);
+    b2d.setValue(1, 0, 9); b2d.setValue(1, 1, 10);
+    b2d.setValue(2, 0, 11); b2d.setValue(2, 1, 12);
+    
+    Tensor result3d2d = a3d.matmul(b2d);
+    bool matmul_3d_2d_correct = (result3d2d.getBatchSize() == 2 && 
+                                result3d2d.getRows() == 2 && 
+                                result3d2d.getCols() == 2);
+    printTestResult("3D × 2D matrix multiplication", matmul_3d_2d_correct);
+    all_passed &= matmul_3d_2d_correct;
+    
+    // Verify first batch result: should be same as [1,2,3; 4,5,6] × [7,8; 9,10; 11,12] = [58,64; 139,154]
+    bool first_batch_correct = (result3d2d.getValue(0, 0, 0) == 58.0f && 
+                               result3d2d.getValue(0, 1, 1) == 154.0f);
+    printTestResult("3D × 2D first batch values", first_batch_correct);
+    all_passed &= first_batch_correct;
+
+    // Test 3D + 2D addition (broadcasting)
+    Tensor a3d_add(2, 2, 3);
+    Tensor b2d_add(2, 3);
+    
+    a3d_add.fill(5.0f);
+    b2d_add.fill(2.0f);
+    
+    Tensor result_add = a3d_add.add(b2d_add);
+    bool add_3d_2d_correct = (result_add.getBatchSize() == 2 && 
+                             result_add.getValue(0, 1, 1) == 7.0f && 
+                             result_add.getValue(1, 1, 1) == 7.0f);
+    printTestResult("3D + 2D addition (broadcasting)", add_3d_2d_correct);
+    all_passed &= add_3d_2d_correct;
+    
+    // Test 3D + 3D addition
+    Tensor a3d_add2(2, 2, 3);
+    Tensor b3d_add(2, 2, 3);
+    
+    a3d_add2.fill(3.0f);
+    b3d_add.fill(4.0f);
+    
+    Tensor result_add_3d = a3d_add2.add(b3d_add);
+    bool add_3d_3d_correct = (result_add_3d.getValue(0, 1, 1) == 7.0f && 
+                             result_add_3d.getValue(1, 0, 2) == 7.0f);
+    printTestResult("3D + 3D addition", add_3d_3d_correct);
+    all_passed &= add_3d_3d_correct;
+    // Test 3D softmax
+    Tensor softmax_3d(2, 2, 3);
+    
+    // Set different values for each batch
+    softmax_3d.setValue(0, 0, 0, 1.0f); softmax_3d.setValue(0, 0, 1, 2.0f); softmax_3d.setValue(0, 0, 2, 3.0f);
+    softmax_3d.setValue(0, 1, 0, 4.0f); softmax_3d.setValue(0, 1, 1, 5.0f); softmax_3d.setValue(0, 1, 2, 6.0f);
+    
+    softmax_3d.setValue(1, 0, 0, 2.0f); softmax_3d.setValue(1, 0, 1, 3.0f); softmax_3d.setValue(1, 0, 2, 1.0f);
+    softmax_3d.setValue(1, 1, 0, 5.0f); softmax_3d.setValue(1, 1, 1, 4.0f); softmax_3d.setValue(1, 1, 2, 6.0f);
+    
+    Tensor softmax_result = softmax_3d.softmax();
+    
+    // Check that each row sums to approximately 1.0
+    bool softmax_3d_correct = true;
+    float tolerance = 1e-6f;
+    
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 2; i++) {
+            float row_sum = 0.0f;
+            for (int j = 0; j < 3; j++) {
+                row_sum += softmax_result.getValue(b, i, j);
+            }
+            if (std::abs(row_sum - 1.0f) > tolerance) {
+                softmax_3d_correct = false;
+                break;
+            }
+        }
+        if (!softmax_3d_correct) break;
+    }
+    
+    printTestResult("3D softmax normalization", softmax_3d_correct);
+    all_passed &= softmax_3d_correct;
+    // Test 3D transpose
+    Tensor transpose_3d(2, 3, 4);  // [2, 3, 4]
+    
+    // Fill with identifiable values
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                transpose_3d.setValue(b, i, j, b * 100 + i * 10 + j);
+            }
+        }
+    }
+    
+    Tensor transposed = transpose_3d.transpose();  // Should be [2, 4, 3]
+    
+    bool transpose_3d_correct = (transposed.getBatchSize() == 2 && 
+                                transposed.getRows() == 4 && 
+                                transposed.getCols() == 3);
+    printTestResult("3D transpose dimensions", transpose_3d_correct);
+    all_passed &= transpose_3d_correct;
+    
+    // Check that transposition actually worked
+    bool transpose_values_correct = (transpose_3d.getValue(0, 1, 2) == transposed.getValue(0, 2, 1) &&
+                                    transpose_3d.getValue(1, 2, 3) == transposed.getValue(1, 3, 2));
+    printTestResult("3D transpose values", transpose_values_correct);
+    all_passed &= transpose_values_correct;
+
+    // Test batch causal mask
+    Tensor batch_mask = Tensor::create_casual_mask_batch(2, 3);
+    
+    bool batch_mask_correct = (batch_mask.getBatchSize() == 2 && 
+                              batch_mask.getRows() == 3 && 
+                              batch_mask.getCols() == 3);
+    printTestResult("Batch causal mask dimensions", batch_mask_correct);
+    all_passed &= batch_mask_correct;
+    
+    // Check causal mask values for both batches
+    bool batch_mask_values = (batch_mask.getValue(0, 0, 1) == -1e9f &&  // Future token masked
+                             batch_mask.getValue(0, 1, 0) == 0.0f &&     // Past token visible
+                             batch_mask.getValue(1, 0, 1) == -1e9f &&    // Same for batch 1
+                             batch_mask.getValue(1, 1, 0) == 0.0f);
+    printTestResult("Batch causal mask values", batch_mask_values);
+    all_passed &= batch_mask_values;
+
+    return all_passed;
+}
+
+// Test batched token embeddings
+bool testBatchedTokenEmbeddings() {
+    printSectionHeader("BATCHED TOKEN EMBEDDING TESTING");
+    bool all_passed = true;
+    
+    TokenEmbedding token_emb(10, 8);
+    
+    // Test batch format [batch_size, seq_len]
+    Tensor batch_token_ids(2, 3);  // 2 sequences of length 3
+    batch_token_ids.setValue(0, 0, 1); batch_token_ids.setValue(0, 1, 2); batch_token_ids.setValue(0, 2, 3);
+    batch_token_ids.setValue(1, 0, 4); batch_token_ids.setValue(1, 1, 5); batch_token_ids.setValue(1, 2, 6);
+    
+    Tensor batch_embeddings = token_emb.forward(batch_token_ids);
+    bool batch_dimensions_correct = (batch_embeddings.getBatchSize() == 2 && 
+                                    batch_embeddings.getRows() == 3 && 
+                                    batch_embeddings.getCols() == 8);
+    printTestResult("Batch embedding dimensions [2, 3, 8]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that different sequences in batch have different embeddings
+    bool different_sequences = (batch_embeddings.getValue(0, 0, 0) != batch_embeddings.getValue(1, 0, 0));
+    printTestResult("Different sequences have different embeddings", different_sequences);
+    all_passed &= different_sequences;
+    
+    // Test that same tokens produce same embeddings across batches
+    Tensor same_token_batch(2, 2);
+    same_token_batch.setValue(0, 0, 7); same_token_batch.setValue(0, 1, 8);
+    same_token_batch.setValue(1, 0, 7); same_token_batch.setValue(1, 1, 8);  // Same tokens
+    
+    Tensor same_token_embeddings = token_emb.forward(same_token_batch);
+    bool same_tokens_same_embeddings = true;
+    for (int j = 0; j < 8; j++) {
+        if (same_token_embeddings.getValue(0, 0, j) != same_token_embeddings.getValue(1, 0, j)) {
+            same_tokens_same_embeddings = false;
+            break;
+        }
+    }
+    printTestResult("Same tokens produce same embeddings across batches", same_tokens_same_embeddings);
+    all_passed &= same_tokens_same_embeddings;
+    
+    // Test backward compatibility - legacy format should still work
+    Tensor legacy_token_ids(3, 1);
+    legacy_token_ids.setValue(0, 0, 1); legacy_token_ids.setValue(1, 0, 2); legacy_token_ids.setValue(2, 0, 3);
+    
+    Tensor legacy_embeddings = token_emb.forward(legacy_token_ids);
+    bool legacy_compatibility = (legacy_embeddings.getRows() == 3 && 
+                                legacy_embeddings.getCols() == 8 && 
+                                !legacy_embeddings.getIs3D());
+    printTestResult("Legacy format [seq_len, 1] still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    return all_passed;
+}
+
 // Test token embeddings with edge cases
 bool testTokenEmbeddings() {
     printSectionHeader("TOKEN EMBEDDING TESTING");
@@ -198,6 +461,129 @@ bool testPositionalEncoding() {
     return all_passed;
 }
 
+bool testBatchedPositionalEncoding() {
+    printSectionHeader("BATCHED POSITIONAL ENCODING TESTING");
+    bool all_passed = true;
+    
+    PositionalEncoding pos_enc(16, 8);
+    
+    // Test with 3D input [batch_size, seq_len, d_model]
+    Tensor batch_embeddings(2, 4, 8);  // 2 sequences of length 4
+    batch_embeddings.fill(0.1f);
+    
+    // Set some different values for each batch
+    batch_embeddings.setValue(0, 0, 0, 1.0f);
+    batch_embeddings.setValue(1, 0, 0, 2.0f);
+    
+    Tensor batch_result = pos_enc.forward(batch_embeddings);
+    
+    bool batch_dimensions_correct = (batch_result.getBatchSize() == 2 && 
+                                    batch_result.getRows() == 4 && 
+                                    batch_result.getCols() == 8);
+    printTestResult("Batch positional encoding dimensions [2, 4, 8]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that positional encoding is applied (values should change)
+    // Use position [0,1,1] which should have a more significant positional encoding
+    float original_val = batch_embeddings.getValue(0, 1, 1);
+    float modified_val = batch_result.getValue(0, 1, 1);
+    bool pos_encoding_applied = (std::abs(modified_val - original_val) > 1e-6f);
+    printTestResult("Positional encoding modifies batch values", pos_encoding_applied);
+    all_passed &= pos_encoding_applied;
+    
+    // Test that same positions have same positional encoding across batches
+    // (but different embedding values should still result in different final values)
+    float pos_diff_batch0 = batch_result.getValue(0, 1, 0) - batch_embeddings.getValue(0, 1, 0);
+    float pos_diff_batch1 = batch_result.getValue(1, 1, 0) - batch_embeddings.getValue(1, 1, 0);
+    bool same_positional_encoding = (std::abs(pos_diff_batch0 - pos_diff_batch1) < 1e-6f);
+    printTestResult("Same positional encoding across batches", same_positional_encoding);
+    all_passed &= same_positional_encoding;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_embeddings(4, 8);
+    legacy_embeddings.fill(0.1f);
+    legacy_embeddings.setValue(0, 0, 1.0f);
+    
+    Tensor legacy_result = pos_enc.forward(legacy_embeddings);
+    bool legacy_compatibility = (legacy_result.getRows() == 4 && 
+                                legacy_result.getCols() == 8 && 
+                                !legacy_result.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    // Verify that 2D and 3D give same results for equivalent inputs
+    bool results_consistent = (std::abs(legacy_result.getValue(0, 0) - batch_result.getValue(0, 0, 0)) < 1e-6f);
+    printTestResult("2D and 3D results consistent", results_consistent);
+    all_passed &= results_consistent;
+    
+    return all_passed;
+}
+
+// Test batched linear layers
+bool testBatchedLinearLayers() {
+    printSectionHeader("BATCHED LINEAR LAYER TESTING");
+    bool all_passed = true;
+    
+    Linear linear_layer(4, 3, true);  // 4 input dims, 3 output dims, with bias
+    
+    // Test with 3D input [batch_size, seq_len, input_dim]
+    Tensor batch_input(2, 3, 4);  // 2 sequences of length 3, with 4 features each
+    
+    // Fill with identifiable values
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                batch_input.setValue(b, i, j, (b + 1) * 0.1f + (i + 1) * 0.01f + (j + 1) * 0.001f);
+            }
+        }
+    }
+    
+    Tensor batch_output = linear_layer.forward(batch_input);
+    
+    // Test output dimensions
+    bool batch_dimensions_correct = (batch_output.getBatchSize() == 2 && 
+                                    batch_output.getRows() == 3 && 
+                                    batch_output.getCols() == 3);
+    printTestResult("Batch linear layer dimensions [2, 3, 3]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that different batches produce different outputs
+    bool different_batch_outputs = (batch_output.getValue(0, 0, 0) != batch_output.getValue(1, 0, 0));
+    printTestResult("Different batch inputs produce different outputs", different_batch_outputs);
+    all_passed &= different_batch_outputs;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_input(3, 4);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            legacy_input.setValue(i, j, (i + 1) * 0.01f + (j + 1) * 0.001f);
+        }
+    }
+    
+    Tensor legacy_output = linear_layer.forward(legacy_input);
+    bool legacy_compatibility = (legacy_output.getRows() == 3 && 
+                                legacy_output.getCols() == 3 && 
+                                !legacy_output.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    // Test linear layer without bias
+    Linear no_bias_layer(4, 3, false);
+    Tensor no_bias_output = no_bias_layer.forward(batch_input);
+    bool no_bias_dimensions = (no_bias_output.getBatchSize() == 2 && 
+                              no_bias_output.getRows() == 3 && 
+                              no_bias_output.getCols() == 3);
+    printTestResult("Linear layer without bias works", no_bias_dimensions);
+    all_passed &= no_bias_dimensions;
+    
+    // Test that bias makes a difference (when bias is used)
+    bool bias_makes_difference = (batch_output.getValue(0, 0, 0) != no_bias_output.getValue(0, 0, 0));
+    printTestResult("Bias parameter affects output", bias_makes_difference);
+    all_passed &= bias_makes_difference;
+    
+    return all_passed;
+}
+
 // Test transformer block
 bool testTransformerBlock() {
     printSectionHeader("TRANSFORMER BLOCK TESTING");
@@ -228,6 +614,165 @@ bool testTransformerBlock() {
     bool mode_correct = (output_training.getRows() == 4 && output_inference.getRows() == 4);
     printTestResult("Training vs inference modes", mode_correct);
     all_passed &= mode_correct;
+    
+    return all_passed;
+}
+
+// Test batched multi-head attention
+bool testBatchedMultiHeadAttention() {
+    printSectionHeader("BATCHED MULTI-HEAD ATTENTION TESTING");
+    bool all_passed = true;
+    
+    MultiHeadAttention mha(8, 2, 0.0f);  // d_model=8, num_heads=2, no dropout for testing
+    
+    // Test with 3D input [batch_size, seq_len, d_model]
+    Tensor batch_input(2, 4, 8);  // 2 sequences of length 4
+    
+    // Fill with different values for each batch
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 8; j++) {
+                batch_input.setValue(b, i, j, (b + 1) * 0.1f + (i + 1) * 0.01f + (j + 1) * 0.001f);
+            }
+        }
+    }
+    
+    Tensor batch_output = mha.forward(batch_input, false);
+    
+    // Test output dimensions
+    bool batch_dimensions_correct = (batch_output.getBatchSize() == 2 && 
+                                    batch_output.getRows() == 4 && 
+                                    batch_output.getCols() == 8);
+    printTestResult("Batch attention dimensions [2, 4, 8]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that different batches produce different outputs
+    bool different_batch_outputs = (batch_output.getValue(0, 0, 0) != batch_output.getValue(1, 0, 0));
+    printTestResult("Different batch inputs produce different outputs", different_batch_outputs);
+    all_passed &= different_batch_outputs;
+    
+    // Test that output values are reasonable (not NaN or infinite)
+    bool values_reasonable = true;
+    for (int b = 0; b < 2 && values_reasonable; b++) {
+        for (int i = 0; i < 4 && values_reasonable; i++) {
+            for (int j = 0; j < 8 && values_reasonable; j++) {
+                float val = batch_output.getValue(b, i, j);
+                if (std::isnan(val) || std::isinf(val)) {
+                    values_reasonable = false;
+                }
+            }
+        }
+    }
+    printTestResult("Attention output values are reasonable", values_reasonable);
+    all_passed &= values_reasonable;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_input(4, 8);
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 8; j++) {
+            legacy_input.setValue(i, j, 0.1f + (i + 1) * 0.01f + (j + 1) * 0.001f);
+        }
+    }
+    
+    Tensor legacy_output = mha.forward(legacy_input, false);
+    bool legacy_compatibility = (legacy_output.getRows() == 4 && 
+                                legacy_output.getCols() == 8 && 
+                                !legacy_output.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
+    
+    // Test that causal masking works (later positions shouldn't affect earlier ones)
+    Tensor causal_test_input(1, 3, 8);
+    causal_test_input.fill(1.0f);
+    
+    // Set last position to very different values
+    for (int j = 0; j < 8; j++) {
+        causal_test_input.setValue(0, 2, j, 100.0f);  // Very large values at last position
+    }
+    
+    Tensor causal_output = mha.forward(causal_test_input, false);
+    
+    // First position should not be significantly affected by last position due to causal masking
+    bool causal_masking_works = (std::abs(causal_output.getValue(0, 0, 0)) < 50.0f);
+    printTestResult("Causal masking prevents future information leakage", causal_masking_works);
+    all_passed &= causal_masking_works;
+    
+    return all_passed;
+}
+
+// Test batched layer normalization
+bool testBatchedLayerNorm() {
+    printSectionHeader("BATCHED LAYER NORMALIZATION TESTING");
+    bool all_passed = true;
+    
+    LayerNorm layer_norm(4);
+    
+    // Test with 3D input [batch_size, seq_len, d_model]
+    Tensor batch_input(2, 3, 4);
+    
+    // Fill with different values that will need normalization
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                // Create values with different scales to test normalization
+                batch_input.setValue(b, i, j, (b + 1) * 10.0f + (i + 1) * 2.0f + (j + 1) * 0.5f);
+            }
+        }
+    }
+    
+    Tensor batch_output = layer_norm.forward(batch_input);
+    
+    // Test output dimensions
+    bool batch_dimensions_correct = (batch_output.getBatchSize() == 2 && 
+                                    batch_output.getRows() == 3 && 
+                                    batch_output.getCols() == 4);
+    printTestResult("Batch layer norm dimensions [2, 3, 4]", batch_dimensions_correct);
+    all_passed &= batch_dimensions_correct;
+    
+    // Test that each sequence position is normalized (mean ≈ 0, std ≈ 1)
+    bool normalization_works = true;
+    float tolerance = 1e-5f;
+    
+    for (int b = 0; b < 2 && normalization_works; b++) {
+        for (int i = 0; i < 3 && normalization_works; i++) {
+            // Compute mean and variance of normalized output
+            float mean = 0.0f;
+            float variance = 0.0f;
+            
+            for (int j = 0; j < 4; j++) {
+                mean += batch_output.getValue(b, i, j);
+            }
+            mean /= 4.0f;
+            
+            for (int j = 0; j < 4; j++) {
+                float diff = batch_output.getValue(b, i, j) - mean;
+                variance += diff * diff;
+            }
+            variance /= 4.0f;
+            
+            // Check if mean is close to 0 and variance is close to 1
+            if (std::abs(mean) > tolerance || std::abs(variance - 1.0f) > 0.1f) {
+                normalization_works = false;
+            }
+        }
+    }
+    printTestResult("Layer normalization produces normalized outputs", normalization_works);
+    all_passed &= normalization_works;
+    
+    // Test backward compatibility with 2D input
+    Tensor legacy_input(3, 4);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            legacy_input.setValue(i, j, (i + 1) * 2.0f + (j + 1) * 0.5f);
+        }
+    }
+    
+    Tensor legacy_output = layer_norm.forward(legacy_input);
+    bool legacy_compatibility = (legacy_output.getRows() == 3 && 
+                                legacy_output.getCols() == 4 && 
+                                !legacy_output.getIs3D());
+    printTestResult("Legacy 2D format still works", legacy_compatibility);
+    all_passed &= legacy_compatibility;
     
     return all_passed;
 }
@@ -559,9 +1104,16 @@ int main() {
     bool all_tests_passed = true;
     
     // Run all test suites
+    // Run all test suites
     all_tests_passed &= testTensorOperations();
+    all_tests_passed &= test3DTensorOperations();  
     all_tests_passed &= testTokenEmbeddings();
+    all_tests_passed &= testBatchedTokenEmbeddings();
     all_tests_passed &= testPositionalEncoding();
+    all_tests_passed &= testBatchedPositionalEncoding();
+    all_tests_passed &= testBatchedLinearLayers();
+    all_tests_passed &= testBatchedMultiHeadAttention();
+    all_tests_passed &= testBatchedLayerNorm();
     all_tests_passed &= testTransformerBlock();
     all_tests_passed &= testGPTModel();
     all_tests_passed &= testModelSerialization();

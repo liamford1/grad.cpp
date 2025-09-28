@@ -19,7 +19,18 @@ Tensor Linear::forward(const Tensor& input) const {
     Tensor result = input.matmul(weights);
 
     if (use_bias) {
-        result = result.add(bias);
+        if (input.getIs3D()) {
+            int seq_len = input.getRows();
+            Tensor expanded_bias(seq_len, output_dim);
+            for (int i = 0; i < seq_len; i++) {
+                for (int j = 0; j < output_dim; j++) {
+                    expanded_bias.setValue(i, j, bias.getValue(0, j));
+                }
+            }
+            result = result.add(expanded_bias);
+        } else {
+            result = result.add(bias);
+        }
     }
     return result;
 }
