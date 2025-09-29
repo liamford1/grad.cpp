@@ -3,7 +3,9 @@
 #include "transformer/text_gen.h"
 #include "transformer/variable.h"
 #include "transformer/linear.h"
-#include "transformer/optimizer.h"  // 🆕 ADD THIS
+#include "transformer/optimizer.h"
+#include "data/dataset.h"
+#include "data/dataloader.h"
 #include <iostream>
 #include <sstream>
 #include <cstdio>
@@ -378,6 +380,60 @@ void test_text_generation() {
     std::cout << "Text generation tests passed!\n" << std::endl;
 }
 
+void test_dataloader() {
+    std::cout << "=== Testing DataLoader ===" << std::endl;
+    
+    // Create fake token sequence
+    std::vector<int> tokens;
+    for (int i = 0; i < 100; i++) {
+        tokens.push_back(i % 20);  // 100 tokens, vocab size 20
+    }
+    
+    // Create dataset
+    auto dataset = std::make_shared<TextDataset>(tokens, 10);  // seq_length=10
+    std::cout << "Dataset size: " << dataset->size() << " sequences" << std::endl;
+    
+    // Create dataloader
+    DataLoader loader(dataset, 8, true);  // batch_size=8, shuffle=true
+    
+    std::cout << "Number of batches: " << loader.num_batches() << std::endl;
+    
+    // Iterate through one epoch
+    int batch_count = 0;
+    while (loader.has_next()) {
+        Batch batch = loader.next_batch();
+        batch_count++;
+        
+        if (batch_count == 1) {
+            std::cout << "\nFirst batch:" << std::endl;
+            std::cout << "Input shape: " << batch.input.getRows() 
+                      << "x" << batch.input.getCols() << std::endl;
+            std::cout << "Target shape: " << batch.target.getRows() 
+                      << "x" << batch.target.getCols() << std::endl;
+            
+            std::cout << "First sequence input: ";
+            for (int i = 0; i < batch.input.getCols(); i++) {
+                std::cout << static_cast<int>(batch.input.getValue(0, i)) << " ";
+            }
+            std::cout << std::endl;
+            
+            std::cout << "First sequence target: ";
+            for (int i = 0; i < batch.target.getCols(); i++) {
+                std::cout << static_cast<int>(batch.target.getValue(0, i)) << " ";
+            }
+            std::cout << std::endl;
+        }
+    }
+    
+    std::cout << "\nProcessed " << batch_count << " batches" << std::endl;
+    
+    // Test reset
+    loader.reset();
+    std::cout << "After reset, has_next: " << loader.has_next() << std::endl;
+    
+    std::cout << "DataLoader tests passed!\n" << std::endl;
+}
+
 void test_model_save_load() {
     std::cout << "=== Testing Model Save/Load ===" << std::endl;
     
@@ -604,6 +660,7 @@ int main() {
     test_model_save_load();
     test_cross_entropy_loss();
     
+    test_dataloader();
     // Practical demo
     demo_text_generation();
     
