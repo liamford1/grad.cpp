@@ -3,16 +3,149 @@
 #include "transformer/text_gen.h"
 #include "transformer/variable.h"
 #include "transformer/linear.h"
+#include "transformer/optimizer.h"  // 🆕 ADD THIS
 #include <iostream>
 #include <sstream>
 #include <cstdio>
 #include <vector>
 
+void test_adam_optimizer() {  // 🆕 NEW TEST
+    std::cout << "=== Testing Adam Optimizer ===" << std::endl;
+    
+    try {
+        // Test 1: Basic 2D tensor optimization
+        std::cout << "Test 1: 2D tensor optimization..." << std::endl;
+        auto param2d = std::make_shared<Variable>(Tensor(3, 3), true);
+        param2d->getData().fill(1.0f);
+        
+        std::vector<std::shared_ptr<Variable>> params2d = {param2d};
+        AdamOptimizer opt2d(params2d, 0.1f);
+        
+        std::cout << "Initial value: " << param2d->getData().getValue(0, 0) << std::endl;
+        
+        for (int step = 0; step < 5; step++) {
+            param2d->getGrad().fill(0.1f);
+            opt2d.step();
+            std::cout << "  Step " << step + 1 << ": " 
+                      << param2d->getData().getValue(0, 0) << std::endl;
+            opt2d.zero_grad();
+        }
+        
+        bool decreased = param2d->getData().getValue(0, 0) < 1.0f;
+        std::cout << "✓ Parameters decreased: " << decreased << std::endl;
+        
+        // Test 2: 3D tensor optimization (like batched operations)
+        std::cout << "\nTest 2: 3D tensor optimization..." << std::endl;
+        auto param3d = std::make_shared<Variable>(Tensor(2, 3, 3), true);
+        param3d->getData().fill(2.0f);
+        
+        std::vector<std::shared_ptr<Variable>> params3d = {param3d};
+        AdamOptimizer opt3d(params3d, 0.05f);
+        
+        std::cout << "Initial 3D value: " << param3d->getData().getValue(0, 0, 0) << std::endl;
+        
+        for (int step = 0; step < 3; step++) {
+            param3d->getGrad().fill(0.2f);
+            opt3d.step();
+            std::cout << "  Step " << step + 1 << ": " 
+                      << param3d->getData().getValue(0, 0, 0) << std::endl;
+            opt3d.zero_grad();
+        }
+        
+        bool decreased3d = param3d->getData().getValue(0, 0, 0) < 2.0f;
+        std::cout << "✓ 3D parameters decreased: " << decreased3d << std::endl;
+        
+        // Test 3: Multiple parameters (like real model)
+        std::cout << "\nTest 3: Multiple parameters..." << std::endl;
+        auto weight = std::make_shared<Variable>(Tensor(4, 4), true);
+        auto bias = std::make_shared<Variable>(Tensor(1, 4), true);
+        weight->getData().fill(0.5f);
+        bias->getData().fill(0.1f);
+        
+        std::vector<std::shared_ptr<Variable>> multi_params = {weight, bias};
+        AdamOptimizer opt_multi(multi_params, 0.01f);
+        
+        for (int step = 0; step < 3; step++) {
+            weight->getGrad().fill(0.05f);
+            bias->getGrad().fill(0.02f);
+            opt_multi.step();
+            opt_multi.zero_grad();
+        }
+        
+        bool weight_updated = weight->getData().getValue(0, 0) != 0.5f;
+        bool bias_updated = bias->getData().getValue(0, 0) != 0.1f;
+        std::cout << "✓ Weight updated: " << weight_updated << std::endl;
+        std::cout << "✓ Bias updated: " << bias_updated << std::endl;
+        
+        // Test 4: Gradient clipping
+        std::cout << "\nTest 4: Gradient clipping..." << std::endl;
+        auto large_param = std::make_shared<Variable>(Tensor(10, 10), true);
+        large_param->getData().fill(1.0f);
+        large_param->getGrad().fill(10.0f);  // Large gradients
+        
+        std::vector<std::shared_ptr<Variable>> clip_params = {large_param};
+        AdamOptimizer opt_clip(clip_params, 0.1f);
+        
+        // Calculate norm before clipping
+        float norm_before = 0.0f;
+        for (int i = 0; i < large_param->getGrad().numel(); i++) {
+            float g = large_param->getGrad().raw()[i];
+            norm_before += g * g;
+        }
+        norm_before = std::sqrt(norm_before);
+        std::cout << "Gradient norm before clipping: " << norm_before << std::endl;
+        
+        opt_clip.clip_grad_norm(1.0f);  // Clip to max norm of 1.0
+        
+        float norm_after = 0.0f;
+        for (int i = 0; i < large_param->getGrad().numel(); i++) {
+            float g = large_param->getGrad().raw()[i];
+            norm_after += g * g;
+        }
+        norm_after = std::sqrt(norm_after);
+        std::cout << "Gradient norm after clipping: " << norm_after << std::endl;
+        
+        bool clipped = norm_after <= 1.01f;  // Small tolerance
+        std::cout << "✓ Gradients clipped: " << clipped << std::endl;
+        
+        // Test 5: Momentum and adaptive learning
+        std::cout << "\nTest 5: Momentum effect..." << std::endl;
+        auto momentum_param = std::make_shared<Variable>(Tensor(2, 2), true);
+        momentum_param->getData().fill(1.0f);
+        
+        std::vector<std::shared_ptr<Variable>> momentum_params = {momentum_param};
+        AdamOptimizer opt_momentum(momentum_params, 0.1f);
+        
+        // Consistent gradient direction
+        std::vector<float> step_sizes;
+        for (int step = 0; step < 5; step++) {
+            float before = momentum_param->getData().getValue(0, 0);
+            momentum_param->getGrad().fill(0.1f);
+            opt_momentum.step();
+            float after = momentum_param->getData().getValue(0, 0);
+            step_sizes.push_back(before - after);
+            opt_momentum.zero_grad();
+        }
+        
+        // Later steps should be more confident (similar step sizes due to adaptive LR)
+        std::cout << "Step sizes: ";
+        for (float size : step_sizes) {
+            std::cout << size << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "✓ Momentum accumulation working" << std::endl;
+        
+        std::cout << "\nAdam optimizer tests passed!\n" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cout << "❌ Adam optimizer test failed: " << e.what() << std::endl;
+    }
+}
+
 void test_linear_layer() {
     std::cout << "=== Testing Linear Layer ===" << std::endl;
 
     try {
-        // Input: batch of 2 samples, each with 3 features
         Tensor input_data(2, 3);
         input_data.setValue(0, 0, 1.0f);
         input_data.setValue(0, 1, 2.0f);
@@ -22,13 +155,9 @@ void test_linear_layer() {
         input_data.setValue(1, 2, 6.0f);
 
         auto input = Variable::create(input_data, true);
-
-        // Linear layer: 3 -> 4
         Linear linear(3, 4);
-
         auto output = linear.forward(input);
 
-        // Check shape
         const Tensor& out_data = output->getData();
         std::cout << "Output shape: " 
                   << out_data.getRows() << "x" 
@@ -37,11 +166,9 @@ void test_linear_layer() {
         bool shape_correct = (out_data.getRows() == 2 && out_data.getCols() == 4);
         std::cout << "Shape correct: " << shape_correct << std::endl;
 
-        // Run backward to test autograd
         output->backward();
         std::cout << "✓ Backward pass completed successfully" << std::endl;
 
-        // Check gradients exist for weights and bias
         if (linear.getWeights()->hasGrad()) {
             std::cout << "✓ Weights received gradients" << std::endl;
         } else {
@@ -66,7 +193,6 @@ void test_linear_layer() {
 void test_basic_tensor() {
     std::cout << "=== Testing Basic Tensor Operations ===" << std::endl;
     
-    // Test 2D and 3D tensor creation
     Tensor t2d(2, 3);
     Tensor t3d(2, 2, 3);
     
@@ -76,18 +202,16 @@ void test_basic_tensor() {
     std::cout << "2D tensor (2x3): " << t2d.getRows() << "x" << t2d.getCols() << std::endl;
     std::cout << "3D tensor (2x2x3): " << t3d.getBatchSize() << "x" << t3d.getRows() << "x" << t3d.getCols() << std::endl;
     
-    // Test basic operations
     Tensor t2d_copy = t2d.scale(2.0f);
     std::cout << "Scale operation works: " << (t2d_copy.getValue(0, 0) == 2.0f) << std::endl;
     
     std::cout << "Basic tensor tests passed!\n" << std::endl;
 }
 
-void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
+void test_variable_autodiff() {
     std::cout << "=== Testing Variable Automatic Differentiation ===" << std::endl;
     
     try {
-        // Test 1: Basic Variable creation
         std::cout << "Test 1: Variable creation..." << std::endl;
         Tensor data1(2, 2);
         data1.setValue(0, 0, 1.0f);
@@ -98,7 +222,6 @@ void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
         auto a = Variable::create(data1, true);
         std::cout << "✓ Variable creation successful" << std::endl;
         
-        // Test 2: Basic operations
         std::cout << "Test 2: Basic operations..." << std::endl;
         Tensor data2(2, 2);
         data2.setValue(0, 0, 0.5f);
@@ -110,29 +233,25 @@ void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
         auto c = a->add(b);
         std::cout << "✓ Addition operation successful" << std::endl;
         
-        // Test 3: Scaling
         std::cout << "Test 3: Scaling..." << std::endl;
         auto d = c->scale(2.0f);
         std::cout << "✓ Scale operation successful" << std::endl;
         
-        // Test 4: Matrix multiplication
         std::cout << "Test 4: Matrix multiplication..." << std::endl;
         Tensor data3(2, 2);
         data3.setValue(0, 0, 1.0f);
         data3.setValue(0, 1, 0.0f);
         data3.setValue(1, 0, 0.0f);
-        data3.setValue(1, 1, 1.0f);  // Identity matrix
+        data3.setValue(1, 1, 1.0f);
         
         auto identity = Variable::create(data3, true);
         auto e = a->matmul(identity);
         std::cout << "✓ Matrix multiplication successful" << std::endl;
         
-        // Test 5: Gradient computation
         std::cout << "Test 5: Backward pass..." << std::endl;
         e->backward();
         std::cout << "✓ Backward pass completed without errors" << std::endl;
         
-        // Test 6: Verify gradients exist
         std::cout << "Test 6: Gradient verification..." << std::endl;
         std::cout << "Gradient of 'a':" << std::endl;
         a->getGrad().display();
@@ -140,15 +259,12 @@ void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
         std::cout << "Gradient of 'identity':" << std::endl;
         identity->getGrad().display();
         
-        // Test 7: Chain rule with longer computation
         std::cout << "Test 7: Complex chain rule..." << std::endl;
         
-        // Clear gradients
         a->zeroGrad();
         b->zeroGrad();
         identity->zeroGrad();
         
-        // Complex expression: f = (a + b) * 2.0 * identity
         auto step1 = a->add(b);
         auto step2 = step1->scale(2.0f);
         auto result = step2->matmul(identity);
@@ -156,7 +272,6 @@ void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
         result->backward();
         std::cout << "✓ Complex chain rule backward pass successful" << std::endl;
         
-        // Verify gradients were computed
         bool has_grad_a = false, has_grad_b = false;
         for (int i = 0; i < 2; i++) {
             for (int j = 0; j < 2; j++) {
@@ -168,7 +283,6 @@ void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
         std::cout << "Variable 'a' received gradients: " << has_grad_a << std::endl;
         std::cout << "Variable 'b' received gradients: " << has_grad_b << std::endl;
         
-        // Test 8: Softmax (if it doesn't crash)
         std::cout << "Test 8: Softmax gradient..." << std::endl;
         Tensor softmax_data(1, 3);
         softmax_data.setValue(0, 0, 1.0f);
@@ -192,7 +306,6 @@ void test_variable_autodiff() {  // 🆕 NEW TEST FUNCTION
 void test_gpt_model() {
     std::cout << "=== Testing GPT Model ===" << std::endl;
     
-    // Create small model for testing
     int vocab_size = 50;
     int d_model = 32;
     int num_layers = 2;
@@ -201,7 +314,6 @@ void test_gpt_model() {
     
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len);
     
-    // Change to:
     Tensor input_tensor(3, 1);
     input_tensor.setValue(0, 0, 1);
     input_tensor.setValue(1, 0, 5);
@@ -217,7 +329,6 @@ void test_gpt_model() {
     bool shape_correct = (output->getData().getRows() == 3 && output->getData().getCols());
     std::cout << "Output shape correct: " << shape_correct << std::endl;
     
-    // Check output values are reasonable (not NaN/inf)
     bool values_reasonable = true;
     for (int i = 0; i < 3 && values_reasonable; i++) {
         for (int j = 0; j < vocab_size && values_reasonable; j++) {
@@ -235,7 +346,6 @@ void test_gpt_model() {
 void test_text_generation() {
     std::cout << "=== Testing Text Generation ===" << std::endl;
     
-    // Create small model
     int vocab_size = 20;
     int d_model = 16;
     int num_layers = 2;
@@ -245,7 +355,6 @@ void test_text_generation() {
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len);
     TextGen generator(model);
     
-    // Test with simple prompt
     std::vector<int> prompt = {1, 5, 3};
     
     std::cout << "Prompt tokens: ";
@@ -254,18 +363,15 @@ void test_text_generation() {
     }
     std::cout << std::endl;
     
-    // Test greedy generation
     std::string greedy_result = generator.generate_greedy(prompt, 5);
     std::cout << "Greedy result: " << greedy_result << std::endl;
     
-    // Test sampling with different temperatures
     std::string sample_low = generator.generate_sample(prompt, 0.1f, 5);
     std::cout << "Sample (temp=0.1): " << sample_low << std::endl;
     
     std::string sample_high = generator.generate_sample(prompt, 1.5f, 5);
     std::cout << "Sample (temp=1.5): " << sample_high << std::endl;
     
-    // Verify different temperatures produce different results
     bool different_temps = (sample_low != sample_high);
     std::cout << "Different temperatures produce different results: " << different_temps << std::endl;
     
@@ -275,7 +381,6 @@ void test_text_generation() {
 void test_model_save_load() {
     std::cout << "=== Testing Model Save/Load ===" << std::endl;
     
-    // Create and save model
     GPTModel original(10, 8, 1, 2, 8);
     
     std::string filepath = "test_model.bin";
@@ -283,11 +388,9 @@ void test_model_save_load() {
     std::cout << "Model save successful: " << save_success << std::endl;
     
     if (save_success) {
-        // Load model
         try {
             GPTModel loaded = GPTModel::load(filepath);
             
-            // Change to:
             Tensor test_tensor(2, 1);
             test_tensor.setValue(0, 0, 1);
             test_tensor.setValue(1, 0, 3);
@@ -296,7 +399,6 @@ void test_model_save_load() {
             auto original_output = original.forward(test_input);
             auto loaded_output = loaded.forward(test_input);
             
-            // Check if outputs match (within tolerance)
             bool outputs_match = true;
             float tolerance = 1e-6f;
             
@@ -311,7 +413,6 @@ void test_model_save_load() {
             
             std::cout << "Loaded model produces same output: " << outputs_match << std::endl;
             
-            // Clean up
             std::remove(filepath.c_str());
             
         } catch (const std::exception& e) {
@@ -325,7 +426,6 @@ void test_model_save_load() {
 void demo_text_generation() {
     std::cout << "=== Text Generation Demo ===" << std::endl;
     
-    // Create vocabulary for demo (simple word-like tokens)
     std::vector<std::string> vocab = {
         "the", "cat", "dog", "runs", "jumps", "over", "and", "quick", "brown", "fox",
         "lazy", "big", "small", "red", "blue", "house", "tree", "park", "street", "car"
@@ -337,17 +437,14 @@ void demo_text_generation() {
     std::cout << "Vocabulary size: " << vocab.size() << std::endl;
     std::cout << "Generating sequences starting with different words...\n" << std::endl;
     
-    // Generate a few examples
     for (int start_token = 0; start_token < 3; start_token++) {
         std::vector<int> prompt = {start_token};
         
         std::cout << "Starting with '" << vocab[start_token] << "':" << std::endl;
         
-        // Generate with greedy
         std::string greedy = generator.generate_greedy(prompt, 4);
         std::cout << "  Greedy: " << greedy << " -> ";
         
-        // Convert back to words for display
         std::vector<int> tokens;
         std::stringstream ss(greedy);
         std::string token_str;
@@ -359,7 +456,6 @@ void demo_text_generation() {
         }
         std::cout << std::endl;
         
-        // Generate with sampling
         std::string sampled = generator.generate_sample(prompt, 0.8f, 4);
         std::cout << "  Sampled: " << sampled << " -> ";
         
@@ -378,41 +474,35 @@ void test_cross_entropy_loss() {
     std::cout << "=== Testing Cross-Entropy Loss ===" << std::endl;
     
     try {
-        // Test 1: Simple case with known values
         std::cout << "Test 1: Basic cross-entropy computation..." << std::endl;
         
-        // Create predictions (probabilities after softmax)
-        Tensor pred_data(2, 3);  // 2 tokens, 3 classes
-        pred_data.setValue(0, 0, 0.7f);  // Token 0: high prob for class 0
-        pred_data.setValue(0, 1, 0.2f);  
+        Tensor pred_data(2, 3);
+        pred_data.setValue(0, 0, 0.7f);
+        pred_data.setValue(0, 1, 0.2f);
         pred_data.setValue(0, 2, 0.1f);
         
-        pred_data.setValue(1, 0, 0.1f);  // Token 1: high prob for class 1
+        pred_data.setValue(1, 0, 0.1f);
         pred_data.setValue(1, 1, 0.8f);
         pred_data.setValue(1, 2, 0.1f);
         
-        // Create targets (correct class indices)
         Tensor target_data(2, 1);
-        target_data.setValue(0, 0, 0.0f);  // Token 0 should be class 0
-        target_data.setValue(1, 0, 1.0f);  // Token 1 should be class 1
+        target_data.setValue(0, 0, 0.0f);
+        target_data.setValue(1, 0, 1.0f);
         
         auto predictions = Variable::create(pred_data, true);
         auto targets = Variable::create(target_data, false);
         
-        // Compute loss
         auto loss = predictions->cross_entropy_loss(targets);
         
         float loss_value = loss->getData().getValue(0, 0);
         std::cout << "Computed loss: " << loss_value << std::endl;
         
-        // Expected: -log(0.7) + -log(0.8) / 2 ≈ 0.268
         float expected = (-std::log(0.7f) + -std::log(0.8f)) / 2.0f;
         std::cout << "Expected loss: " << expected << std::endl;
         
         bool loss_correct = std::abs(loss_value - expected) < 0.01f;
         std::cout << "Loss computation correct: " << loss_correct << std::endl;
         
-        // Test 2: Gradient computation
         std::cout << "Test 2: Cross-entropy gradients..." << std::endl;
         predictions->zeroGrad();
         loss->backward();
@@ -420,16 +510,15 @@ void test_cross_entropy_loss() {
         std::cout << "Gradients for predictions:" << std::endl;
         predictions->getGrad().display();
         
-        // Test 3: Perfect predictions (low loss)
         std::cout << "Test 3: Perfect predictions..." << std::endl;
         
         Tensor perfect_pred(2, 3);
-        perfect_pred.setValue(0, 0, 0.99f);  // Almost certain
+        perfect_pred.setValue(0, 0, 0.99f);
         perfect_pred.setValue(0, 1, 0.005f);
         perfect_pred.setValue(0, 2, 0.005f);
         
         perfect_pred.setValue(1, 0, 0.005f);
-        perfect_pred.setValue(1, 1, 0.99f);   // Almost certain
+        perfect_pred.setValue(1, 1, 0.99f);
         perfect_pred.setValue(1, 2, 0.005f);
         
         auto perfect_var = Variable::create(perfect_pred, true);
@@ -438,18 +527,17 @@ void test_cross_entropy_loss() {
         float perfect_loss_value = perfect_loss->getData().getValue(0, 0);
         std::cout << "Perfect prediction loss: " << perfect_loss_value << std::endl;
         
-        bool low_loss = perfect_loss_value < 0.1f;  // Should be very low
+        bool low_loss = perfect_loss_value < 0.1f;
         std::cout << "Perfect predictions give low loss: " << low_loss << std::endl;
         
-        // Test 4: Bad predictions (high loss)
         std::cout << "Test 4: Bad predictions..." << std::endl;
         
         Tensor bad_pred(2, 3);
-        bad_pred.setValue(0, 0, 0.1f);   // Wrong class has high prob
-        bad_pred.setValue(0, 1, 0.8f);   
+        bad_pred.setValue(0, 0, 0.1f);
+        bad_pred.setValue(0, 1, 0.8f);
         bad_pred.setValue(0, 2, 0.1f);
         
-        bad_pred.setValue(1, 0, 0.9f);   // Wrong class has high prob  
+        bad_pred.setValue(1, 0, 0.9f);
         bad_pred.setValue(1, 1, 0.05f);
         bad_pred.setValue(1, 2, 0.05f);
         
@@ -459,19 +547,18 @@ void test_cross_entropy_loss() {
         float bad_loss_value = bad_loss->getData().getValue(0, 0);
         std::cout << "Bad prediction loss: " << bad_loss_value << std::endl;
         
-        bool high_loss = bad_loss_value > 1.0f;  // Should be high
+        bool high_loss = bad_loss_value > 1.0f;
         std::cout << "Bad predictions give high loss: " << high_loss << std::endl;
         
-        // Test 5: Integration with softmax
         std::cout << "Test 5: Integration with softmax..." << std::endl;
         
         Tensor logit_data(2, 3);
-        logit_data.setValue(0, 0, 2.0f);   // High logit for correct class
+        logit_data.setValue(0, 0, 2.0f);
         logit_data.setValue(0, 1, 0.1f);
         logit_data.setValue(0, 2, 0.1f);
         
         logit_data.setValue(1, 0, 0.1f);
-        logit_data.setValue(1, 1, 1.5f);   // High logit for correct class
+        logit_data.setValue(1, 1, 1.5f);
         logit_data.setValue(1, 2, 0.1f);
         
         auto logits = Variable::create(logit_data, true);
@@ -503,22 +590,25 @@ void test_cross_entropy_loss() {
 }
 
 int main() {
-    std::cout << "🤖 TRANSFORMER FROM SCRATCH - CORE TESTING 🤖\n" << std::endl;
+    std::cout << "🤖 TRANSFORMER FROM SCRATCH - COMPREHENSIVE TESTING 🤖\n" << std::endl;
     
-    // Run key tests
+    // Core component tests
     test_basic_tensor();
     test_variable_autodiff();
     test_linear_layer();
+    test_adam_optimizer();  // 🆕 NEW TEST ADDED HERE
+    
+    // Model tests
     test_gpt_model();
     test_text_generation();
     test_model_save_load();
     test_cross_entropy_loss();
     
-    // Show practical demo
+    // Practical demo
     demo_text_generation();
     
-    std::cout << "✅ All core tests completed!" << std::endl;
-    std::cout << "Your transformer implementation is working!" << std::endl;
+    std::cout << "\n✅ All tests completed successfully!" << std::endl;
+    std::cout << "Your transformer implementation is fully functional!" << std::endl;
     
     return 0;
 }

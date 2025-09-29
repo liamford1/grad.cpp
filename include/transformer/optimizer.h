@@ -3,8 +3,17 @@
 #include "tensor.h"
 #include <vector>
 #include <memory>
+#include <unordered_map>
+#include <cmath>
 
-class SGDOptimizer {
+class Optimizer {
+    public:
+        virtual ~Optimizer() = default;
+        virtual void step() = 0;
+        virtual void zero_grad() = 0;
+};
+
+class SGDOptimizer : public Optimizer {
     private:
         float learning_rate;
         std::vector<std::shared_ptr<Variable>> parameters;
@@ -15,7 +24,7 @@ class SGDOptimizer {
             parameters.push_back(param);
         }
 
-        void step() {
+        void step() override {
             for (auto& param : parameters) {
                 if (!param->requiresGrad()) continue;
 
@@ -32,7 +41,7 @@ class SGDOptimizer {
             }
         }
 
-        void zero_grad() {
+        void zero_grad() override {
             for (auto& param : parameters) {
                 Tensor& grad = param->getGrad();
                 int n = grad.numel();
@@ -42,4 +51,24 @@ class SGDOptimizer {
                 }
             }
         }
+};
+
+class AdamOptimizer : public Optimizer {
+    private:
+        std::vector<std::shared_ptr<Variable>> parameters_;
+        float lr_;
+        float beta1_;
+        float beta2_;
+        float epsilon_;
+        float weight_decay_;
+        int step_count_;
+
+        std::unordered_map<Variable*, Tensor> m_;
+        std::unordered_map<Variable*, Tensor> v_;
+    public:
+        AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr = 3e-4, float beta1 = 0.9, float beta2 = 0.999, float epsilon = 1e-8, float weight_decay = 0.01);
+
+        void step() override;
+        void zero_grad() override;
+        void clip_grad_norm(float max_norm);
 };

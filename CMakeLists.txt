@@ -20,6 +20,7 @@ add_executable(transformer
     src/transformer/activations.cpp
     src/transformer/text_gen.cpp
     src/transformer/variable.cpp
+    src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
 )
 
