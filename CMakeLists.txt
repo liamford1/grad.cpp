@@ -20,7 +20,10 @@ add_executable(transformer
     src/transformer/activations.cpp
     src/transformer/text_gen.cpp
     src/transformer/variable.cpp
+    src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
+    src/data/dataset.cpp
+    src/data/dataloader.cpp
 )
 
 target_include_directories(transformer PRIVATE include)
