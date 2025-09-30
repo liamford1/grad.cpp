@@ -29,7 +29,6 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
     auto encode_positions = pos_encoding.forward(embed_tokens);
-
     auto transformer_output = encode_positions;
 
     for (int i = 0; i < num_layers; i++) {
@@ -37,7 +36,6 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     }
 
     auto normalized_output = final_norm.forward(transformer_output);
-    
     auto logits = output_projection.forward(normalized_output);
     return logits;
 }
