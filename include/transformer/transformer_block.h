@@ -1,6 +1,4 @@
-#ifndef TRANSFORMER_BLOCK_H
-#define TRANSFORMER_BLOCK_H
-
+#pragma once
 #include "tensor.h"
 #include "multihead_attention.h"
 #include "layer_norm.h"
@@ -27,5 +25,3 @@ class TransformerBlock {
         LayerNorm& getNorm1Ref() { return norm1; }
         LayerNorm& getNorm2Ref() { return norm2; }
 };
-
-#endif
