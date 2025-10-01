@@ -6,6 +6,8 @@
 #include <iostream>
 #include <vector>
 #include <iomanip>
+#include <cmath>
+#include <limits>
 
 void train_overfitting_test() {
     std::cout << "=== Overfitting Test: Can the model memorize a tiny sequence? ===" << std::endl;
@@ -56,16 +58,7 @@ void train_overfitting_test() {
         auto target = Variable::create(target_tensor, false);
         
         auto logits = model.forward(input, true);
-        std::cout << "Logits: " << logits->getData().getRows() << "x" << logits->getData().getCols() 
-                << (logits->getData().getIs3D() ? " (3D, batch=" + std::to_string(logits->getData().getBatchSize()) + ")" : " (2D)") << std::endl;
-
         auto probs = logits->softmax();
-        std::cout << "Probs after softmax: " << probs->getData().getRows() << "x" << probs->getData().getCols()
-                << (probs->getData().getIs3D() ? " (3D, batch=" + std::to_string(probs->getData().getBatchSize()) + ")" : " (2D)") << std::endl;
-
-        std::cout << "Target: " << target->getData().getRows() << "x" << target->getData().getCols()
-                << (target->getData().getIs3D() ? " (3D)" : " (2D)") << std::endl;
-        
         auto loss = probs->cross_entropy_loss(target);
         
         optimizer.zero_grad();
@@ -169,12 +162,12 @@ void train_overfitting_test() {
 
 void train_with_dataloader() {
     std::cout << "\n\n=== Training with DataLoader ===" << std::endl;
-    
+
     std::vector<int> tokens;
     for (int i = 0; i < 200; i++) {
         tokens.push_back(i % 15);
     }
-    
+
     int vocab_size = 15;
     int d_model = 24;
     int num_layers = 2;
@@ -182,63 +175,55 @@ void train_with_dataloader() {
     int max_len = 16;
     int seq_length = 8;
     int batch_size = 1;
-    
+
     std::cout << "Creating model and dataset..." << std::endl;
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len);
     auto dataset = std::make_shared<TextDataset>(tokens, seq_length);
     DataLoader loader(dataset, batch_size, true);
-    
+
     auto params = model.getAllParameters();
-    AdamOptimizer optimizer(params, 0.001f);
-    
+    AdamOptimizer optimizer(params, 0.00001f);
+
     std::cout << "Dataset: " << dataset->size() << " sequences" << std::endl;
     std::cout << "Batches per epoch: " << loader.num_batches() << std::endl;
-    
+
     int num_epochs = 3;
-    
+
     for (int epoch = 0; epoch < num_epochs; epoch++) {
         std::cout << "\n--- Epoch " << epoch + 1 << " ---" << std::endl;
-        
+
         loader.reset();
         float epoch_loss = 0.0f;
         int batch_count = 0;
-        
+
         while (loader.has_next()) {
             auto batch = loader.next_batch();
+            batch_count++;
 
-            std::cout << "Batch input shape: " << batch.input.getRows() 
-              << "x" << batch.input.getCols() << std::endl;
-            
             auto input = Variable::create(batch.input, false);
             auto target = Variable::create(batch.target, false);
-            
-            std::cout << "Calling forward..." << std::endl;
 
             auto logits = model.forward(input, true);
-            std::cout << "Forward succeeded, logits shape: " 
-              << logits->getData().getRows() << "x" 
-              << logits->getData().getCols() << std::endl;
             auto probs = logits->softmax();
             auto loss = probs->cross_entropy_loss(target);
-            
+
             optimizer.zero_grad();
             loss->backward();
             optimizer.clip_grad_norm(1.0f);
             optimizer.step();
-            
+
             float loss_value = loss->getData().getValue(0, 0);
             epoch_loss += loss_value;
-            batch_count++;
-            
-            if (batch_count <= 3 || batch_count % 10 == 0) {
-                std::cout << "  Batch " << batch_count 
-                          << " Loss: " << loss_value << std::endl;
+
+            if (batch_count % 10 == 0) {
+                std::cout << "  Batch " << batch_count << " - Loss: "
+                          << std::fixed << std::setprecision(4) << loss_value << std::endl;
             }
         }
-        
+
         std::cout << "Average Loss: " << (epoch_loss / batch_count) << std::endl;
     }
-    
+
     std::cout << "\n✅ Multi-batch training completed!" << std::endl;
 }
 

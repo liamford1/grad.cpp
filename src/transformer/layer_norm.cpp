@@ -80,29 +80,28 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                 for (int i = 0; i < rows; i++) {
                     float variance = variances[i];
                     float std_inv = 1.0f / std::sqrt(variance + self_epsilon);
-                    
-                    float dvar = 0.0f;
-                    float dmean = 0.0f;
 
+                    float dvar = 0.0f;
                     for (int j = 0; j < self_d_model; j++) {
                         float dout = output->getGrad().getValue(i, j);
                         float gamma_val = self_gamma->getData().getValue(0, j);
-                        
+
                         dGamma.setValue(0, j, dGamma.getValue(0, j) + dout * normalized[i][j]);
                         dBeta.setValue(0, j, dBeta.getValue(0, j) + dout);
-                        
+
                         float dnorm = dout * gamma_val;
                         float x_minus_mean = self_input->getData().getValue(i, j) - means[i];
-                        
+
                         dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
                     }
 
+                    float dmean = 0.0f;
                     for (int j = 0; j < self_d_model; j++) {
                         float dout = output->getGrad().getValue(i, j);
                         float gamma_val = self_gamma->getData().getValue(0, j);
                         float dnorm = dout * gamma_val;
                         float x_minus_mean = self_input->getData().getValue(i, j) - means[i];
-                        
+
                         dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d_model;
                     }
 
@@ -111,7 +110,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                         float gamma_val = self_gamma->getData().getValue(0, j);
                         float dnorm = dout * gamma_val;
                         float x_minus_mean = self_input->getData().getValue(i, j) - means[i];
-                        
+
                         float dx = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
                         dInput.setValue(i, j, dx);
                     }
@@ -190,38 +189,40 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                     for (int i = 0; i < seq_len; i++) {
                         float variance = variances[b][i];
                         float std_inv = 1.0f / std::sqrt(variance + self_epsilon);
-                        
-                        float dvar = 0.0f;
-                        float dmean = 0.0f;
 
+                        // Step 1: Compute dvar
+                        float dvar = 0.0f;
                         for (int j = 0; j < self_d_model; j++) {
                             float dout = output->getGrad().getValue(b, i, j);
                             float gamma_val = self_gamma->getData().getValue(0, j);
-                            
+
                             dGamma.setValue(0, j, dGamma.getValue(0, j) + dout * normalized[b][i][j]);
                             dBeta.setValue(0, j, dBeta.getValue(0, j) + dout);
-                            
+
                             float dnorm = dout * gamma_val;
                             float x_minus_mean = self_input->getData().getValue(b, i, j) - means[b][i];
-                            
+
                             dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
                         }
 
+                        // Step 2: Compute dmean (after dvar is complete)
+                        float dmean = 0.0f;
                         for (int j = 0; j < self_d_model; j++) {
                             float dout = output->getGrad().getValue(b, i, j);
                             float gamma_val = self_gamma->getData().getValue(0, j);
                             float dnorm = dout * gamma_val;
                             float x_minus_mean = self_input->getData().getValue(b, i, j) - means[b][i];
-                            
+
                             dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d_model;
                         }
 
+                        // Step 3: Compute dx
                         for (int j = 0; j < self_d_model; j++) {
                             float dout = output->getGrad().getValue(b, i, j);
                             float gamma_val = self_gamma->getData().getValue(0, j);
                             float dnorm = dout * gamma_val;
                             float x_minus_mean = self_input->getData().getValue(b, i, j) - means[b][i];
-                            
+
                             float dx = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
                             dInput.setValue(b, i, j, dx);
                         }

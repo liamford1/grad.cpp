@@ -201,15 +201,20 @@ Tensor Tensor::add(const Tensor& other) const {
         }
         return result;
     } else if (!this->is_3d && other.is_3d) {
-        if (this->rows != other.rows || this->cols != other.cols) {
+        bool rows_compatible = (this->rows == other.rows) || (this->rows == 1) || (other.rows == 1);
+        bool cols_compatible = (this->cols == other.cols) || (this->cols == 1) || (other.cols == 1);
+
+        if (!rows_compatible || !cols_compatible) {
             throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
         }
-        
-        Tensor result(other.batch_size, this->rows, this->cols);
+
+        Tensor result(other.batch_size, other.rows, other.cols);
         for (int b = 0; b < other.batch_size; b++) {
-            for (int i = 0; i < this->rows; i++) {
-                for (int j = 0; j < this->cols; j++) {
-                    result.setValue(b, i, j, this->getValue(i, j) + other.getValue(b, i, j));
+            for (int i = 0; i < other.rows; i++) {
+                for (int j = 0; j < other.cols; j++) {
+                    int this_i = (this->rows == 1) ? 0 : i;
+                    int this_j = (this->cols == 1) ? 0 : j;
+                    result.setValue(b, i, j, this->getValue(this_i, this_j) + other.getValue(b, i, j));
                 }
             }
         }

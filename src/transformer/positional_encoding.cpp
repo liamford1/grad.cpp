@@ -17,7 +17,7 @@ PositionalEncoding::~PositionalEncoding() {}
 void PositionalEncoding::computeEncodings() {
     for (int i = 0; i < max_len; i++) {
         for (int j = 0; j < d_model; j++) {
-            float angle = i / pow(10000.0f, (2.0f * (j / 2)) / d_model);
+            float angle = i / pow(10000.0f, (2.0f * (j / 2.0f)) / d_model);
 
             if (j % 2 == 0) {
                 encoding_table.setValue(i, j, sin(angle));
