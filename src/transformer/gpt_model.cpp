@@ -29,7 +29,6 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
     auto encode_positions = pos_encoding.forward(embed_tokens);
-
     auto transformer_output = encode_positions;
 
     for (int i = 0; i < num_layers; i++) {
@@ -37,9 +36,43 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     }
 
     auto normalized_output = final_norm.forward(transformer_output);
-    
     auto logits = output_projection.forward(normalized_output);
     return logits;
+}
+
+std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
+    std::vector<std::shared_ptr<Variable>> params;
+    
+    params.push_back(token_embedding.getEmbeddingTable());
+    
+    for (int i = 0; i < num_layers; i++) {
+        const TransformerBlock* block = transformer_blocks[i].get();
+        
+        const MultiHeadAttention& attention = block->getAttention();
+        auto attn_params = attention.parameters();
+        params.insert(params.end(), attn_params.begin(), attn_params.end());
+        
+        const FeedForward& ffn = block->getFFN();
+        params.push_back(ffn.getLayer1Weights());
+        params.push_back(ffn.getLayer1Bias());
+        params.push_back(ffn.getLayer2Weights());
+        params.push_back(ffn.getLayer2Bias());
+        
+        const LayerNorm& norm1 = block->getNorm1();
+        const LayerNorm& norm2 = block->getNorm2();
+        params.push_back(norm1.getGamma());
+        params.push_back(norm1.getBeta());
+        params.push_back(norm2.getGamma());
+        params.push_back(norm2.getBeta());
+    }
+    
+    params.push_back(final_norm.getGamma());
+    params.push_back(final_norm.getBeta());
+    
+    params.push_back(output_projection.getWeights());
+    params.push_back(output_projection.getBias());
+    
+    return params;
 }
 
 void writeTensorToBinary(std::ofstream& file, const Tensor& tensor) {
@@ -96,16 +129,16 @@ bool GPTModel::save(const std::string& filepath) const {
         file.write(reinterpret_cast<const char*>(&max_len), sizeof(int));
         file.write(reinterpret_cast<const char*>(&dropout_rate), sizeof(float));
 
-        writeTensorToBinary(file, token_embedding.getEmbeddingTable());
+        writeTensorToBinary(file, token_embedding.getEmbeddingTable()->getData());
 
         for (int i = 0; i < num_layers; i++) {
             const TransformerBlock* block = transformer_blocks[i].get();
             
             const MultiHeadAttention& attention = block->getAttention();
-            writeTensorToBinary(file, attention.getW_q());
-            writeTensorToBinary(file, attention.getW_k());
-            writeTensorToBinary(file, attention.getW_v());
-            writeTensorToBinary(file, attention.getW_o());
+            writeTensorToBinary(file, attention.getW_q()->getData());
+            writeTensorToBinary(file, attention.getW_k()->getData());
+            writeTensorToBinary(file, attention.getW_v()->getData());
+            writeTensorToBinary(file, attention.getW_o()->getData());
             
             const FeedForward& ff = block->getFFN();
             writeTensorToBinary(file, ff.getLayer1Weights()->getData());
@@ -115,14 +148,14 @@ bool GPTModel::save(const std::string& filepath) const {
             
             const LayerNorm& norm1 = block->getNorm1();
             const LayerNorm& norm2 = block->getNorm2();
-            writeTensorToBinary(file, norm1.getGamma());
-            writeTensorToBinary(file, norm1.getBeta());
-            writeTensorToBinary(file, norm2.getGamma());
-            writeTensorToBinary(file, norm2.getBeta());
+            writeTensorToBinary(file, norm1.getGamma()->getData());
+            writeTensorToBinary(file, norm1.getBeta()->getData());
+            writeTensorToBinary(file, norm2.getGamma()->getData());
+            writeTensorToBinary(file, norm2.getBeta()->getData());
         }
 
-        writeTensorToBinary(file, final_norm.getGamma());
-        writeTensorToBinary(file, final_norm.getBeta());
+        writeTensorToBinary(file, final_norm.getGamma()->getData());
+        writeTensorToBinary(file, final_norm.getBeta()->getData());
         
         writeTensorToBinary(file, output_projection.getWeights()->getData());
         writeTensorToBinary(file, output_projection.getBias()->getData());

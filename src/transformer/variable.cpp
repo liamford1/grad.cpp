@@ -205,7 +205,6 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
         
         if (output->requires_grad) {
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
-
             output->addChild(self_ptr);
             output->addChild(targets);
             output->setBackwardFn([self_ptr, targets, output]() {
@@ -237,8 +236,60 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
             });
         }
         return output;
+        
+    } else if (this->data.getIs3D()) {
+        Tensor loss_tensor(1, 1);
+        float total_loss = 0.0f;
+        int batch_size = this->data.getBatchSize();
+        int seq_len = this->data.getRows();
+        int total_elements = batch_size * seq_len;
+        
+        for (int b = 0; b < batch_size; b++) {
+            for (int i = 0; i < seq_len; i++) {
+                int target_idx = static_cast<int>(targets->data.getValue(b, i));
+                if (target_idx >= 0 && target_idx < this->data.getCols()) {
+                    float prob = std::max(this->data.getValue(b, i, target_idx), 1e-15f);
+                    total_loss -= std::log(prob);
+                }
+            }
+        }
+        
+        total_loss /= total_elements;
+        loss_tensor.setValue(0, 0, total_loss);
+        auto output = createOutput(loss_tensor, this->requires_grad || targets->requires_grad);
+        
+        if (output->requires_grad) {
+            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+            output->addChild(self_ptr);
+            output->addChild(targets);
+            
+            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total_elements]() {
+                if (self_ptr->requires_grad) {
+                    Tensor grad_tensor(batch_size, seq_len, self_ptr->data.getCols());
+                    grad_tensor.fill(0.0f);
+                    float scale = 1.0f / total_elements;
+                    
+                    for (int b = 0; b < batch_size; b++) {
+                        for (int i = 0; i < seq_len; i++) {
+                            int target_idx = static_cast<int>(targets->data.getValue(b, i));
+                            if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
+                                for (int j = 0; j < self_ptr->data.getCols(); j++) {
+                                    float grad_val = self_ptr->data.getValue(b, i, j) * scale;
+                                    if (j == target_idx) {
+                                        grad_val -= scale;
+                                    }
+                                    grad_tensor.setValue(b, i, j, grad_val);
+                                }
+                            }
+                        }
+                    }
+                    self_ptr->grad = self_ptr->grad.add(grad_tensor);
+                }
+            });
+        }
+        return output;
     } else {
-        throw std::runtime_error("Batched cross-entropy not yet implemented");
+        throw std::runtime_error("Unsupported tensor configuration for cross-entropy loss");
     }
 }
 

@@ -15,21 +15,40 @@ Tensor gelu(const Tensor& input) {
 }
 
 Tensor dropout(const Tensor& input, float dropout_rate, bool training) {
-    if (dropout_rate == 0.0f || !training) { return input; }
+    if (dropout_rate == 0.0f || !training) { 
+        return input; 
+    }
 
     static std::random_device rd;
     static std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
-    Tensor result(input.getRows(), input.getCols());
+    Tensor result = input.getIs3D() 
+        ? Tensor(input.getBatchSize(), input.getRows(), input.getCols())
+        : Tensor(input.getRows(), input.getCols());
+    
     float scale = 1.0f / (1.0f - dropout_rate);
 
-    for (int i = 0; i < input.getRows(); i++) {
-        for (int j = 0; j < input.getCols(); j++) {
-            if (dis(gen) > dropout_rate) {
-                result.setValue(i, j, input.getValue(i, j) * scale);
-            } else {
-                result.setValue(i, j, 0.0f);
+    if (input.getIs3D()) {
+        for (int b = 0; b < input.getBatchSize(); b++) {
+            for (int i = 0; i < input.getRows(); i++) {
+                for (int j = 0; j < input.getCols(); j++) {
+                    if (dis(gen) > dropout_rate) {
+                        result.setValue(b, i, j, input.getValue(b, i, j) * scale);
+                    } else {
+                        result.setValue(b, i, j, 0.0f);
+                    }
+                }
+            }
+        }
+    } else {
+        for (int i = 0; i < input.getRows(); i++) {
+            for (int j = 0; j < input.getCols(); j++) {
+                if (dis(gen) > dropout_rate) {
+                    result.setValue(i, j, input.getValue(i, j) * scale);
+                } else {
+                    result.setValue(i, j, 0.0f);
+                }
             }
         }
     }
