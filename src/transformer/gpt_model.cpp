@@ -29,7 +29,12 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
     auto encode_positions = pos_encoding.forward(embed_tokens);
-    auto transformer_output = encode_positions;
+    auto transformer_input = encode_positions;
+
+    if (training && dropout_rate > 0.0f) {
+        transformer_input = encode_positions->dropout(dropout_rate, training);
+    }
+    auto transformer_output = transformer_input;
 
     for (int i = 0; i < num_layers; i++) {
         transformer_output = transformer_blocks[i]->forward(transformer_output, training);
@@ -44,6 +49,7 @@ std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
     std::vector<std::shared_ptr<Variable>> params;
     
     params.push_back(token_embedding.getEmbeddingTable());
+    params.push_back(pos_encoding.getPositionEmbeddings());
     
     for (int i = 0; i < num_layers; i++) {
         const TransformerBlock* block = transformer_blocks[i].get();
@@ -130,6 +136,7 @@ bool GPTModel::save(const std::string& filepath) const {
         file.write(reinterpret_cast<const char*>(&dropout_rate), sizeof(float));
 
         writeTensorToBinary(file, token_embedding.getEmbeddingTable()->getData());
+        writeTensorToBinary(file, pos_encoding.getPositionEmbeddings()->getData());
 
         for (int i = 0; i < num_layers; i++) {
             const TransformerBlock* block = transformer_blocks[i].get();
@@ -199,8 +206,12 @@ GPTModel GPTModel::load(const std::string& filepath) {
         file.read(reinterpret_cast<char*>(&dropout_rate), sizeof(float));
 
         GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, dropout_rate);
+
         Tensor embedding_table = readTensorFromBinary(file);
         model.token_embedding.setEmbeddingTable(embedding_table);
+
+        Tensor pos_embeddings = readTensorFromBinary(file);
+        model.pos_encoding.setPositionEmbeddings(pos_embeddings);
 
         for (int i = 0; i < num_layers; i++) {
             TransformerBlock* block = model.transformer_blocks[i].get();

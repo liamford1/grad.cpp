@@ -61,6 +61,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         std::vector<Tensor> attention_weights_all;
         std::vector<Tensor> V_heads_all;
 
+        Tensor causal_mask = Tensor::create_causal_mask(seq_len);
         for (int h = 0; h < num_heads; h++) {
             int start_col = h * head_size;
             
@@ -71,8 +72,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             Tensor K_transposed = K_head.transpose();
             Tensor scores = Q_head.matmul(K_transposed);
             scores = scores.scale(1.0f / std::sqrt(head_size));
-
-            Tensor causal_mask = Tensor::create_casual_mask(seq_len);
             scores = scores.add(causal_mask);
 
             Tensor attention_weights = scores.softmax();
@@ -200,6 +199,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
         int head_size = d_model / num_heads;
         Tensor result(batch_size, seq_len, d_model);
+        Tensor causal_mask = Tensor::create_causal_mask_batch(batch_size, seq_len);
 
         for (int i = 0; i < num_heads; i++) {
             int start_col = i * head_size;
@@ -221,8 +221,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             Tensor K_transposed = K_head.transpose();
             Tensor scores = Q_head.matmul(K_transposed);
             scores = scores.scale(1.0f / std::sqrt(head_size));
-
-            Tensor causal_mask = Tensor::create_casual_mask_batch(batch_size, seq_len);
             scores = scores.add(causal_mask);
 
             Tensor attention_weights = scores.softmax();

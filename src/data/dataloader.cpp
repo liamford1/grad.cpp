@@ -44,8 +44,8 @@ Batch DataLoader::next_batch() {
         auto [input, target] = dataset_->get_item(idx);
         
         for (int s = 0; s < seq_length; s++) {
-            batch.input.setValue(b, s, static_cast<float>(input[s]));
-            batch.target.setValue(b, s, static_cast<float>(target[s]));
+            batch.input.setValue(b, s, 0, static_cast<float>(input[s]));
+            batch.target.setValue(b, s, 0, static_cast<float>(target[s]));
         }
     }
     current_index_ += actual_batch_size;

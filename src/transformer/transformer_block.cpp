@@ -16,11 +16,9 @@ TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_di
 std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> input, bool training) const {
     auto normed1 = norm1.forward(input);
     auto attention_output = attention.forward(normed1, training);
-    attention_output = attention_output->dropout(dropout_rate, training);
     auto residual1 = input->add(attention_output);
 
     auto normed2 = norm2.forward(residual1);
     auto ffn_output = ffn.forward(normed2, training);
-    ffn_output = ffn_output->dropout(dropout_rate, training);
     return residual1->add(ffn_output);
 }
