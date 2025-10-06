@@ -5,6 +5,8 @@
 #include <random>
 #include <stdexcept>
 #include <utility>
+#include <cassert>
+#include <string>
 
 Tensor::Tensor() {
     this->rows = 0;
@@ -125,6 +127,7 @@ void Tensor::setValue(int batch, int row, int col, float value) {
 }
 
 void Tensor::display() const {
+    assertValid("display(this)");
     if (is_3d) {
         std::cout << "[display] showing batch 0 of " << batch_size << "\n";
         for (int i = 0; i < rows; ++i) {
@@ -143,6 +146,8 @@ void Tensor::display() const {
 
 
 Tensor Tensor::matmul(const Tensor& other) const {
+    assertValid("matmul(lhs)");
+    other.assertValid("matmul(rhs)");
     if (!this->is_3d && !other.is_3d) {
         if (this->cols != other.rows) {
             throw std::invalid_argument("Matrix dimensions do not match for multiplication");
@@ -216,6 +221,8 @@ Tensor Tensor::matmul(const Tensor& other) const {
 }
 
 Tensor Tensor::add(const Tensor& other) const {
+    assertValid("add(lhs)");
+    other.assertValid("add(rhs)");
     if (!this->is_3d && !other.is_3d) {
         bool rows_compatible = (rows == other.rows) || (rows == 1) || (other.rows == 1);
         bool cols_compatible = (cols == other.cols) || (cols == 1) || (other.cols == 1);
@@ -307,6 +314,8 @@ Tensor Tensor::add(const Tensor& other) const {
 }
 
 Tensor Tensor::subtract(const Tensor& other) const {
+    assertValid("subtract(lhs)");
+    other.assertValid("subtract(rhs)");
     if (!this->is_3d && !other.is_3d) {
         if (this->rows != other.rows || this->cols != other.cols) {
             throw std::invalid_argument("Matrix dimensions do not match for subtraction");
@@ -337,6 +346,8 @@ Tensor Tensor::subtract(const Tensor& other) const {
 }
 
 Tensor Tensor::elementwise(const Tensor& other) const {
+    assertValid("elementwise(lhs)");
+    other.assertValid("elementwise(rhs)");
     if (!this->is_3d && !other.is_3d) {
         if (this->rows != other.rows || this->cols != other.cols) {
             throw std::invalid_argument("Matrix dimensions do not match for elementwise multiply");
@@ -367,6 +378,7 @@ Tensor Tensor::elementwise(const Tensor& other) const {
 }
 
 Tensor Tensor::transpose() const {
+    assertValid("transpose(this)");
     if (!this->is_3d) {
         Tensor result(this->cols, this->rows);
         for (int i = 0; i < this->rows; i++) {
@@ -389,6 +401,7 @@ Tensor Tensor::transpose() const {
 }
 
 Tensor Tensor::softmax() const {
+    assertValid("softmax(this)");
     if (!this->is_3d) {
         Tensor result(this->rows, this->cols);
         for (int i = 0; i < this->rows; i++) {
@@ -435,12 +448,14 @@ Tensor Tensor::softmax() const {
 }
 
 void Tensor::fill(float value) {
+    assertValid("fill(this)");
     for (int i = 0; i < this->batch_size * this->rows * this->cols; i++) {
        data[i] = value;
     }
 }
 
 Tensor Tensor::scale(float scaler) const {
+    assertValid("scale(this)");
     if (!this->is_3d) {
         Tensor result(this->rows, this->cols);
         for (int i = 0; i < this->rows; i++) {
@@ -463,6 +478,7 @@ Tensor Tensor::scale(float scaler) const {
 }
 
 Tensor Tensor::reshape(int new_rows, int new_cols) const {
+    assertValid("reshape(this)");
     if (is_3d) throw std::invalid_argument("reshape: 3D not supported yet");
     if (new_rows * new_cols != rows * cols) {
         throw std::invalid_argument("Matrix sizes do not match for reshape");
@@ -475,6 +491,7 @@ Tensor Tensor::reshape(int new_rows, int new_cols) const {
 }
 
 Tensor Tensor::slice(int start_row, int num_rows, int start_col, int num_cols) const {
+    assertValid("slice(this)");
     if (is_3d) throw std::invalid_argument("slice: 3D not supported yet");
 
     if (start_row + num_rows > this->rows || start_col + num_cols > this->cols) {
@@ -496,6 +513,8 @@ Tensor Tensor::slice(int start_row, int num_rows, int start_col, int num_cols) c
 }
 
 Tensor Tensor::concatenate(const Tensor& other, int axis) const {
+    assertValid("concatenate(lhs)");
+    other.assertValid("concatenate(rhs)");
     if (is_3d || other.is_3d) {
         throw std::invalid_argument("concatenate: 3D not supported yet");
     }
@@ -545,6 +564,7 @@ Tensor Tensor::concatenate(const Tensor& other, int axis) const {
 }
 
 void Tensor::xavier(int fan_in, int fan_out) {
+    assertValid("xavier(target)");
     static std::random_device rd;
     static std::mt19937 gen(rd());
 
@@ -584,4 +604,23 @@ Tensor Tensor::create_causal_mask_batch(int batch_size, int seq_len) {
         }
     }
     return mask;
+}
+
+void Tensor::assertValid(const std::string& context) const {
+    if (data == nullptr) {
+        throw std::runtime_error("Tensor error [" + context + "]: data pointer is null");
+    }
+    if (rows <= 0 || cols <= 0) {
+        throw std::runtime_error("Tensor error [" + context + "]: invalid shape (" +
+                                 std::to_string(rows) + "x" + std::to_string(cols) + ")");
+    }
+    if (is_3d && batch_size <= 0) {
+        throw std::runtime_error("Tensor error [" + context + "]: invalid batch_size " +
+                                 std::to_string(batch_size));
+    }
+
+    const int expected = is_3d ? batch_size * rows * cols : rows * cols;
+    if (expected <= 0) {
+        throw std::runtime_error("Tensor error [" + context + "]: zero elements");
+    }
 }

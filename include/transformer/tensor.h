@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 
 class Tensor {
     private:
@@ -44,6 +45,8 @@ class Tensor {
         int getBatchSize() const { return batch_size; }
         bool getIs3D() const { return is_3d; }
         int numel() const { return is_3d ? batch_size * rows * cols : rows * cols;}
+
+        void assertValid(const std::string& context = "") const;
 
         float* raw() { return data; }
         const float* raw() const { return data; }
