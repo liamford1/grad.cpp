@@ -10,8 +10,8 @@ struct Batch {
     Tensor target;
     
     Batch(int batch_size, int seq_length)
-        : input(batch_size, seq_length),
-          target(batch_size, seq_length) {}
+        : input(batch_size, seq_length, 1),
+          target(batch_size, seq_length, 1) {}
 };
 
 class DataLoader {
