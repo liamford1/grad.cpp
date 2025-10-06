@@ -109,27 +109,38 @@ void Tensor::setValue(int row, int col, float value) {
 
 //3D Tensor methods
 float Tensor::getValue(int batch, int row, int col) const {
-    if (batch >= batch_size || row >= rows || col >= cols) {
-        throw std::out_of_range("Tensor index out of bounds");
+    if (batch < 0 || row < 0 || col < 0 ||
+        batch >= batch_size || row >= rows || col >= cols) {
+        throw std::out_of_range("Tensor(3D) index out of bounds");
     }
     return data[batch * rows * cols + row * cols + col];
 }
 
 void Tensor::setValue(int batch, int row, int col, float value) {
-    if (batch >= batch_size || row >= rows || col >= cols) {
-        throw std::out_of_range("Tensor index out of bounds");
+    if (batch < 0 || row < 0 || col < 0 ||
+        batch >= batch_size || row >= rows || col >= cols) {
+        throw std::out_of_range("Tensor(3D) index out of bounds");
     }
     data[batch * rows * cols + row * cols + col] = value;
 }
 
 void Tensor::display() const {
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            std::cout << getValue(i, j) << " ";
+    if (is_3d) {
+        std::cout << "[display] showing batch 0 of " << batch_size << "\n";
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                std::cout << getValue(0, i, j) << " ";
+            }
+            std::cout << "\n";
         }
-        std::cout << std::endl;
+        return;
+    }
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) std::cout << getValue(i, j) << " ";
+        std::cout << "\n";
     }
 }
+
 
 Tensor Tensor::matmul(const Tensor& other) const {
     if (!this->is_3d && !other.is_3d) {
@@ -240,18 +251,19 @@ Tensor Tensor::add(const Tensor& other) const {
         }
         return result;
     } else if (this->is_3d && !other.is_3d) {
-        bool rows_compatible = (this->rows == other.rows) || (this->rows == 1) || (other.rows == 1);
-        bool cols_compatible = (this->cols == other.cols) || (this->cols == 1) || (other.cols == 1);
-
+        bool rows_compatible = (rows == other.rows) || (rows == 1) || (other.rows == 1);
+        bool cols_compatible = (cols == other.cols) || (cols == 1) || (other.cols == 1);
         if (!rows_compatible || !cols_compatible) {
             throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
         }
-        
-        Tensor result(this->batch_size, this->rows, this->cols);
-        for (int b = 0; b < this->batch_size; b++) {
-            for (int i = 0; i < this->rows; i++) {
-                for (int j = 0; j < this->cols; j++) {
-                    result.setValue(b, i, j, this->getValue(b, i, j) + other.getValue(i, j));
+
+        Tensor result(batch_size, rows, cols);
+        for (int b = 0; b < batch_size; ++b) {
+            for (int i = 0; i < rows; ++i) {
+                const int oi = (other.rows == 1) ? 0 : i;
+                for (int j = 0; j < cols; ++j) {
+                    const int oj = (other.cols == 1) ? 0 : j;
+                    result.setValue(b, i, j, getValue(b, i, j) + other.getValue(oi, oj));
                 }
             }
         }
