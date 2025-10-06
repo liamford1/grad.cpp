@@ -353,16 +353,20 @@ Tensor Tensor::softmax() const {
     if (!this->is_3d) {
         Tensor result(this->rows, this->cols);
         for (int i = 0; i < this->rows; i++) {
+
             float max_val = getValue(i, 0);
             for (int j = 0; j < this->cols; j++) {
                 max_val = std::max(max_val, getValue(i, j));
             }
+
             float sum = 0.0f;
             for (int j = 0; j < this->cols; j++) {
-                sum += exp(getValue(i, j) - max_val);
+                sum += std::expf(getValue(i, j) - max_val);
             }
+
+            if (sum <= 0.0f) throw std::runtime_error("softmax sum <= 0 (numerical underflow)");
             for (int j = 0; j < this->cols; j++) {
-                result.setValue(i, j, exp(getValue(i, j) - max_val) / sum);
+                result.setValue(i, j, std::expf(getValue(i, j) - max_val) / sum);
             }
         }
         return result;
@@ -370,16 +374,20 @@ Tensor Tensor::softmax() const {
         Tensor result(this->batch_size, this->rows, this->cols);
         for (int b = 0; b < this->batch_size; b++) {
             for (int i = 0; i < this->rows; i++) {
+
                 float max_val = getValue(b, i, 0);
                 for (int j = 1; j < this->cols; j++) {
                     max_val = std::max(max_val, getValue(b, i, j));
                 }
+
                 float sum = 0.0f;
                 for (int j = 0; j < this->cols; j++) {
-                    sum += exp(getValue(b, i, j) - max_val);
+                    sum += std::expf(getValue(b, i, j) - max_val);
                 }
+
+                if (sum <= 0.0f) throw std::runtime_error("softmax sum <= 0 (numerical underflow)");
                 for (int j = 0; j < this->cols; j++) {
-                    result.setValue(b, i, j, exp(getValue(b, i, j) - max_val) / sum);
+                    result.setValue(b, i, j, std::expf(getValue(b, i, j) - max_val) / sum);
                 }
             }
         }
