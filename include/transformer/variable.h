@@ -1,5 +1,4 @@
-#ifndef VARIABLE_H
-#define VARIABLE_H
+#pragma once
 
 #include "tensor.h"
 #include <memory>
@@ -51,5 +50,3 @@ class Variable : public std::enable_shared_from_this<Variable> {
         void topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) const;
         std::shared_ptr<Variable> createOutput(const Tensor& result, bool needs_grad) const;
 };
-
-#endif

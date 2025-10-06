@@ -3,6 +3,7 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include <stdexcept>
 
 Variable::Variable(const Tensor& data, bool requires_grad) 
     : data(data), requires_grad(requires_grad) {
@@ -49,6 +50,9 @@ std::shared_ptr<Variable> Variable::createOutput(const Tensor& result, bool need
 }
 
 std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) const {
+    data.assertValid("Variable::matmul(lhs)");
+    other->data.assertValid("Variable::matmul(rhs)");
+
     Tensor result = this->data.matmul(other->data);
     bool needs_grad = this->requires_grad || other->requires_grad;
     
@@ -63,6 +67,9 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
         output->addChild(other);
         
         output->setBackwardFn([self_ptr, other, output]() {
+            output->grad.assertValid("Variable::matmul(dOut)");
+            self_ptr->data.assertValid("Variable::matmul(self.data)");
+            other->data.assertValid("Variable::matmul(other.data)");
             if (self_ptr->requires_grad) {
                 Tensor other_transposed = other->data.transpose();
                 Tensor self_grad = output->grad.matmul(other_transposed);
@@ -79,31 +86,153 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
 }
 
 std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
+    data.assertValid("Variable::add(lhs)");
+    other->data.assertValid("Variable::add(rhs)");
+
     Tensor result = this->data.add(other->data);
     bool needs_grad = this->requires_grad || other->requires_grad;
     auto output = createOutput(result, needs_grad);
-    
+
     if (needs_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(
             std::static_pointer_cast<const Variable>(shared_from_this())
         );
-        
+
         output->addChild(self_ptr);
         output->addChild(other);
-        
+
         output->setBackwardFn([self_ptr, other, output]() {
+            output->grad.assertValid("Variable::add(dOut)");
+
+            const Tensor& x  = self_ptr->data;
+            const Tensor& y  = other->data;
+            const Tensor& dO = output->grad;
+
+            // Reduce dO to (R,C) for a 2D original that was broadcast.
+            auto reduce2D = [](const Tensor& g, int R, int C, bool br, bool bc) -> Tensor {
+                // If shapes match exactly (no broadcast), just return a copy of g.
+                if (!br && !bc && g.getRows() == R && g.getCols() == C && !g.getIs3D()) {
+                    Tensor out(R, C);
+                    float* dst = out.raw();
+                    const float* src = g.raw();
+                    for (int i = 0, n = R * C; i < n; ++i) dst[i] = src[i];
+                    return out;
+                }
+
+                Tensor out(R, C); out.fill(0.0f);
+                const int GR = g.getRows();
+                const int GC = g.getCols();
+
+                for (int i = 0; i < R; ++i) {
+                    for (int j = 0; j < C; ++j) {
+                        float s = 0.0f;
+                        if (br && bc) {
+                            for (int ii = 0; ii < GR; ++ii)
+                                for (int jj = 0; jj < GC; ++jj)
+                                    s += g.getValue(ii, jj);
+                        } else if (br) { // broadcast rows
+                            for (int ii = 0; ii < GR; ++ii)
+                                s += g.getValue(ii, j);
+                        } else if (bc) { // broadcast cols
+                            for (int jj = 0; jj < GC; ++jj)
+                                s += g.getValue(i, jj);
+                        } else { // no broadcast but sizes differ via previous branch (shouldn't happen)
+                            s = g.getValue(i, j);
+                        }
+                        out.setValue(i, j, s);
+                    }
+                }
+                return out;
+            };
+
+            // Reduce (B,GR,GC) → (R,C) for a 2D original that was broadcast to 3D.
+            auto reduce3Dfrom2D = [](const Tensor& g3, int R, int C, bool br, bool bc) -> Tensor {
+                Tensor out(R, C); out.fill(0.0f);
+                const int B  = g3.getBatchSize();
+                const int GR = g3.getRows();
+                const int GC = g3.getCols();
+
+                // No broadcast in R/C: sum over batch only.
+                if (!br && !bc) {
+                    for (int b = 0; b < B; ++b)
+                        for (int i = 0; i < R; ++i)
+                            for (int j = 0; j < C; ++j)
+                                out.setValue(i, j, out.getValue(i, j) + g3.getValue(b, i, j));
+                    return out;
+                }
+
+                for (int i = 0; i < R; ++i) {
+                    for (int j = 0; j < C; ++j) {
+                        float s = 0.0f;
+                        if (br && bc) { // 1x1 broadcast to (GR,GC), then to batch
+                            for (int b = 0; b < B; ++b)
+                                for (int ii = 0; ii < GR; ++ii)
+                                    for (int jj = 0; jj < GC; ++jj)
+                                        s += g3.getValue(b, ii, jj);
+                        } else if (br) { // 1xC broadcast rows, then batch
+                            for (int b = 0; b < B; ++b)
+                                for (int ii = 0; ii < GR; ++ii)
+                                    s += g3.getValue(b, ii, j);
+                        } else { // bc: R x 1 broadcast cols, then batch
+                            for (int b = 0; b < B; ++b)
+                                for (int jj = 0; jj < GC; ++jj)
+                                    s += g3.getValue(b, i, jj);
+                        }
+                        out.setValue(i, j, s);
+                    }
+                }
+                return out;
+            };
+
+            // --- Propagate to X ---
             if (self_ptr->requires_grad) {
-                self_ptr->grad = self_ptr->grad.add(output->grad);
+                if (!x.getIs3D() && !dO.getIs3D()) {
+                    bool br = (x.getRows() == 1) && (dO.getRows() > 1);
+                    bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
+                    Tensor dx = reduce2D(dO, x.getRows(), x.getCols(), br, bc);
+                    self_ptr->grad = self_ptr->grad.add(dx);
+                } else if (x.getIs3D() && dO.getIs3D()) {
+                    // Same shape (B,R,C)
+                    self_ptr->grad = self_ptr->grad.add(dO);
+                } else if (!x.getIs3D() && dO.getIs3D()) {
+                    // x was 2D broadcast to 3D
+                    bool br = (x.getRows() == 1) && (dO.getRows() > 1);
+                    bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
+                    Tensor dx = reduce3Dfrom2D(dO, x.getRows(), x.getCols(), br, bc);
+                    self_ptr->grad = self_ptr->grad.add(dx);
+                } else {
+                    throw std::runtime_error("add backward: unexpected (3D x, 2D dOut)");
+                }
             }
+
+            // --- Propagate to Y ---
             if (other->requires_grad) {
-                other->grad = other->grad.add(output->grad);
+                const Tensor& yD = other->data;
+                if (!yD.getIs3D() && !dO.getIs3D()) {
+                    bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
+                    bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
+                    Tensor dy = reduce2D(dO, yD.getRows(), yD.getCols(), br, bc);
+                    other->grad = other->grad.add(dy);
+                } else if (yD.getIs3D() && dO.getIs3D()) {
+                    other->grad = other->grad.add(dO);
+                } else if (!yD.getIs3D() && dO.getIs3D()) {
+                    bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
+                    bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
+                    Tensor dy = reduce3Dfrom2D(dO, yD.getRows(), yD.getCols(), br, bc);
+                    other->grad = other->grad.add(dy);
+                } else {
+                    throw std::runtime_error("add backward: unexpected (3D y, 2D dOut)");
+                }
             }
         });
     }
     return output;
 }
 
+
 std::shared_ptr<Variable> Variable::scale(float factor) const {
+    data.assertValid("Variable::scale(x)");
+
     Tensor result = this->data.scale(factor);
     auto output = createOutput(result, this->requires_grad);
     
@@ -114,6 +243,7 @@ std::shared_ptr<Variable> Variable::scale(float factor) const {
         
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, factor, output]() {
+            output->grad.assertValid("Variable::scale(dOut)");
             if (self_ptr->requires_grad) {
                 Tensor scaled_grad = output->grad.scale(factor);
                 self_ptr->grad = self_ptr->grad.add(scaled_grad);
@@ -124,6 +254,8 @@ std::shared_ptr<Variable> Variable::scale(float factor) const {
 }
 
 std::shared_ptr<Variable> Variable::softmax() const {
+    data.assertValid("Variable::softmax(x)");
+
     Tensor result = this->data.softmax();
     auto output = createOutput(result, this->requires_grad);
     
@@ -134,6 +266,9 @@ std::shared_ptr<Variable> Variable::softmax() const {
         
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, result, output]() {
+            result.assertValid("Variable::softmax(y)");
+            output->grad.assertValid("Variable::softmax(dOut)");
+
             if (self_ptr->requires_grad) {
                 if (result.getIs3D()) {
                     Tensor temp_grad(result.getBatchSize(), result.getRows(), result.getCols());
@@ -177,6 +312,9 @@ std::shared_ptr<Variable> Variable::softmax() const {
 }
 
 std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable> targets) const {
+    data.assertValid("Variable::cross_entropy_loss(input)");
+    targets->data.assertValid("Variable::cross_entropy_loss(targets)");
+    
     if (!this->data.getIs3D() && !targets->data.getIs3D()) {
         Tensor loss_tensor(1, 1);
         float total_loss = 0.0f;
@@ -246,7 +384,8 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
         
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {
-                int target_idx = static_cast<int>(targets->data.getValue(b, i));
+                int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
+
                 if (target_idx >= 0 && target_idx < this->data.getCols()) {
                     float prob = std::max(this->data.getValue(b, i, target_idx), 1e-15f);
                     total_loss -= std::log(prob);
@@ -271,7 +410,8 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
                     
                     for (int b = 0; b < batch_size; b++) {
                         for (int i = 0; i < seq_len; i++) {
-                            int target_idx = static_cast<int>(targets->data.getValue(b, i));
+                            int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
+
                             if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
                                 for (int j = 0; j < self_ptr->data.getCols(); j++) {
                                     float grad_val = self_ptr->data.getValue(b, i, j) * scale;
@@ -294,6 +434,8 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
 }
 
 std::shared_ptr<Variable> Variable::gelu() const {
+    data.assertValid("Variable::gelu(x)");
+
     Tensor result = this->data;
     for (int i = 0; i < result.numel(); i++) {
         float x = result.raw()[i];
@@ -307,8 +449,12 @@ std::shared_ptr<Variable> Variable::gelu() const {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, output]() {
+            output->grad.assertValid("Variable::gelu(dOut)");
+
             if (self_ptr->requires_grad) {
-                Tensor grad_tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
+                Tensor grad_tensor = self_ptr->data.getIs3D() ? Tensor(self_ptr->data.getBatchSize(), self_ptr->data.getRows(), self_ptr->data.getCols()) : Tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
+
+                grad_tensor.fill(0.0f);
                 for (int i = 0; i < self_ptr->data.numel(); i++) {
                     float x = self_ptr->data.raw()[i];
                     float cube = x * x * x;
@@ -328,28 +474,28 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
     if (!training || dropout_rate == 0.0f) {
         return std::const_pointer_cast<Variable>(shared_from_this());
     }
-    Tensor result = this->data;
+
+    data.assertValid("Variable::dropout(x)");
     float scale = 1.0f / (1.0f - dropout_rate);
+    Tensor mask = data.getIs3D() ? Tensor(data.getBatchSize(), data.getRows(), data.getCols()) : Tensor(data.getRows(), data.getCols());
     
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(0.0f, 1.0f);
     
-    for (int i = 0; i < result.numel(); i++) {
-        if (dis(gen) < dropout_rate) {
-            result.raw()[i] = 0.0f;
-        } else {
-            result.raw()[i] *= scale;
-        }
+    for (int i = 0; i < mask.numel(); i++) {
+        mask.raw()[i] = (dis(gen) < dropout_rate) ? 0.0f : scale;
     }
+
+    Tensor result = this->data.elementwise(mask);
     auto output = createOutput(result, this->requires_grad);
     
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, output, scale]() {
+        output->setBackwardFn([self_ptr, output, mask]() {
             if (self_ptr->requires_grad) {
-                Tensor grad_tensor = output->grad.scale(scale);
+                Tensor grad_tensor = output->grad.elementwise(mask);
                 self_ptr->grad = self_ptr->grad.add(grad_tensor);
             }
         });
@@ -357,8 +503,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
     return output;
 }
 
-void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, 
-                              std::unordered_set<Variable*>& visited) const {
+void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) const {
     if (visited.find(const_cast<Variable*>(this)) != visited.end()) {
         return;
     }
@@ -380,6 +525,9 @@ void Variable::backward() {
         return;
     }
     
+    if (data.numel() != 1) {
+        throw std::runtime_error("Variable::backward(): output must be scalar to auto-seed dOut=1. ""For non-scalars, provide an explicit upstream gradient.");
+    }
     grad.fill(1.0f);
     
     std::vector<std::shared_ptr<Variable>> sorted;
