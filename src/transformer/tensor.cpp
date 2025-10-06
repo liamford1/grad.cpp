@@ -451,19 +451,20 @@ Tensor Tensor::scale(float scaler) const {
 }
 
 Tensor Tensor::reshape(int new_rows, int new_cols) const {
-    if (new_rows * new_cols != this->rows * this->cols) {
+    if (is_3d) throw std::invalid_argument("reshape: 3D not supported yet");
+    if (new_rows * new_cols != rows * cols) {
         throw std::invalid_argument("Matrix sizes do not match for reshape");
     }
-
     Tensor result(new_rows, new_cols);
-
-    for (int i = 0; i < new_rows * new_cols; i++) {
-            result.setValue(i / new_cols, i % new_cols, data[i]);
-    }
+    float* out = result.raw();
+    const float* in = data;
+    for (int i = 0; i < new_rows * new_cols; ++i) out[i] = in[i];
     return result;
 }
 
 Tensor Tensor::slice(int start_row, int num_rows, int start_col, int num_cols) const {
+    if (is_3d) throw std::invalid_argument("slice: 3D not supported yet");
+
     if (start_row + num_rows > this->rows || start_col + num_cols > this->cols) {
         throw std::invalid_argument("Out of bounds error");
     }
@@ -483,6 +484,9 @@ Tensor Tensor::slice(int start_row, int num_rows, int start_col, int num_cols) c
 }
 
 Tensor Tensor::concatenate(const Tensor& other, int axis) const {
+    if (is_3d || other.is_3d) {
+        throw std::invalid_argument("concatenate: 3D not supported yet");
+    }
     if (axis == 0 && this->cols != other.cols) {
         throw std::invalid_argument("Columns do not match for axis=0 concatenation");
     } 
