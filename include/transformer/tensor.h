@@ -1,12 +1,9 @@
-#ifndef TENSOR_H
-#define TENSOR_H
+#pragma once
 
 class Tensor {
     private:
         float* data;
-        int rows;
-        int cols;
-        int batch_size;
+        int rows, cols, batch_size;
         bool is_3d;
     public:
         Tensor();
@@ -14,6 +11,8 @@ class Tensor {
         Tensor(int batch_size, int rows, int cols);
         Tensor(const Tensor& other);
         Tensor& operator=(const Tensor& other);
+        Tensor(Tensor&& other) noexcept;
+        Tensor& operator=(Tensor&& other) noexcept;
         ~Tensor();
 
         float getValue(int row, int col) const;
@@ -43,16 +42,10 @@ class Tensor {
         
         int getRows() const { return rows; }
         int getCols() const { return cols; }
-
         int getBatchSize() const { return batch_size; }
         bool getIs3D() const { return is_3d; }
-
-        int numel() const {
-            return is_3d ? batch_size * rows * cols : rows * cols;
-        }
+        int numel() const { return is_3d ? batch_size * rows * cols : rows * cols;}
 
         float* raw() { return data; }
         const float* raw() const { return data; }
 };
-
-#endif

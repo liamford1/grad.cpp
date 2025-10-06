@@ -4,6 +4,7 @@
 #include <cmath>
 #include <random>
 #include <stdexcept>
+#include <utility>
 
 Tensor::Tensor() {
     this->rows = 0;
@@ -49,21 +50,41 @@ Tensor::Tensor(const Tensor& other) {
     }
 }
 
+Tensor::Tensor(Tensor&& other) noexcept :
+    data(other.data),
+    rows(other.rows),
+    cols(other.cols),
+    batch_size(other.batch_size),
+    is_3d(other.is_3d) 
+{
+    other.data = nullptr;
+    other.rows = other.cols = other.batch_size = 0;
+    other.is_3d = false;
+}
+
 Tensor& Tensor::operator=(const Tensor& other) {
-    if (this == &other) {
-        return *this;
-    }
+    if (this == &other) return *this;
+    Tensor tmp(other);
+    
+    std::swap(data, tmp.data);
+    std::swap(rows, tmp.rows);
+    std::swap(cols, tmp.cols);
+    std::swap(batch_size, tmp.batch_size);
+    std::swap(is_3d, tmp.is_3d);
+    return *this;
+}
+
+Tensor& Tensor::operator=(Tensor&& other) noexcept {
+    if (this == &other) return *this;
     delete[] data;
-
-    this->rows = other.rows;
-    this->cols = other.cols;
-    this->batch_size = other.batch_size;
-    this->is_3d = other.is_3d;
-    this->data = new float[batch_size * rows * cols];
-
-    for (int i = 0; i < batch_size * rows * cols; i++) {
-        this->data[i] = other.data[i];
-    }
+    data = other.data;
+    rows = other.rows;
+    cols = other.cols;
+    batch_size = other.batch_size;
+    is_3d = other.is_3d;
+    other.data = nullptr;
+    other.rows = other.cols = other.batch_size = 0;
+    other.is_3d = false;
     return *this;
 }
 
@@ -71,19 +92,27 @@ Tensor::~Tensor() {
     delete[] data;
 }
 
+//2D Tensor methods
 float Tensor::getValue(int row, int col) const {
-    return data[row * this->cols + col];
+    if (row < 0 || col < 0 || row >= rows || col >= cols) {
+        throw std::out_of_range("Tensor(2D) index out of bounds");
+    }
+    return data[row * cols + col];
 }
 
+void Tensor::setValue(int row, int col, float value) {
+    if (row < 0 || col < 0 || row >= rows || col >= cols) {
+        throw std::out_of_range("Tensor(2D) index out of bounds");
+    }
+    data[row * cols + col] = value;
+}
+
+//3D Tensor methods
 float Tensor::getValue(int batch, int row, int col) const {
     if (batch >= batch_size || row >= rows || col >= cols) {
         throw std::out_of_range("Tensor index out of bounds");
     }
     return data[batch * rows * cols + row * cols + col];
-}
-
-void Tensor::setValue(int row, int col, float value) {
-    data[row * this->cols + col] = value;
 }
 
 void Tensor::setValue(int batch, int row, int col, float value) {
