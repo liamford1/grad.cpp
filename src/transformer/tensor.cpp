@@ -513,22 +513,7 @@ void Tensor::xavier(int fan_in, int fan_out) {
     }
 }
 
-Tensor Tensor::causal_mask() const {
-    Tensor result(this->rows, this->cols);
-
-    for (int i = 0; i < this->rows; i++) {
-        for (int j = 0; j < this->cols; j++) {
-            if (j <= i) {
-                result.setValue(i, j, getValue(i, j));
-            } else {
-                result.setValue(i, j, -1e9f);
-            }
-        }
-    }
-    return result;
-}
-
-Tensor Tensor::create_casual_mask(int seq_len) {
+Tensor Tensor::create_causal_mask(int seq_len) {
     Tensor mask(seq_len, seq_len);
     for (int i = 0; i < seq_len; i++) {
         for (int j = 0; j < seq_len; j++) {
@@ -542,7 +527,7 @@ Tensor Tensor::create_casual_mask(int seq_len) {
     return mask;
 }
 
-Tensor Tensor::create_casual_mask_batch(int batch_size, int seq_len) {
+Tensor Tensor::create_causal_mask_batch(int batch_size, int seq_len) {
     Tensor mask(batch_size, seq_len, seq_len);
     for (int b = 0; b < batch_size; b++) {
         for (int i = 0; i < seq_len; i++) {
