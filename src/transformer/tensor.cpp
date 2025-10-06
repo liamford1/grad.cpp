@@ -137,14 +137,29 @@ Tensor Tensor::matmul(const Tensor& other) const {
             throw std::invalid_argument("Matrix dimensions do not match for multiplication");
         }
 
-        Tensor result(this->rows, other.cols);
-        for (int i = 0; i < this->rows; i++) {
-            for (int j = 0; j < other.cols; j++) {
-                float sum = 0.0f;
-                for (int k = 0; k < this->cols; k++) {
-                    sum += this->getValue(i, k) * other.getValue(k, j);
+        const int M = this->rows;
+        const int K = this->cols;
+        const int N = other.cols;
+
+        Tensor result(M, N);
+
+        const float* A = this->data;
+        const float* B = other.data;
+        float *C = result.raw();
+
+        for (int i = 0; i < M; ++i) {
+            float* c_row = C + i * N;
+            const float* a_row = A + i * K;
+
+            for (int j = 0; j < N; ++j) { c_row[j] = 0.0f; }
+
+            for (int k = 0; k < K; ++k) {
+                const float a_ik = a_row[k];
+                const float* b_row = B + k * N;
+
+                for (int j = 0; j < N; ++j) {
+                    c_row[j] += a_ik * b_row[j];
                 }
-                result.setValue(i, j, sum);
             }
         }
         return result;
@@ -193,22 +208,34 @@ Tensor Tensor::add(const Tensor& other) const {
     if (!this->is_3d && !other.is_3d) {
         bool rows_compatible = (rows == other.rows) || (rows == 1) || (other.rows == 1);
         bool cols_compatible = (cols == other.cols) || (cols == 1) || (other.cols == 1);
-
         if (!rows_compatible || !cols_compatible) {
             throw std::invalid_argument("Shapes not broadcastable");
         }
 
-        int result_rows = std::max(this->rows, other.rows);
-        int result_cols = std::max(this->cols, other.cols);
-        Tensor result(result_rows, result_cols);
-        for (int i = 0; i < result_rows; i++) {
-            for (int j = 0; j < result_cols; j++) {
-                int this_i = (this->rows == 1) ? 0 : i;
-                int this_j = (this->cols == 1) ? 0 : j;
-                int other_i = (other.rows == 1) ? 0 : i;
-                int other_j = (other.cols == 1) ? 0 : j;
-                
-                result.setValue(i, j, this->getValue(this_i, this_j) + other.getValue(other_i, other_j));
+        const int R = std::max(rows, other.rows);
+        const int C = std::max(cols, other.cols);
+        Tensor result(R, C);
+
+        const float* A = this->data;
+        const float* B = other.data;
+        float* Out = result.raw();
+
+        const bool a_row_bcast = (rows == 1);
+        const bool a_col_bcast = (cols == 1);
+        const bool b_row_bcast = (other.rows == 1);
+        const bool b_col_bcast = (other.cols == 1);
+
+        for (int i = 0; i < R; ++i) {
+            const int ai = a_row_bcast ? 0 : i;
+            const int bi = b_row_bcast ? 0 : i;
+            const int a_row_off = ai * cols;
+            const int b_row_off = bi * other.cols;
+            const int out_row_off = i * C;
+
+            for (int j = 0; j < C; ++j) {
+                const int aj = a_col_bcast ? 0 : j;
+                const int bj = b_col_bcast ? 0 : j;
+                Out[out_row_off + j] = A[a_row_off + aj] + B[b_row_off + bj];
             }
         }
         return result;
