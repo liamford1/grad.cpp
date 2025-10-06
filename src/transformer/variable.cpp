@@ -108,9 +108,7 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
             const Tensor& y  = other->data;
             const Tensor& dO = output->grad;
 
-            // Reduce dO to (R,C) for a 2D original that was broadcast.
             auto reduce2D = [](const Tensor& g, int R, int C, bool br, bool bc) -> Tensor {
-                // If shapes match exactly (no broadcast), just return a copy of g.
                 if (!br && !bc && g.getRows() == R && g.getCols() == C && !g.getIs3D()) {
                     Tensor out(R, C);
                     float* dst = out.raw();
@@ -130,13 +128,13 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                             for (int ii = 0; ii < GR; ++ii)
                                 for (int jj = 0; jj < GC; ++jj)
                                     s += g.getValue(ii, jj);
-                        } else if (br) { // broadcast rows
+                        } else if (br) {
                             for (int ii = 0; ii < GR; ++ii)
                                 s += g.getValue(ii, j);
-                        } else if (bc) { // broadcast cols
+                        } else if (bc) {
                             for (int jj = 0; jj < GC; ++jj)
                                 s += g.getValue(i, jj);
-                        } else { // no broadcast but sizes differ via previous branch (shouldn't happen)
+                        } else {
                             s = g.getValue(i, j);
                         }
                         out.setValue(i, j, s);
@@ -145,14 +143,12 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                 return out;
             };
 
-            // Reduce (B,GR,GC) → (R,C) for a 2D original that was broadcast to 3D.
             auto reduce3Dfrom2D = [](const Tensor& g3, int R, int C, bool br, bool bc) -> Tensor {
                 Tensor out(R, C); out.fill(0.0f);
                 const int B  = g3.getBatchSize();
                 const int GR = g3.getRows();
                 const int GC = g3.getCols();
 
-                // No broadcast in R/C: sum over batch only.
                 if (!br && !bc) {
                     for (int b = 0; b < B; ++b)
                         for (int i = 0; i < R; ++i)
@@ -164,16 +160,16 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                 for (int i = 0; i < R; ++i) {
                     for (int j = 0; j < C; ++j) {
                         float s = 0.0f;
-                        if (br && bc) { // 1x1 broadcast to (GR,GC), then to batch
+                        if (br && bc) {
                             for (int b = 0; b < B; ++b)
                                 for (int ii = 0; ii < GR; ++ii)
                                     for (int jj = 0; jj < GC; ++jj)
                                         s += g3.getValue(b, ii, jj);
-                        } else if (br) { // 1xC broadcast rows, then batch
+                        } else if (br) { 
                             for (int b = 0; b < B; ++b)
                                 for (int ii = 0; ii < GR; ++ii)
                                     s += g3.getValue(b, ii, j);
-                        } else { // bc: R x 1 broadcast cols, then batch
+                        } else { 
                             for (int b = 0; b < B; ++b)
                                 for (int jj = 0; jj < GC; ++jj)
                                     s += g3.getValue(b, i, jj);
@@ -184,7 +180,6 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                 return out;
             };
 
-            // --- Propagate to X ---
             if (self_ptr->requires_grad) {
                 if (!x.getIs3D() && !dO.getIs3D()) {
                     bool br = (x.getRows() == 1) && (dO.getRows() > 1);
@@ -192,10 +187,8 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                     Tensor dx = reduce2D(dO, x.getRows(), x.getCols(), br, bc);
                     self_ptr->grad = self_ptr->grad.add(dx);
                 } else if (x.getIs3D() && dO.getIs3D()) {
-                    // Same shape (B,R,C)
                     self_ptr->grad = self_ptr->grad.add(dO);
                 } else if (!x.getIs3D() && dO.getIs3D()) {
-                    // x was 2D broadcast to 3D
                     bool br = (x.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dx = reduce3Dfrom2D(dO, x.getRows(), x.getCols(), br, bc);
@@ -205,7 +198,6 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                 }
             }
 
-            // --- Propagate to Y ---
             if (other->requires_grad) {
                 const Tensor& yD = other->data;
                 if (!yD.getIs3D() && !dO.getIs3D()) {
@@ -501,6 +493,171 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
         });
     }
     return output;
+}
+
+std::shared_ptr<Variable> Variable::log_softmax() const {
+    Tensor result = this->data;
+    
+    if (!result.getIs3D()) {
+        for (int i = 0; i < result.getRows(); i++) {
+            
+            float max_val = result.getValue(i, 0);
+            for (int j = 1; j < result.getCols(); j++) {
+                max_val = std::max(max_val, result.getValue(i, j));
+            }
+            
+            float sum_exp = 0.0f;
+            for (int j = 0; j < result.getCols(); j++) {
+                sum_exp += std::expf(result.getValue(i, j) - max_val);
+            }
+            float log_sum = std::logf(sum_exp) + max_val;
+            
+            for (int j = 0; j < result.getCols(); j++) {
+                result.setValue(i, j, result.getValue(i, j) - log_sum);
+            }
+        }
+    } else {
+        for (int b = 0; b < result.getBatchSize(); b++) {
+            for (int i = 0; i < result.getRows(); i++) {
+                float max_val = result.getValue(b, i, 0);
+                for (int j = 1; j < result.getCols(); j++) {
+                    max_val = std::max(max_val, result.getValue(b, i, j));
+                }
+                
+                float sum_exp = 0.0f;
+                for (int j = 0; j < result.getCols(); j++) {
+                    sum_exp += std::expf(result.getValue(b, i, j) - max_val);
+                }
+                float log_sum = std::logf(sum_exp) + max_val;
+                
+                for (int j = 0; j < result.getCols(); j++) {
+                    result.setValue(b, i, j, result.getValue(b, i, j) - log_sum);
+                }
+            }
+        }
+    }
+    
+    auto output = createOutput(result, this->requires_grad);
+    
+    if (this->requires_grad) {
+        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        output->addChild(self_ptr);
+        
+        output->setBackwardFn([self_ptr, result, output]() {
+            if (!result.getIs3D()) {
+                Tensor grad(result.getRows(), result.getCols());
+                for (int i = 0; i < result.getRows(); i++) {
+                    float sum = 0.0f;
+                    for (int j = 0; j < result.getCols(); j++) {
+                        sum += output->grad.getValue(i, j);
+                    }
+                    for (int j = 0; j < result.getCols(); j++) {
+                        float softmax_val = std::expf(result.getValue(i, j));
+                        grad.setValue(i, j, output->grad.getValue(i, j) - softmax_val * sum);
+                    }
+                }
+                self_ptr->grad = self_ptr->grad.add(grad);
+            } else {
+                Tensor grad(result.getBatchSize(), result.getRows(), result.getCols());
+                for (int b = 0; b < result.getBatchSize(); b++) {
+                    for (int i = 0; i < result.getRows(); i++) {
+                        float sum = 0.0f;
+                        for (int j = 0; j < result.getCols(); j++) {
+                            sum += output->grad.getValue(b, i, j);
+                        }
+                        for (int j = 0; j < result.getCols(); j++) {
+                            float softmax_val = std::expf(result.getValue(b, i, j));
+                            grad.setValue(b, i, j, output->grad.getValue(b, i, j) - softmax_val * sum);
+                        }
+                    }
+                }
+                self_ptr->grad = self_ptr->grad.add(grad);
+            }
+        });
+    }
+    return output;
+}
+
+std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) const {
+    if (!this->data.getIs3D()) {
+        float total_loss = 0.0f;
+        int n = this->data.getRows();
+        
+        for (int i = 0; i < n; i++) {
+            int target_idx = static_cast<int>(targets->data.getValue(i, 0));
+            if (target_idx >= 0 && target_idx < this->data.getCols()) {
+                total_loss -= this->data.getValue(i, target_idx);
+            }
+        }
+        total_loss /= n;
+        
+        Tensor loss_tensor(1, 1);
+        loss_tensor.setValue(0, 0, total_loss);
+        auto output = createOutput(loss_tensor, this->requires_grad);
+        
+        if (this->requires_grad) {
+            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+            output->addChild(self_ptr);
+            output->addChild(targets);
+            
+            output->setBackwardFn([self_ptr, targets, n]() {
+                Tensor grad(self_ptr->data.getRows(), self_ptr->data.getCols());
+                grad.fill(0.0f);
+                float scale = -1.0f / n;
+                
+                for (int i = 0; i < n; i++) {
+                    int target_idx = static_cast<int>(targets->data.getValue(i, 0));
+                    if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
+                        grad.setValue(i, target_idx, scale);
+                    }
+                }
+                self_ptr->grad = self_ptr->grad.add(grad);
+            });
+        }
+        return output;
+    } else {
+        int batch_size = this->data.getBatchSize();
+        int seq_len = this->data.getRows();
+        int total = batch_size * seq_len;
+        float total_loss = 0.0f;
+        
+        for (int b = 0; b < batch_size; b++) {
+            for (int i = 0; i < seq_len; i++) {
+                int target_idx = static_cast<int>(targets->data.getValue(b, i, 0));
+                if (target_idx >= 0 && target_idx < this->data.getCols()) {
+                    total_loss -= this->data.getValue(b, i, target_idx);
+                }
+            }
+        }
+        total_loss /= total;
+        
+        Tensor loss_tensor(1, 1);
+        loss_tensor.setValue(0, 0, total_loss);
+        auto output = createOutput(loss_tensor, this->requires_grad);
+        
+        if (this->requires_grad) {
+            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+            output->addChild(self_ptr);
+            output->addChild(targets);
+            
+            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total]() {
+                Tensor grad(batch_size, seq_len, self_ptr->data.getCols());
+                grad.fill(0.0f);
+                float scale = -1.0f / total;
+                
+                for (int b = 0; b < batch_size; b++) {
+                    for (int i = 0; i < seq_len; i++) {
+                        int target_idx = static_cast<int>(targets->data.getValue(b, i, 0));
+                        if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
+                            grad.setValue(b, i, target_idx, scale);
+                        }
+                    }
+                }
+                self_ptr->grad = self_ptr->grad.add(grad);
+            });
+        }
+        return output;
+    }
 }
 
 void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) const {

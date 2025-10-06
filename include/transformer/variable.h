@@ -40,6 +40,9 @@ class Variable : public std::enable_shared_from_this<Variable> {
         std::shared_ptr<Variable> cross_entropy_loss(std::shared_ptr<Variable> targets) const;
         std::shared_ptr<Variable> gelu() const;
         std::shared_ptr<Variable> dropout(float rate, bool training) const;
+
+        std::shared_ptr<Variable> log_softmax() const;
+        std::shared_ptr<Variable> nll_loss(std::shared_ptr<Variable> targets) const;
         
         void backward();
         void zeroGrad();

@@ -44,6 +44,7 @@ std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
     std::vector<std::shared_ptr<Variable>> params;
     
     params.push_back(token_embedding.getEmbeddingTable());
+    params.push_back(pos_encoding.getPositionEmbeddings());
     
     for (int i = 0; i < num_layers; i++) {
         const TransformerBlock* block = transformer_blocks[i].get();
@@ -130,6 +131,7 @@ bool GPTModel::save(const std::string& filepath) const {
         file.write(reinterpret_cast<const char*>(&dropout_rate), sizeof(float));
 
         writeTensorToBinary(file, token_embedding.getEmbeddingTable()->getData());
+        writeTensorToBinary(file, pos_encoding.getPositionEmbeddings()->getData());
 
         for (int i = 0; i < num_layers; i++) {
             const TransformerBlock* block = transformer_blocks[i].get();
@@ -199,8 +201,12 @@ GPTModel GPTModel::load(const std::string& filepath) {
         file.read(reinterpret_cast<char*>(&dropout_rate), sizeof(float));
 
         GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, dropout_rate);
+
         Tensor embedding_table = readTensorFromBinary(file);
         model.token_embedding.setEmbeddingTable(embedding_table);
+
+        Tensor pos_embeddings = readTensorFromBinary(file);
+        model.pos_encoding.setPositionEmbeddings(pos_embeddings);
 
         for (int i = 0; i < num_layers; i++) {
             TransformerBlock* block = model.transformer_blocks[i].get();

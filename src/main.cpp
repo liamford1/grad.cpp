@@ -58,8 +58,8 @@ void train_overfitting_test() {
         auto target = Variable::create(target_tensor, false);
         
         auto logits = model.forward(input, true);
-        auto probs = logits->softmax();
-        auto loss = probs->cross_entropy_loss(target);
+        auto log_probs = logits->log_softmax();
+        auto loss = log_probs->nll_loss(target);
         
         optimizer.zero_grad();
         
