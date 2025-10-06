@@ -29,7 +29,12 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
     auto encode_positions = pos_encoding.forward(embed_tokens);
-    auto transformer_output = encode_positions;
+    auto transformer_input = encode_positions;
+
+    if (training && dropout_rate > 0.0f) {
+        transformer_input = encode_positions->dropout(dropout_rate, training);
+    }
+    auto transformer_output = transformer_input;
 
     for (int i = 0; i < num_layers; i++) {
         transformer_output = transformer_blocks[i]->forward(transformer_output, training);
