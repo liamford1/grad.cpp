@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cmath>
 #include <stdexcept>
+#include <cstring>
 
 MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout_rate) : 
     d_model(d_model),
@@ -80,10 +81,16 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
             attention_weights_all.push_back(attention_weights);
             V_heads_all.push_back(V_head);
-            
-            for (int row = 0; row < seq_len; row++) {
-                for (int col = 0; col < head_size; col++) {
-                    result.setValue(row, start_col + col, attended_values.getValue(row, col));
+
+            {
+                float* R = result.raw();
+                const float* AV = attended_values.raw();
+                for (int row = 0; row < seq_len; ++row) {
+                    std::memcpy(
+                        R  + row * d_model + start_col, 
+                        AV + row * head_size,
+                        head_size * sizeof(float)
+                    );
                 }
             }
         }

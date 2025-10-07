@@ -211,8 +211,8 @@ void train_with_dataloader() {
             std::shared_ptr<Variable> loss;
             try {
                 logits = model.forward(input, true);
-                probs = logits->softmax();
-                loss = probs->cross_entropy_loss(target);
+                auto log_probs = logits->log_softmax();
+                loss = log_probs->nll_loss(target);
             } catch (const std::exception& e) {
                 std::cerr << "Error in DataLoader epoch " << epoch + 1 << ", batch " << batch_count
                           << ": " << e.what() << std::endl;
@@ -271,12 +271,12 @@ void train_shakespeare() {
     
     // Model config: ~10M parameters
     int vocab_size = 256;      // Byte-level vocabulary
-    int d_model = 384;
-    int num_layers = 6;
-    int num_heads = 6;
+    int d_model = 256;
+    int num_layers = 4;
+    int num_heads = 4;
     int max_len = 512;
-    int seq_length = 256;      // Train on 256-token sequences
-    int batch_size = 4;        // Process 4 sequences at once
+    int seq_length = 128;      // Train on 256-token sequences
+    int batch_size = 2;        // Process 4 sequences at once
     float learning_rate = 3e-4f;
     float dropout_rate = 0.1f;
     
@@ -305,8 +305,8 @@ void train_shakespeare() {
     std::cout << "Dataset: " << dataset->size() << " sequences" << std::endl;
     std::cout << "Batches per epoch: " << loader.num_batches() << std::endl;
     
-    int num_steps = 1000;
-    int log_interval = 50;
+    int num_steps = 100;
+    int log_interval = 10;
     int save_interval = 500;
     
     std::cout << "\nTraining for " << num_steps << " steps..." << std::endl;
@@ -322,18 +322,23 @@ void train_shakespeare() {
             loader.reset();
         }
         
+        // ---- timing: dataloader ----
+        auto t0 = std::chrono::high_resolution_clock::now();
         auto batch = loader.next_batch();
-        auto input = Variable::create(batch.input, false);
+        auto t1 = std::chrono::high_resolution_clock::now();
+
+        auto input  = Variable::create(batch.input,  false);
         auto target = Variable::create(batch.target, false);
         
-        // Forward pass
+        // ---- timing: forward (model + log_softmax + nll_loss) ----
+        auto t2 = std::chrono::high_resolution_clock::now();
         std::shared_ptr<Variable> logits;
         std::shared_ptr<Variable> log_probs;
         std::shared_ptr<Variable> loss;
         try {
-            logits = model.forward(input, true);
+            logits    = model.forward(input, true);
             log_probs = logits->log_softmax();
-            loss = log_probs->nll_loss(target);
+            loss      = log_probs->nll_loss(target);
         } catch (const std::exception& e) {
             std::cerr << "Error at step " << step << ": " << e.what() << std::endl;
             std::cerr << "Input shape: " << batch.input.getRows() << "x" << batch.input.getCols() << std::endl;
@@ -345,10 +350,15 @@ void train_shakespeare() {
             std::cerr << "Target is3D: " << batch.target.getIs3D() << std::endl;
             throw;
         }
+        auto t3 = std::chrono::high_resolution_clock::now();
         
-        // Backward pass
+        // ---- timing: optimizer zero ----
         optimizer.zero_grad();
+        auto t4 = std::chrono::high_resolution_clock::now();
+        
+        // ---- timing: backward ----
         loss->backward();
+        auto t5 = std::chrono::high_resolution_clock::now();
         
         // Compute gradient norm for monitoring
         float grad_norm = 0.0f;
@@ -361,8 +371,10 @@ void train_shakespeare() {
         }
         grad_norm = std::sqrt(grad_norm);
         
+        // We group grad-norm + clip + step into "t_opt(step)" for now
         optimizer.clip_grad_norm(1.0f);
         optimizer.step();
+        auto t6 = std::chrono::high_resolution_clock::now();
         
         float loss_val = loss->getData().getValue(0, 0);
         
@@ -374,12 +386,21 @@ void train_shakespeare() {
                       << std::setw(15) << std::fixed << std::setprecision(6) << loss_val
                       << std::setw(15) << std::fixed << std::setprecision(4) << grad_norm
                       << "  (" << elapsed << "s)" << std::endl;
-        }
-        
-        if (step > 0 && step % save_interval == 0) {
-            std::string filename = "shakespeare_step" + std::to_string(step) + ".bin";
-            model.save(filename);
-            std::cout << "  Saved checkpoint: " << filename << std::endl;
+
+            // ---- print per-segment timings (ms) ----
+            double t_loader_ms   = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            double t_forward_ms  = std::chrono::duration<double, std::milli>(t3 - t2).count();
+            double t_zero_ms     = std::chrono::duration<double, std::milli>(t4 - t3).count();
+            double t_backward_ms = std::chrono::duration<double, std::milli>(t5 - t4).count();
+            double t_opt_ms      = std::chrono::duration<double, std::milli>(t6 - t5).count(); // includes grad-norm + clip + step
+
+            std::cout << "  [perf] "
+                      << "t_loader="    << std::fixed << std::setprecision(1) << t_loader_ms   << "ms "
+                      << "t_fwd="       << std::fixed << std::setprecision(1) << t_forward_ms  << "ms "
+                      << "t_bwd="       << std::fixed << std::setprecision(1) << t_backward_ms << "ms "
+                      << "t_opt(zero)=" << std::fixed << std::setprecision(1) << t_zero_ms     << "ms "
+                      << "t_opt(step)=" << std::fixed << std::setprecision(1) << t_opt_ms      << "ms"
+                      << std::endl;
         }
     }
     

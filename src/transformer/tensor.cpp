@@ -158,23 +158,36 @@ Tensor Tensor::matmul(const Tensor& other) const {
         const int N = other.cols;
 
         Tensor result(M, N);
-
         const float* A = this->data;
         const float* B = other.data;
         float *C = result.raw();
 
-        for (int i = 0; i < M; ++i) {
-            float* c_row = C + i * N;
-            const float* a_row = A + i * K;
+        for (int i = 0; i < M * N; ++i) { C[i] = 0.0f; }
 
-            for (int j = 0; j < N; ++j) { c_row[j] = 0.0f; }
+        const int Mc = 128;
+        const int Nc = 128;
+        const int Kc = 256;
 
-            for (int k = 0; k < K; ++k) {
-                const float a_ik = a_row[k];
-                const float* b_row = B + k * N;
+        for (int i0 = 0; i0 < M; i0 += Mc) {
+            const int i_max = (i0 + Mc < M) ? (i0 + Mc) : M;
+            for (int k0 = 0; k0 < K; k0 += Kc) {
+                const int k_max = (k0 + Kc < K) ? (k0 + Kc) : K;
+                for (int j0 = 0; j0 < N; j0 += Nc) {
+                    const int j_max = (j0 + Nc < N) ? (j0 + Nc) : N;
 
-                for (int j = 0; j < N; ++j) {
-                    c_row[j] += a_ik * b_row[j];
+                    for (int i = i0; i < i_max; ++i) {
+                        const float* Ai = A + i * K + k0;
+                        float* Ci = C + i * N + j0;
+
+                        for (int k = k0; k < k_max; ++k) {
+                            const float a_ik = Ai[k - k0];
+                            const float* Bk = B + k * N + j0;
+
+                            for (int j = j0; j < j_max; ++j) {
+                                Ci[j - j0] += a_ik * Bk[j - j0];
+                            }
+                        }
+                    }
                 }
             }
         }
