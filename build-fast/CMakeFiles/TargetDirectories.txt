@@ -1,3 +1,5 @@
 /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles/transformer.dir
+/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles/fast.dir
+/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles/debug.dir
 /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles/edit_cache.dir
 /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles/rebuild_cache.dir

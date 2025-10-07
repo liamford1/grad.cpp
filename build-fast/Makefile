@@ -129,6 +129,32 @@ transformer/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/build
 .PHONY : transformer/fast
 
+#=============================================================================
+# Target rules for targets named fast
+
+# Build rule for target.
+fast: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 fast
+.PHONY : fast
+
+# fast build rule for target.
+fast/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/fast.dir/build.make CMakeFiles/fast.dir/build
+.PHONY : fast/fast
+
+#=============================================================================
+# Target rules for targets named debug
+
+# Build rule for target.
+debug: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 debug
+.PHONY : debug
+
+# fast build rule for target.
+debug/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/debug.dir/build.make CMakeFiles/debug.dir/build
+.PHONY : debug/fast
+
 src/data/dataloader.o: src/data/dataloader.cpp.o
 .PHONY : src/data/dataloader.o
 
@@ -569,6 +595,8 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... debug"
+	@echo "... fast"
 	@echo "... transformer"
 	@echo "... src/data/dataloader.o"
 	@echo "... src/data/dataloader.i"

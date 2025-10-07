@@ -57,40 +57,65 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         auto self_Wo = W_o;
         int self_num_heads = num_heads;
         int self_d_model = d_model;
-        float self_dropout = dropout_rate;
 
         std::vector<Tensor> attention_weights_all;
         std::vector<Tensor> V_heads_all;
 
-        Tensor causal_mask = Tensor::create_causal_mask(seq_len);
-        for (int h = 0; h < num_heads; h++) {
-            int start_col = h * head_size;
-            
-            Tensor Q_head = Q->getData().slice(0, seq_len, start_col, head_size);
-            Tensor K_head = K->getData().slice(0, seq_len, start_col, head_size);
-            Tensor V_head = V->getData().slice(0, seq_len, start_col, head_size);
+        const float* Q_data = Q->getData().raw();
+        const float* K_data = K->getData().raw();
+        const float* V_data = V->getData().raw();
+        float* result_data = result.raw();
 
-            Tensor K_transposed = K_head.transpose();
-            Tensor scores = Q_head.matmul(K_transposed);
-            scores = scores.scale(1.0f / std::sqrt(head_size));
-            scores = scores.add(causal_mask);
+        Tensor causal_mask = Tensor::create_causal_mask(seq_len);
+        const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
+
+        for (int h = 0; h < num_heads; h++) {
+            int head_offset = h * head_size;
+
+            Tensor scores(seq_len, seq_len);
+            scores.fill(0.0f);
+            float* scores_data = scores.raw();
+
+            for (int i = 0; i < seq_len; i++) {
+                for (int j = 0; j < seq_len; j++) {
+                    float sum = 0.0f;
+                    
+                    for (int k = 0; k < head_size; k++) {
+                        sum += Q_data[i * d_model + head_offset + k] * 
+                               K_data[j * d_model + head_offset + k];
+                    }
+                    
+                    scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
+                }
+            }
 
             Tensor attention_weights = scores.softmax();
-            attention_weights = dropout(attention_weights, dropout_rate, training);
-            Tensor attended_values = attention_weights.matmul(V_head);
+            
+            if (training && dropout_rate > 0.0f) {
+                attention_weights = dropout(attention_weights, dropout_rate, training);
+            }
+
+            Tensor V_head(seq_len, head_size);
+            for (int i = 0; i < seq_len; i++) {
+                for (int j = 0; j < head_size; j++) {
+                    V_head.setValue(i, j, V_data[i * d_model + head_offset + j]);
+                }
+            }
 
             attention_weights_all.push_back(attention_weights);
             V_heads_all.push_back(V_head);
 
-            {
-                float* R = result.raw();
-                const float* AV = attended_values.raw();
-                for (int row = 0; row < seq_len; ++row) {
-                    std::memcpy(
-                        R  + row * d_model + start_col, 
-                        AV + row * head_size,
-                        head_size * sizeof(float)
-                    );
+            const float* attn_data = attention_weights.raw();
+
+            for (int i = 0; i < seq_len; i++) {
+                for (int k = 0; k < head_size; k++) {
+                    float sum = 0.0f;
+                    
+                    for (int j = 0; j < seq_len; j++) {
+                        sum += attn_data[i * seq_len + j] * V_head.getValue(j, k);
+                    }
+                    
+                    result_data[i * d_model + head_offset + k] = sum;
                 }
             }
         }

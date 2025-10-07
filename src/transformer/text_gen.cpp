@@ -64,8 +64,10 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
 
 std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
     std::string result = "";
+    result.reserve(tokens.size());
+    
     for (size_t i = 0; i < tokens.size(); i++) {
-        result += std::to_string(tokens[i]);
+        result += static_cast<char>(tokens[i]);
         if (i < tokens.size() - 1) {
             result += " ";
         }

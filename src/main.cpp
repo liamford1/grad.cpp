@@ -4,6 +4,7 @@
 #include "transformer/optimizer.h"
 #include "data/dataset.h"
 #include "data/dataloader.h"
+#include "transformer/text_gen.h"
 #include <iostream>
 #include <vector>
 #include <iomanip>
@@ -199,7 +200,7 @@ void train_shakespeare() {
     const int seq_length = 128;
     const int batch_size = 2;
     const float lr = 3e-4f;
-    const int num_steps = 1000;
+    const int num_steps = 200;
     
     std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model 
               << " layers=" << num_layers << " heads=" << num_heads << std::endl;
@@ -286,6 +287,66 @@ void train_shakespeare() {
     
     model.save("shakespeare_final.bin");
     std::cout << "\n✅ Goal 1 Complete!" << std::endl;
+
+    // After model.save("shakespeare_final.bin");
+
+    // Replace the generation section in train_shakespeare() with this:
+
+    std::cout << "\n" << std::string(60, '=') << std::endl;
+    std::cout << "  Generating Sample Text" << std::endl;
+    std::cout << std::string(60, '=') << std::endl << std::endl;
+
+    // Create text generator
+    TextGen generator(model);
+
+    // Helper function to create prompts
+    auto string_to_tokens = [](const std::string& str) {
+        std::vector<int> tokens;
+        for (char c : str) {
+            tokens.push_back(static_cast<unsigned char>(c));
+        }
+        return tokens;
+    };
+
+    // Try different prompts
+    std::vector<std::string> prompts = {
+        "ROMEO:\n",
+        "JULIET:\n",
+        "First Citizen:\n"
+    };
+
+    std::cout << "=== Greedy Decoding (deterministic) ===" << std::endl << std::endl;
+
+    for (const auto& prompt_str : prompts) {
+        std::cout << "Prompt: \"" << prompt_str << "\"" << std::endl;
+        
+        auto prompt = string_to_tokens(prompt_str);
+        std::string generated = generator.generate_greedy(prompt, 150);
+        
+        // Just print generated (it already includes the prompt)
+        std::cout << generated << std::endl;
+        std::cout << std::string(40, '-') << std::endl << std::endl;
+    }
+
+    std::cout << "\n=== Sampling (temperature=0.8) ===" << std::endl << std::endl;
+
+    for (const auto& prompt_str : prompts) {
+        std::cout << "Prompt: \"" << prompt_str << "\"" << std::endl;
+        
+        auto prompt = string_to_tokens(prompt_str);
+        // Use sampling for more variety (might break the "the the" loop)
+        std::string generated = generator.generate_sample(prompt, 0.8f, 150);
+        
+        std::cout << generated << std::endl;
+        std::cout << std::string(40, '-') << std::endl << std::endl;
+    }
+
+    std::cout << "\nNote: Model trained for only 200 steps (loss=2.9)." << std::endl;
+    std::cout << "At this stage, the model has learned:" << std::endl;
+    std::cout << "  ✓ Common English words (the, and, is, he)" << std::endl;
+    std::cout << "  ✓ Spacing and punctuation" << std::endl;
+    std::cout << "  ✗ Semantic meaning (needs 1000+ steps)" << std::endl;
+    std::cout << "\nTrain longer (1000 steps, loss~1.5) for coherent text!" << std::endl;
 }
 
 // ============================================================================

@@ -6,7 +6,7 @@ CXX_DEFINES =
 
 CXX_INCLUDES = -I/Users/liamford/Documents/transformer-from-scratch/include
 
-CXX_FLAGSarm64 = -O3 -DNDEBUG -march=native -fno-math-errno -std=gnu++17 -arch arm64
+CXX_FLAGSarm64 = -O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno -std=gnu++17 -arch arm64
 
-CXX_FLAGS = -O3 -DNDEBUG -march=native -fno-math-errno -std=gnu++17 -arch arm64
+CXX_FLAGS = -O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno -std=gnu++17 -arch arm64
 

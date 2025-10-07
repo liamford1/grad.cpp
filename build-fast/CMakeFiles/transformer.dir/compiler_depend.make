@@ -3023,6 +3023,7 @@ CMakeFiles/transformer.dir/src/main.cpp.o: /Users/liamford/Documents/transformer
   /Users/liamford/Documents/transformer-from-scratch/include/transformer/optimizer.h \
   /Users/liamford/Documents/transformer-from-scratch/include/transformer/positional_encoding.h \
   /Users/liamford/Documents/transformer-from-scratch/include/transformer/tensor.h \
+  /Users/liamford/Documents/transformer-from-scratch/include/transformer/text_gen.h \
   /Users/liamford/Documents/transformer-from-scratch/include/transformer/token_embedding.h \
   /Users/liamford/Documents/transformer-from-scratch/include/transformer/transformer_block.h \
   /Users/liamford/Documents/transformer-from-scratch/include/transformer/variable.h
@@ -17632,8 +17633,6 @@ CMakeFiles/transformer.dir/src/transformer/variable.cpp.o: /Users/liamford/Docum
 
 /Users/liamford/Documents/transformer-from-scratch/src/transformer/token_embedding.cpp:
 
-/Users/liamford/Documents/transformer-from-scratch/include/transformer/text_gen.h:
-
 /Users/liamford/Documents/transformer-from-scratch/src/transformer/text_gen.cpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/cassert:
@@ -17661,6 +17660,8 @@ CMakeFiles/transformer.dir/src/transformer/variable.cpp.o: /Users/liamford/Docum
 /Users/liamford/Documents/transformer-from-scratch/include/transformer/variable.h:
 
 /Users/liamford/Documents/transformer-from-scratch/include/transformer/transformer_block.h:
+
+/Users/liamford/Documents/transformer-from-scratch/include/transformer/text_gen.h:
 
 /Users/liamford/Documents/transformer-from-scratch/include/transformer/optimizer.h:
 

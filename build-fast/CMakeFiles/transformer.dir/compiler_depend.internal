@@ -3026,6 +3026,7 @@ CMakeFiles/transformer.dir/src/main.cpp.o
  /Users/liamford/Documents/transformer-from-scratch/include/transformer/optimizer.h
  /Users/liamford/Documents/transformer-from-scratch/include/transformer/positional_encoding.h
  /Users/liamford/Documents/transformer-from-scratch/include/transformer/tensor.h
+ /Users/liamford/Documents/transformer-from-scratch/include/transformer/text_gen.h
  /Users/liamford/Documents/transformer-from-scratch/include/transformer/token_embedding.h
  /Users/liamford/Documents/transformer-from-scratch/include/transformer/transformer_block.h
  /Users/liamford/Documents/transformer-from-scratch/include/transformer/variable.h

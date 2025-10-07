@@ -712,3 +712,63 @@ void Tensor::assertValid(const std::string& context) const {
         throw std::runtime_error("Tensor error [" + context + "]: zero elements");
     }
 }
+
+void Tensor::scale_inplace(float scalar) {
+    assertValid("scale_inplace");
+    const int total = batch_size * rows * cols;
+    for (int i = 0; i < total; i++) {
+        data[i] *= scalar;
+    }
+}
+
+void Tensor::add_inplace(const Tensor& other) {
+    assertValid("add_inplace");
+    other.assertValid("add_inplace(other)");
+    
+    if (!is_3d && !other.is_3d) {
+        if (rows != other.rows || cols != other.cols) {
+            throw std::invalid_argument("Shape mismatch for in-place add");
+        }
+        
+        const int total = rows * cols;
+        const float* other_data = other.raw();
+        
+        for (int i = 0; i < total; i++) {
+            data[i] += other_data[i];
+        }
+    } else if (is_3d && other.is_3d) {
+        if (batch_size != other.batch_size || rows != other.rows || cols != other.cols) {
+            throw std::invalid_argument("Shape mismatch for in-place add");
+        }
+        
+        const int total = batch_size * rows * cols;
+        const float* other_data = other.raw();
+        
+        for (int i = 0; i < total; i++) {
+            data[i] += other_data[i];
+        }
+    } else {
+        throw std::invalid_argument("Cannot add 2D and 3D tensors in-place");
+    }
+}
+
+void Tensor::multiply_inplace(const Tensor& other) {
+    assertValid("multiply_inplace");
+    other.assertValid("multiply_inplace(other)");
+    
+    if (rows != other.rows || cols != other.cols || is_3d != other.is_3d) {
+        throw std::invalid_argument("Shape mismatch for in-place multiply");
+    }
+    
+    const int total = (is_3d ? batch_size : 1) * rows * cols;
+    const float* other_data = other.raw();
+    
+    for (int i = 0; i < total; i++) {
+        data[i] *= other_data[i];
+    }
+}
+
+void Tensor::zero() {
+    const int total = (is_3d ? batch_size : 1) * rows * cols;
+    std::memset(data, 0, total * sizeof(float));
+}

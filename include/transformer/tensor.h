@@ -27,6 +27,11 @@ class Tensor {
         Tensor subtract(const Tensor& other) const;
         Tensor elementwise(const Tensor& other) const;
 
+        void scale_inplace(float scalar);
+        void add_inplace(const Tensor& other);
+        void multiply_inplace(const Tensor& other);
+        void zero();
+
         Tensor transpose() const;
         Tensor softmax() const;
         void fill(float value);
