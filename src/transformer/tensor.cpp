@@ -144,10 +144,10 @@ void Tensor::display() const {
     }
 }
 
-
 Tensor Tensor::matmul(const Tensor& other) const {
     assertValid("matmul(lhs)");
     other.assertValid("matmul(rhs)");
+    
     if (!this->is_3d && !other.is_3d) {
         if (this->cols != other.rows) {
             throw std::invalid_argument("Matrix dimensions do not match for multiplication");
@@ -159,8 +159,8 @@ Tensor Tensor::matmul(const Tensor& other) const {
 
         Tensor result(M, N);
         const float* A = this->data;
-        const float* B = other.data;
-        float *C = result.raw();
+        const float* B_data = other.data;
+        float* C = result.raw();
 
         for (int i = 0; i < M * N; ++i) { C[i] = 0.0f; }
 
@@ -181,7 +181,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
 
                         for (int k = k0; k < k_max; ++k) {
                             const float a_ik = Ai[k - k0];
-                            const float* Bk = B + k * N + j0;
+                            const float* Bk = B_data + k * N + j0;
 
                             for (int j = j0; j < j_max; ++j) {
                                 Ci[j - j0] += a_ik * Bk[j - j0];
@@ -197,15 +197,52 @@ Tensor Tensor::matmul(const Tensor& other) const {
             throw std::invalid_argument("Matrix dimensions do not match for batch multiplication");
         }
         
-        Tensor result(this->batch_size, this->rows, other.cols);
-        for (int b = 0; b < this->batch_size; b++) {
-            for (int i = 0; i < this->rows; i++) {
-                for (int j = 0; j < other.cols; j++) {
-                    float sum = 0.0f;
-                    for (int k = 0; k < this->cols; k++) {
-                        sum += this->getValue(b, i, k) * other.getValue(k, j);
+        const int batch_count = this->batch_size;
+        const int M = this->rows;
+        const int K = this->cols;
+        const int N = other.cols;
+
+        Tensor result(batch_count, M, N);
+
+        const int Mc = 64;
+        const int Nc = 64;
+        const int Kc = 128;
+
+        const float* A_base = this->data;
+        const float* B_data = other.data;
+        float* C_base = result.data;
+
+        for (int b = 0; b < batch_count; ++b) {
+            const float* A = A_base + b * M * K;
+            float* C = C_base + b * M * N;
+
+            for (int i = 0; i < M * N; ++i) {
+                C[i] = 0.0f;
+            }
+
+            for (int i0 = 0; i0 < M; i0 += Mc) {
+                const int i_max = std::min(i0 + Mc, M);
+                
+                for (int k0 = 0; k0 < K; k0 += Kc) {
+                    const int k_max = std::min(k0 + Kc, K);
+                    
+                    for (int j0 = 0; j0 < N; j0 += Nc) {
+                        const int j_max = std::min(j0 + Nc, N);
+                        
+                        for (int i = i0; i < i_max; ++i) {
+                            const float* A_row = A + i * K;
+                            float* C_row = C + i * N;
+                            
+                            for (int k = k0; k < k_max; ++k) {
+                                const float a_val = A_row[k];
+                                const float* B_row = B_data + k * N;
+                                
+                                for (int j = j0; j < j_max; ++j) {
+                                    C_row[j] += a_val * B_row[j];
+                                }
+                            }
+                        }
                     }
-                    result.setValue(b, i, j, sum);
                 }
             }
         }
@@ -215,15 +252,53 @@ Tensor Tensor::matmul(const Tensor& other) const {
             throw std::invalid_argument("Batch matrix dimensions do not match");
         }
         
-        Tensor result(this->batch_size, this->rows, other.cols);
-        for (int b = 0; b < this->batch_size; b++) {
-            for (int i = 0; i < this->rows; i++) {
-                for (int j = 0; j < other.cols; j++) {
-                    float sum = 0.0f;
-                    for (int k = 0; k < this->cols; k++) {
-                        sum += this->getValue(b, i, k) * other.getValue(b, k, j);
+        const int batch_count = this->batch_size;
+        const int M = this->rows;
+        const int K = this->cols;
+        const int N = other.cols;
+        
+        Tensor result(batch_count, M, N);
+        
+        const int Mc = 64;
+        const int Nc = 64;
+        const int Kc = 128;
+        
+        const float* A_base = this->data;
+        const float* B_base = other.data;
+        float* C_base = result.data;
+        
+        for (int b = 0; b < batch_count; ++b) {
+            const float* A = A_base + b * M * K;
+            const float* B_ptr = B_base + b * K * N;
+            float* C = C_base + b * M * N;
+            
+            for (int i = 0; i < M * N; ++i) {
+                C[i] = 0.0f;
+            }
+            
+            for (int i0 = 0; i0 < M; i0 += Mc) {
+                const int i_max = std::min(i0 + Mc, M);
+                
+                for (int k0 = 0; k0 < K; k0 += Kc) {
+                    const int k_max = std::min(k0 + Kc, K);
+                    
+                    for (int j0 = 0; j0 < N; j0 += Nc) {
+                        const int j_max = std::min(j0 + Nc, N);
+                        
+                        for (int i = i0; i < i_max; ++i) {
+                            const float* A_row = A + i * K;
+                            float* C_row = C + i * N;
+                            
+                            for (int k = k0; k < k_max; ++k) {
+                                const float a_val = A_row[k];
+                                const float* B_row = B_ptr + k * N;
+                                
+                                for (int j = j0; j < j_max; ++j) {
+                                    C_row[j] += a_val * B_row[j];
+                                }
+                            }
+                        }
                     }
-                    result.setValue(b, i, j, sum);
                 }
             }
         }

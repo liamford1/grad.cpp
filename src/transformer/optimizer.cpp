@@ -6,6 +6,17 @@ AdamOptimizer::AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& param
 
 void AdamOptimizer::step() {
     step_count_++;
+
+    const float bc1 = 1.0f - std::pow(beta1_, step_count_);
+    const float bc2 = 1.0f - std::pow(beta2_, step_count_);
+    const float inv_bc1 = 1.0f / bc1;
+    const float inv_bc2 = 1.0f / bc2;
+
+    const float lr  = lr_;
+    const float eps = epsilon_;
+    const float wd  = weight_decay_;
+    const float b1  = beta1_;
+    const float b2  = beta2_;
     
     for (auto& param : parameters_) {
         if (!param->requiresGrad()) continue;
@@ -35,22 +46,20 @@ void AdamOptimizer::step() {
         float* gptr = grad.raw();
         float* mptr = m.raw();
         float* vptr = v.raw();
-        
-        for (int i = 0; i < n; i++) {
+
+        for (int i = 0; i < n; ++i) {
             float g = gptr[i];
-            
-            if (weight_decay_ > 0.0f) {
-                g += weight_decay_ * dptr[i];
+            if (wd > 0.0f) {
+                g += wd * dptr[i];
             }
-            
-            mptr[i] = beta1_ * mptr[i] + (1.0f - beta1_) * g;
-            
-            vptr[i] = beta2_ * vptr[i] + (1.0f - beta2_) * (g * g);
-            
-            float m_hat = mptr[i] / (1.0f - std::pow(beta1_, step_count_));
-            float v_hat = vptr[i] / (1.0f - std::pow(beta2_, step_count_));
-            
-            dptr[i] -= lr_ * m_hat / (std::sqrt(v_hat) + epsilon_);
+
+            float mi = mptr[i] = b1 * mptr[i] + (1.0f - b1) * g;
+            float vi = vptr[i] = b2 * vptr[i] + (1.0f - b2) * (g * g);
+
+            float m_hat = mi * inv_bc1;
+            float v_hat = vi * inv_bc2;
+
+            dptr[i] -= lr * m_hat / (std::sqrt(v_hat) + eps);
         }
     }
 }
