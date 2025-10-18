@@ -2,6 +2,7 @@
 /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles/fast.dir
 /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles/debug.dir
 /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles/test_gradients.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles/test_dropout.dir
 /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles/test.dir
 /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles/edit_cache.dir
 /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles/rebuild_cache.dir

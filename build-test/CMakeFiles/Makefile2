@@ -65,11 +65,13 @@ CMAKE_BINARY_DIR = /Users/liamford/Documents/projects/transformer-from-scratch/b
 # The main recursive "all" target.
 all: CMakeFiles/transformer.dir/all
 all: CMakeFiles/test_gradients.dir/all
+all: CMakeFiles/test_dropout.dir/all
 .PHONY : all
 
 # The main recursive "codegen" target.
 codegen: CMakeFiles/transformer.dir/codegen
 codegen: CMakeFiles/test_gradients.dir/codegen
+codegen: CMakeFiles/test_dropout.dir/codegen
 .PHONY : codegen
 
 # The main recursive "preinstall" target.
@@ -81,6 +83,7 @@ clean: CMakeFiles/transformer.dir/clean
 clean: CMakeFiles/fast.dir/clean
 clean: CMakeFiles/debug.dir/clean
 clean: CMakeFiles/test_gradients.dir/clean
+clean: CMakeFiles/test_dropout.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -90,7 +93,7 @@ clean: CMakeFiles/test_gradients.dir/clean
 CMakeFiles/transformer.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40 "Built target transformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45 "Built target transformer"
 .PHONY : CMakeFiles/transformer.dir/all
 
 # Build rule for subdir invocation for target.
@@ -107,7 +110,7 @@ transformer: CMakeFiles/transformer.dir/rule
 # codegen rule for target.
 CMakeFiles/transformer.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40 "Finished codegen for target transformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45 "Finished codegen for target transformer"
 .PHONY : CMakeFiles/transformer.dir/codegen
 
 # clean rule for target.
@@ -186,7 +189,7 @@ CMakeFiles/debug.dir/clean:
 CMakeFiles/test_gradients.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21 "Built target test_gradients"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26 "Built target test_gradients"
 .PHONY : CMakeFiles/test_gradients.dir/all
 
 # Build rule for subdir invocation for target.
@@ -203,13 +206,45 @@ test_gradients: CMakeFiles/test_gradients.dir/rule
 # codegen rule for target.
 CMakeFiles/test_gradients.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21 "Finished codegen for target test_gradients"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26 "Finished codegen for target test_gradients"
 .PHONY : CMakeFiles/test_gradients.dir/codegen
 
 # clean rule for target.
 CMakeFiles/test_gradients.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/clean
 .PHONY : CMakeFiles/test_gradients.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/test_dropout.dir
+
+# All Build rule for target.
+CMakeFiles/test_dropout.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=3,4,5,6,7 "Built target test_dropout"
+.PHONY : CMakeFiles/test_dropout.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_dropout.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles 5
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_dropout.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles 0
+.PHONY : CMakeFiles/test_dropout.dir/rule
+
+# Convenience name for target.
+test_dropout: CMakeFiles/test_dropout.dir/rule
+.PHONY : test_dropout
+
+# codegen rule for target.
+CMakeFiles/test_dropout.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=3,4,5,6,7 "Finished codegen for target test_dropout"
+.PHONY : CMakeFiles/test_dropout.dir/codegen
+
+# clean rule for target.
+CMakeFiles/test_dropout.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/clean
+.PHONY : CMakeFiles/test_dropout.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

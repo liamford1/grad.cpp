@@ -178,6 +178,19 @@ test_gradients/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/build
 .PHONY : test_gradients/fast
 
+#=============================================================================
+# Target rules for targets named test_dropout
+
+# Build rule for target.
+test_dropout: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_dropout
+.PHONY : test_dropout
+
+# fast build rule for target.
+test_dropout/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/build
+.PHONY : test_dropout/fast
+
 src/data/dataloader.o: src/data/dataloader.cpp.o
 .PHONY : src/data/dataloader.o
 
@@ -290,6 +303,7 @@ src/transformer/activations.o: src/transformer/activations.cpp.o
 src/transformer/activations.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/activations.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.o
 .PHONY : src/transformer/activations.cpp.o
 
 src/transformer/activations.i: src/transformer/activations.cpp.i
@@ -299,6 +313,7 @@ src/transformer/activations.i: src/transformer/activations.cpp.i
 src/transformer/activations.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/activations.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.i
 .PHONY : src/transformer/activations.cpp.i
 
 src/transformer/activations.s: src/transformer/activations.cpp.s
@@ -308,6 +323,7 @@ src/transformer/activations.s: src/transformer/activations.cpp.s
 src/transformer/activations.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/activations.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.s
 .PHONY : src/transformer/activations.cpp.s
 
 src/transformer/attention.o: src/transformer/attention.cpp.o
@@ -533,6 +549,7 @@ src/transformer/tensor.o: src/transformer/tensor.cpp.o
 src/transformer/tensor.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.o
 .PHONY : src/transformer/tensor.cpp.o
 
 src/transformer/tensor.i: src/transformer/tensor.cpp.i
@@ -542,6 +559,7 @@ src/transformer/tensor.i: src/transformer/tensor.cpp.i
 src/transformer/tensor.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/tensor.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.i
 .PHONY : src/transformer/tensor.cpp.i
 
 src/transformer/tensor.s: src/transformer/tensor.cpp.s
@@ -551,6 +569,7 @@ src/transformer/tensor.s: src/transformer/tensor.cpp.s
 src/transformer/tensor.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/tensor.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.s
 .PHONY : src/transformer/tensor.cpp.s
 
 src/transformer/text_gen.o: src/transformer/text_gen.cpp.o
@@ -641,6 +660,7 @@ src/transformer/variable.o: src/transformer/variable.cpp.o
 src/transformer/variable.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/variable.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.o
 .PHONY : src/transformer/variable.cpp.o
 
 src/transformer/variable.i: src/transformer/variable.cpp.i
@@ -650,6 +670,7 @@ src/transformer/variable.i: src/transformer/variable.cpp.i
 src/transformer/variable.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/variable.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.i
 .PHONY : src/transformer/variable.cpp.i
 
 src/transformer/variable.s: src/transformer/variable.cpp.s
@@ -659,7 +680,32 @@ src/transformer/variable.s: src/transformer/variable.cpp.s
 src/transformer/variable.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/variable.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.s
 .PHONY : src/transformer/variable.cpp.s
+
+tests/unit/test_dropout.o: tests/unit/test_dropout.cpp.o
+.PHONY : tests/unit/test_dropout.o
+
+# target to build an object file
+tests/unit/test_dropout.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/tests/unit/test_dropout.cpp.o
+.PHONY : tests/unit/test_dropout.cpp.o
+
+tests/unit/test_dropout.i: tests/unit/test_dropout.cpp.i
+.PHONY : tests/unit/test_dropout.i
+
+# target to preprocess a source file
+tests/unit/test_dropout.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/tests/unit/test_dropout.cpp.i
+.PHONY : tests/unit/test_dropout.cpp.i
+
+tests/unit/test_dropout.s: tests/unit/test_dropout.cpp.s
+.PHONY : tests/unit/test_dropout.s
+
+# target to generate assembly for a file
+tests/unit/test_dropout.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/tests/unit/test_dropout.cpp.s
+.PHONY : tests/unit/test_dropout.cpp.s
 
 tests/unit/test_gradients.o: tests/unit/test_gradients.cpp.o
 .PHONY : tests/unit/test_gradients.o
@@ -696,6 +742,7 @@ help:
 	@echo "... test"
 	@echo "... debug"
 	@echo "... fast"
+	@echo "... test_dropout"
 	@echo "... test_gradients"
 	@echo "... transformer"
 	@echo "... src/data/dataloader.o"
@@ -752,6 +799,9 @@ help:
 	@echo "... src/transformer/variable.o"
 	@echo "... src/transformer/variable.i"
 	@echo "... src/transformer/variable.s"
+	@echo "... tests/unit/test_dropout.o"
+	@echo "... tests/unit/test_dropout.i"
+	@echo "... tests/unit/test_dropout.s"
 	@echo "... tests/unit/test_gradients.o"
 	@echo "... tests/unit/test_gradients.i"
 	@echo "... tests/unit/test_gradients.s"

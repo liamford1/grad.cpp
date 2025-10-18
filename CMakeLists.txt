@@ -144,11 +144,19 @@ if(BUILD_TESTS)
         src/data/dataset.cpp
         src/data/dataloader.cpp
     )
+
+    add_executable(test_dropout
+        tests/unit/test_dropout.cpp
+        src/transformer/tensor.cpp
+        src/transformer/variable.cpp
+        src/transformer/activations.cpp
+    )
     
     target_include_directories(test_gradients PRIVATE include)
-    
-    # Register test with CTest
     add_test(NAME GradientChecking COMMAND test_gradients)
+
+    target_include_directories(test_dropout PRIVATE include)
+    add_test(NAME DropoutVerification COMMAND test_dropout)
     
     message(STATUS "Test targets added. Run with: make test_gradients && ./test_gradients")
 endif()
