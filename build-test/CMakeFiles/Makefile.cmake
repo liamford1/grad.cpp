@@ -62,4 +62,5 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/test_gradients.dir/DependInfo.cmake"
   "CMakeFiles/test_dropout.dir/DependInfo.cmake"
   "CMakeFiles/test_attention_bias.dir/DependInfo.cmake"
+  "CMakeFiles/test_weight_tying.dir/DependInfo.cmake"
   )

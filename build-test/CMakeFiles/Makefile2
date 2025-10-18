@@ -67,6 +67,7 @@ all: CMakeFiles/transformer.dir/all
 all: CMakeFiles/test_gradients.dir/all
 all: CMakeFiles/test_dropout.dir/all
 all: CMakeFiles/test_attention_bias.dir/all
+all: CMakeFiles/test_weight_tying.dir/all
 .PHONY : all
 
 # The main recursive "codegen" target.
@@ -74,6 +75,7 @@ codegen: CMakeFiles/transformer.dir/codegen
 codegen: CMakeFiles/test_gradients.dir/codegen
 codegen: CMakeFiles/test_dropout.dir/codegen
 codegen: CMakeFiles/test_attention_bias.dir/codegen
+codegen: CMakeFiles/test_weight_tying.dir/codegen
 .PHONY : codegen
 
 # The main recursive "preinstall" target.
@@ -87,6 +89,7 @@ clean: CMakeFiles/debug.dir/clean
 clean: CMakeFiles/test_gradients.dir/clean
 clean: CMakeFiles/test_dropout.dir/clean
 clean: CMakeFiles/test_attention_bias.dir/clean
+clean: CMakeFiles/test_weight_tying.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -96,7 +99,7 @@ clean: CMakeFiles/test_attention_bias.dir/clean
 CMakeFiles/transformer.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51 "Built target transformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64 "Built target transformer"
 .PHONY : CMakeFiles/transformer.dir/all
 
 # Build rule for subdir invocation for target.
@@ -113,7 +116,7 @@ transformer: CMakeFiles/transformer.dir/rule
 # codegen rule for target.
 CMakeFiles/transformer.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51 "Finished codegen for target transformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64 "Finished codegen for target transformer"
 .PHONY : CMakeFiles/transformer.dir/codegen
 
 # clean rule for target.
@@ -280,6 +283,38 @@ CMakeFiles/test_attention_bias.dir/codegen:
 CMakeFiles/test_attention_bias.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/clean
 .PHONY : CMakeFiles/test_attention_bias.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/test_weight_tying.dir
+
+# All Build rule for target.
+CMakeFiles/test_weight_tying.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=33,34,35,36,37,38,39,40,41,42,43,44,45 "Built target test_weight_tying"
+.PHONY : CMakeFiles/test_weight_tying.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_weight_tying.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles 13
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_weight_tying.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles 0
+.PHONY : CMakeFiles/test_weight_tying.dir/rule
+
+# Convenience name for target.
+test_weight_tying: CMakeFiles/test_weight_tying.dir/rule
+.PHONY : test_weight_tying
+
+# codegen rule for target.
+CMakeFiles/test_weight_tying.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-test/CMakeFiles --progress-num=33,34,35,36,37,38,39,40,41,42,43,44,45 "Finished codegen for target test_weight_tying"
+.PHONY : CMakeFiles/test_weight_tying.dir/codegen
+
+# clean rule for target.
+CMakeFiles/test_weight_tying.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/clean
+.PHONY : CMakeFiles/test_weight_tying.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

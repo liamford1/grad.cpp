@@ -159,6 +159,21 @@ if(BUILD_TESTS)
         src/transformer/activations.cpp
         src/transformer/multihead_attention.cpp
     )
+
+    add_executable(test_weight_tying
+        tests/unit/test_weight_tying.cpp
+        src/transformer/tensor.cpp
+        src/transformer/variable.cpp
+        src/transformer/activations.cpp
+        src/transformer/token_embedding.cpp
+        src/transformer/positional_encoding.cpp
+        src/transformer/layer_norm.cpp
+        src/transformer/linear.cpp
+        src/transformer/multihead_attention.cpp
+        src/transformer/feedforward.cpp
+        src/transformer/transformer_block.cpp
+        src/transformer/gpt_model.cpp
+    )
     
     target_include_directories(test_gradients PRIVATE include)
     add_test(NAME GradientChecking COMMAND test_gradients)
@@ -168,6 +183,9 @@ if(BUILD_TESTS)
 
     target_include_directories(test_attention_bias PRIVATE include)
     add_test(NAME AttentionBiasVerification COMMAND test_attention_bias)
+
+    target_include_directories(test_weight_tying PRIVATE include)
+    add_test(NAME WeightTyingVerification COMMAND test_weight_tying)
     
     message(STATUS "Test targets added. Run with: make test_gradients && ./test_gradients")
 endif()

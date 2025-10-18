@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len, float dropout_rate) : 
+GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len, float dropout_rate) :
     vocab_size(vocab_size),
     d_model(d_model),
     num_layers(num_layers),
@@ -18,8 +18,7 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
     dropout_rate(dropout_rate),
     token_embedding(vocab_size, d_model),
     pos_encoding(max_len, d_model),
-    final_norm(d_model),
-    output_projection(d_model, vocab_size)
+    final_norm(d_model)
 {
     for (int i = 0; i < num_layers; i++) {
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, num_heads, -1, dropout_rate));
@@ -41,7 +40,13 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     }
 
     auto normalized_output = final_norm.forward(transformer_output);
-    auto logits = output_projection.forward(normalized_output);
+
+    auto embedding_weights_transposed = Variable::create(
+        token_embedding.getEmbeddingTable()->getData().transpose(),
+        false
+    );
+    auto logits = normalized_output->matmul(embedding_weights_transposed);
+
     return logits;
 }
 
@@ -74,10 +79,7 @@ std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
     
     params.push_back(final_norm.getGamma());
     params.push_back(final_norm.getBeta());
-    
-    params.push_back(output_projection.getWeights());
-    params.push_back(output_projection.getBias());
-    
+
     return params;
 }
 
@@ -163,10 +165,7 @@ bool GPTModel::save(const std::string& filepath) const {
 
         writeTensorToBinary(file, final_norm.getGamma()->getData());
         writeTensorToBinary(file, final_norm.getBeta()->getData());
-        
-        writeTensorToBinary(file, output_projection.getWeights()->getData());
-        writeTensorToBinary(file, output_projection.getBias()->getData());
-        
+
         file.close();
         std::cout << "Model saved successfully to: " << filepath << std::endl;
         return true;
@@ -260,13 +259,7 @@ GPTModel GPTModel::load(const std::string& filepath) {
         Tensor final_gamma = readTensorFromBinary(file);
         Tensor final_beta = readTensorFromBinary(file);
         model.final_norm.setParams(final_gamma, final_beta);
-        
-        Tensor output_weights = readTensorFromBinary(file);
-        Tensor output_bias = readTensorFromBinary(file);
-        auto output_weights_var = Variable::create(output_weights, true);
-        auto output_bias_var = Variable::create(output_bias, true);
-        model.output_projection.setWeights(output_weights_var, output_bias_var);
-        
+
         file.close();
         std::cout << "Model loaded successfully from: " << filepath << std::endl;
         return model;

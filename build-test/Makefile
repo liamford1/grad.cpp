@@ -204,6 +204,19 @@ test_attention_bias/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/build
 .PHONY : test_attention_bias/fast
 
+#=============================================================================
+# Target rules for targets named test_weight_tying
+
+# Build rule for target.
+test_weight_tying: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_weight_tying
+.PHONY : test_weight_tying
+
+# fast build rule for target.
+test_weight_tying/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/build
+.PHONY : test_weight_tying/fast
+
 src/data/dataloader.o: src/data/dataloader.cpp.o
 .PHONY : src/data/dataloader.o
 
@@ -318,6 +331,7 @@ src/transformer/activations.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/activations.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/activations.cpp.o
 .PHONY : src/transformer/activations.cpp.o
 
 src/transformer/activations.i: src/transformer/activations.cpp.i
@@ -329,6 +343,7 @@ src/transformer/activations.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/activations.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/activations.cpp.i
 .PHONY : src/transformer/activations.cpp.i
 
 src/transformer/activations.s: src/transformer/activations.cpp.s
@@ -340,6 +355,7 @@ src/transformer/activations.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/activations.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/activations.cpp.s
 .PHONY : src/transformer/activations.cpp.s
 
 src/transformer/attention.o: src/transformer/attention.cpp.o
@@ -376,6 +392,7 @@ src/transformer/feedforward.o: src/transformer/feedforward.cpp.o
 src/transformer/feedforward.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/feedforward.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/feedforward.cpp.o
 .PHONY : src/transformer/feedforward.cpp.o
 
 src/transformer/feedforward.i: src/transformer/feedforward.cpp.i
@@ -385,6 +402,7 @@ src/transformer/feedforward.i: src/transformer/feedforward.cpp.i
 src/transformer/feedforward.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/feedforward.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/feedforward.cpp.i
 .PHONY : src/transformer/feedforward.cpp.i
 
 src/transformer/feedforward.s: src/transformer/feedforward.cpp.s
@@ -394,6 +412,7 @@ src/transformer/feedforward.s: src/transformer/feedforward.cpp.s
 src/transformer/feedforward.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/feedforward.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/feedforward.cpp.s
 .PHONY : src/transformer/feedforward.cpp.s
 
 src/transformer/gpt_model.o: src/transformer/gpt_model.cpp.o
@@ -403,6 +422,7 @@ src/transformer/gpt_model.o: src/transformer/gpt_model.cpp.o
 src/transformer/gpt_model.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/gpt_model.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/gpt_model.cpp.o
 .PHONY : src/transformer/gpt_model.cpp.o
 
 src/transformer/gpt_model.i: src/transformer/gpt_model.cpp.i
@@ -412,6 +432,7 @@ src/transformer/gpt_model.i: src/transformer/gpt_model.cpp.i
 src/transformer/gpt_model.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/gpt_model.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/gpt_model.cpp.i
 .PHONY : src/transformer/gpt_model.cpp.i
 
 src/transformer/gpt_model.s: src/transformer/gpt_model.cpp.s
@@ -421,6 +442,7 @@ src/transformer/gpt_model.s: src/transformer/gpt_model.cpp.s
 src/transformer/gpt_model.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/gpt_model.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/gpt_model.cpp.s
 .PHONY : src/transformer/gpt_model.cpp.s
 
 src/transformer/layer_norm.o: src/transformer/layer_norm.cpp.o
@@ -430,6 +452,7 @@ src/transformer/layer_norm.o: src/transformer/layer_norm.cpp.o
 src/transformer/layer_norm.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/layer_norm.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/layer_norm.cpp.o
 .PHONY : src/transformer/layer_norm.cpp.o
 
 src/transformer/layer_norm.i: src/transformer/layer_norm.cpp.i
@@ -439,6 +462,7 @@ src/transformer/layer_norm.i: src/transformer/layer_norm.cpp.i
 src/transformer/layer_norm.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/layer_norm.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/layer_norm.cpp.i
 .PHONY : src/transformer/layer_norm.cpp.i
 
 src/transformer/layer_norm.s: src/transformer/layer_norm.cpp.s
@@ -448,6 +472,7 @@ src/transformer/layer_norm.s: src/transformer/layer_norm.cpp.s
 src/transformer/layer_norm.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/layer_norm.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/layer_norm.cpp.s
 .PHONY : src/transformer/layer_norm.cpp.s
 
 src/transformer/linear.o: src/transformer/linear.cpp.o
@@ -457,6 +482,7 @@ src/transformer/linear.o: src/transformer/linear.cpp.o
 src/transformer/linear.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/linear.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/linear.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/linear.cpp.o
 .PHONY : src/transformer/linear.cpp.o
 
 src/transformer/linear.i: src/transformer/linear.cpp.i
@@ -466,6 +492,7 @@ src/transformer/linear.i: src/transformer/linear.cpp.i
 src/transformer/linear.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/linear.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/linear.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/linear.cpp.i
 .PHONY : src/transformer/linear.cpp.i
 
 src/transformer/linear.s: src/transformer/linear.cpp.s
@@ -475,6 +502,7 @@ src/transformer/linear.s: src/transformer/linear.cpp.s
 src/transformer/linear.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/linear.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/linear.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/linear.cpp.s
 .PHONY : src/transformer/linear.cpp.s
 
 src/transformer/multihead_attention.o: src/transformer/multihead_attention.cpp.o
@@ -485,6 +513,7 @@ src/transformer/multihead_attention.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/multihead_attention.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/multihead_attention.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/multihead_attention.cpp.o
 .PHONY : src/transformer/multihead_attention.cpp.o
 
 src/transformer/multihead_attention.i: src/transformer/multihead_attention.cpp.i
@@ -495,6 +524,7 @@ src/transformer/multihead_attention.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/multihead_attention.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/multihead_attention.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/multihead_attention.cpp.i
 .PHONY : src/transformer/multihead_attention.cpp.i
 
 src/transformer/multihead_attention.s: src/transformer/multihead_attention.cpp.s
@@ -505,6 +535,7 @@ src/transformer/multihead_attention.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/multihead_attention.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/multihead_attention.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/multihead_attention.cpp.s
 .PHONY : src/transformer/multihead_attention.cpp.s
 
 src/transformer/optimizer.o: src/transformer/optimizer.cpp.o
@@ -541,6 +572,7 @@ src/transformer/positional_encoding.o: src/transformer/positional_encoding.cpp.o
 src/transformer/positional_encoding.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/positional_encoding.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/positional_encoding.cpp.o
 .PHONY : src/transformer/positional_encoding.cpp.o
 
 src/transformer/positional_encoding.i: src/transformer/positional_encoding.cpp.i
@@ -550,6 +582,7 @@ src/transformer/positional_encoding.i: src/transformer/positional_encoding.cpp.i
 src/transformer/positional_encoding.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/positional_encoding.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/positional_encoding.cpp.i
 .PHONY : src/transformer/positional_encoding.cpp.i
 
 src/transformer/positional_encoding.s: src/transformer/positional_encoding.cpp.s
@@ -559,6 +592,7 @@ src/transformer/positional_encoding.s: src/transformer/positional_encoding.cpp.s
 src/transformer/positional_encoding.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/positional_encoding.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/positional_encoding.cpp.s
 .PHONY : src/transformer/positional_encoding.cpp.s
 
 src/transformer/tensor.o: src/transformer/tensor.cpp.o
@@ -570,6 +604,7 @@ src/transformer/tensor.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/tensor.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/tensor.cpp.o
 .PHONY : src/transformer/tensor.cpp.o
 
 src/transformer/tensor.i: src/transformer/tensor.cpp.i
@@ -581,6 +616,7 @@ src/transformer/tensor.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/tensor.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/tensor.cpp.i
 .PHONY : src/transformer/tensor.cpp.i
 
 src/transformer/tensor.s: src/transformer/tensor.cpp.s
@@ -592,6 +628,7 @@ src/transformer/tensor.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/tensor.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/tensor.cpp.s
 .PHONY : src/transformer/tensor.cpp.s
 
 src/transformer/text_gen.o: src/transformer/text_gen.cpp.o
@@ -628,6 +665,7 @@ src/transformer/token_embedding.o: src/transformer/token_embedding.cpp.o
 src/transformer/token_embedding.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/token_embedding.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/token_embedding.cpp.o
 .PHONY : src/transformer/token_embedding.cpp.o
 
 src/transformer/token_embedding.i: src/transformer/token_embedding.cpp.i
@@ -637,6 +675,7 @@ src/transformer/token_embedding.i: src/transformer/token_embedding.cpp.i
 src/transformer/token_embedding.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/token_embedding.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/token_embedding.cpp.i
 .PHONY : src/transformer/token_embedding.cpp.i
 
 src/transformer/token_embedding.s: src/transformer/token_embedding.cpp.s
@@ -646,6 +685,7 @@ src/transformer/token_embedding.s: src/transformer/token_embedding.cpp.s
 src/transformer/token_embedding.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/token_embedding.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/token_embedding.cpp.s
 .PHONY : src/transformer/token_embedding.cpp.s
 
 src/transformer/transformer_block.o: src/transformer/transformer_block.cpp.o
@@ -655,6 +695,7 @@ src/transformer/transformer_block.o: src/transformer/transformer_block.cpp.o
 src/transformer/transformer_block.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/transformer_block.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/transformer_block.cpp.o
 .PHONY : src/transformer/transformer_block.cpp.o
 
 src/transformer/transformer_block.i: src/transformer/transformer_block.cpp.i
@@ -664,6 +705,7 @@ src/transformer/transformer_block.i: src/transformer/transformer_block.cpp.i
 src/transformer/transformer_block.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/transformer_block.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/transformer_block.cpp.i
 .PHONY : src/transformer/transformer_block.cpp.i
 
 src/transformer/transformer_block.s: src/transformer/transformer_block.cpp.s
@@ -673,6 +715,7 @@ src/transformer/transformer_block.s: src/transformer/transformer_block.cpp.s
 src/transformer/transformer_block.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/transformer_block.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/transformer_block.cpp.s
 .PHONY : src/transformer/transformer_block.cpp.s
 
 src/transformer/variable.o: src/transformer/variable.cpp.o
@@ -684,6 +727,7 @@ src/transformer/variable.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/variable.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/variable.cpp.o
 .PHONY : src/transformer/variable.cpp.o
 
 src/transformer/variable.i: src/transformer/variable.cpp.i
@@ -695,6 +739,7 @@ src/transformer/variable.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/variable.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/variable.cpp.i
 .PHONY : src/transformer/variable.cpp.i
 
 src/transformer/variable.s: src/transformer/variable.cpp.s
@@ -706,6 +751,7 @@ src/transformer/variable.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/variable.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/src/transformer/variable.cpp.s
 .PHONY : src/transformer/variable.cpp.s
 
 tests/unit/test_attention_bias.o: tests/unit/test_attention_bias.cpp.o
@@ -780,6 +826,30 @@ tests/unit/test_gradients.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/tests/unit/test_gradients.cpp.s
 .PHONY : tests/unit/test_gradients.cpp.s
 
+tests/unit/test_weight_tying.o: tests/unit/test_weight_tying.cpp.o
+.PHONY : tests/unit/test_weight_tying.o
+
+# target to build an object file
+tests/unit/test_weight_tying.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/tests/unit/test_weight_tying.cpp.o
+.PHONY : tests/unit/test_weight_tying.cpp.o
+
+tests/unit/test_weight_tying.i: tests/unit/test_weight_tying.cpp.i
+.PHONY : tests/unit/test_weight_tying.i
+
+# target to preprocess a source file
+tests/unit/test_weight_tying.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/tests/unit/test_weight_tying.cpp.i
+.PHONY : tests/unit/test_weight_tying.cpp.i
+
+tests/unit/test_weight_tying.s: tests/unit/test_weight_tying.cpp.s
+.PHONY : tests/unit/test_weight_tying.s
+
+# target to generate assembly for a file
+tests/unit/test_weight_tying.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_weight_tying.dir/build.make CMakeFiles/test_weight_tying.dir/tests/unit/test_weight_tying.cpp.s
+.PHONY : tests/unit/test_weight_tying.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -794,6 +864,7 @@ help:
 	@echo "... test_attention_bias"
 	@echo "... test_dropout"
 	@echo "... test_gradients"
+	@echo "... test_weight_tying"
 	@echo "... transformer"
 	@echo "... src/data/dataloader.o"
 	@echo "... src/data/dataloader.i"
@@ -858,6 +929,9 @@ help:
 	@echo "... tests/unit/test_gradients.o"
 	@echo "... tests/unit/test_gradients.i"
 	@echo "... tests/unit/test_gradients.s"
+	@echo "... tests/unit/test_weight_tying.o"
+	@echo "... tests/unit/test_weight_tying.i"
+	@echo "... tests/unit/test_weight_tying.s"
 .PHONY : help
 
 

@@ -25,7 +25,6 @@ class GPTModel {
         PositionalEncoding pos_encoding;
         std::vector<std::unique_ptr<TransformerBlock>> transformer_blocks;
         LayerNorm final_norm;
-        Linear output_projection;
     public:
         GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len, float dropout_rate = 0.1f);
         ~GPTModel() = default;
