@@ -11,7 +11,7 @@
 #include <cmath>
 #include <fstream>
 #include <chrono>
-
+#include <mach/mach.h>
 // ============================================================================
 // UTILITIES
 // ============================================================================
@@ -36,6 +36,15 @@ void print_header(const std::string& title) {
     std::cout << std::string(60, '=') << std::endl << std::endl;
 }
 
+size_t get_memory_mb() {
+    struct task_basic_info info;
+    mach_msg_type_number_t size = sizeof(info);
+    kern_return_t kerr = task_info(mach_task_self(),
+                                    TASK_BASIC_INFO,
+                                    (task_info_t)&info,
+                                    &size);
+    return (kerr == KERN_SUCCESS) ? info.resident_size / (1024 * 1024) : 0;
+}
 // ============================================================================
 // TEST 1: OVERFITTING TEST (Sanity Check)
 // ============================================================================
@@ -81,7 +90,7 @@ void test_overfit_tiny_sequence() {
         optimizer.zero_grad();
         loss->backward();
         float grad_norm = compute_grad_norm(params);
-        optimizer.clip_grad_norm(5.0f);
+        optimizer.clip_grad_norm(1.0f);
         optimizer.step();
         
         if (step % 10 == 0 || step < 5) {
@@ -142,13 +151,30 @@ void test_dataloader() {
         
         while (loader.has_next()) {
             auto batch = loader.next_batch();
-            auto in = Variable::create(batch.input, false);
-            auto tgt = Variable::create(batch.target, false);
+            
+            // Convert 3D batch tensors to 2D for model compatibility
+            // batch.input is (batch_size, seq_len, 1), we need (batch_size * seq_len, 1)
+            int batch_size = batch.input.getBatchSize();
+            int seq_len = batch.input.getRows();
+            
+            Tensor input_2d(batch_size * seq_len, 1);
+            Tensor target_2d(batch_size * seq_len, 1);
+            
+            for (int b = 0; b < batch_size; b++) {
+                for (int s = 0; s < seq_len; s++) {
+                    input_2d.setValue(b * seq_len + s, 0, batch.input.getValue(b, s, 0));
+                    target_2d.setValue(b * seq_len + s, 0, batch.target.getValue(b, s, 0));
+                }
+            }
+            
+            auto in = Variable::create(input_2d, false);
+            auto tgt = Variable::create(target_2d, false);
             
             auto loss = model.forward(in, true)->log_softmax()->nll_loss(tgt);
             
             optimizer.zero_grad();
             loss->backward();
+            loss->release_graph();
             optimizer.clip_grad_norm(1.0f);
             optimizer.step();
             
@@ -199,8 +225,8 @@ void train_shakespeare() {
     const int max_len = 512;
     const int seq_length = 128;
     const int batch_size = 2;
-    const float lr = 3e-4f;
-    const int num_steps = 200;
+    const float lr = 1e-4f;
+    const int num_steps = 1000;
     
     std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model 
               << " layers=" << num_layers << " heads=" << num_heads << std::endl;
@@ -230,9 +256,25 @@ void train_shakespeare() {
         auto batch = loader.next_batch();
         auto t1 = std::chrono::high_resolution_clock::now();
         
-        auto in = Variable::create(batch.input, false);
-        auto tgt = Variable::create(batch.target, false);
+        // Reuse pre-allocated tensors (no memory leak!)
+        int batch_size = batch.input.getBatchSize();
+        int seq_len = batch.input.getRows();
+
+        Tensor input_2d(batch_size * seq_len, 1);
+        Tensor target_2d(batch_size * seq_len, 1);
         
+        for (int b = 0; b < batch_size; b++) {
+            for (int s = 0; s < seq_len; s++) {
+                input_2d.setValue(b * seq_len + s, 0, batch.input.getValue(b, s, 0));
+                target_2d.setValue(b * seq_len + s, 0, batch.target.getValue(b, s, 0));
+            }
+        }
+        
+        // Create variables with the reused tensors
+        auto in = Variable::create(input_2d, false);
+        auto tgt = Variable::create(target_2d, false);
+        
+        // Forward pass
         auto logits = model.forward(in, true);
         auto loss = logits->log_softmax()->nll_loss(tgt);
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -241,25 +283,30 @@ void train_shakespeare() {
         auto t3 = std::chrono::high_resolution_clock::now();
         
         loss->backward();
+        loss->release_graph();
         auto t4 = std::chrono::high_resolution_clock::now();
         
         optimizer.clip_grad_norm(5.0f);
         optimizer.step();
         auto t5 = std::chrono::high_resolution_clock::now();
         
+        // Capture loss value before cleanup
+        float loss_val = loss->getData().getValue(0, 0);
+        
         // Log every 10 steps
         if (step % 10 == 0) {
             float grad_norm = compute_grad_norm(params);
-            float loss_val = loss->getData().getValue(0, 0);
             
             auto now = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
                 now - start).count();
             
-            std::cout << std::setw(10) << step 
+            std::cout << std::setw(10) << step
                       << std::setw(15) << std::fixed << std::setprecision(6) << loss_val
                       << std::setw(15) << std::fixed << std::setprecision(4) << grad_norm
-                      << "  (" << elapsed << "s)" << std::endl;
+                      << "  (" << elapsed << "s)"
+                      << " [" << get_memory_mb() << "MB]"
+                      << std::endl;
             
             // Timing breakdown
             auto ms = [](auto a, auto b) { 

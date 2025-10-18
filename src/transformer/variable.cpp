@@ -73,12 +73,12 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
             if (self_ptr->requires_grad) {
                 Tensor other_transposed = other->data.transpose();
                 Tensor self_grad = output->grad.matmul(other_transposed);
-                self_ptr->grad = self_ptr->grad.add(self_grad);
+                self_ptr->grad.add_inplace(self_grad);
             }
             if (other->requires_grad) {
                 Tensor self_transposed = self_ptr->data.transpose();
                 Tensor other_grad = self_transposed.matmul(output->grad);
-                other->grad = other->grad.add(other_grad);
+                other->grad.add_inplace(other_grad);
             }
         });
     }
@@ -185,14 +185,14 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                     bool br = (x.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dx = reduce2D(dO, x.getRows(), x.getCols(), br, bc);
-                    self_ptr->grad = self_ptr->grad.add(dx);
+                    self_ptr->grad.add_inplace(dx);
                 } else if (x.getIs3D() && dO.getIs3D()) {
-                    self_ptr->grad = self_ptr->grad.add(dO);
+                    self_ptr->grad.add_inplace(dO);
                 } else if (!x.getIs3D() && dO.getIs3D()) {
                     bool br = (x.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dx = reduce3Dfrom2D(dO, x.getRows(), x.getCols(), br, bc);
-                    self_ptr->grad = self_ptr->grad.add(dx);
+                    self_ptr->grad.add_inplace(dx);
                 } else {
                     throw std::runtime_error("add backward: unexpected (3D x, 2D dOut)");
                 }
@@ -204,14 +204,14 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                     bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dy = reduce2D(dO, yD.getRows(), yD.getCols(), br, bc);
-                    other->grad = other->grad.add(dy);
+                    other->grad.add_inplace(dy);
                 } else if (yD.getIs3D() && dO.getIs3D()) {
-                    other->grad = other->grad.add(dO);
+                    other->grad.add_inplace(dO);
                 } else if (!yD.getIs3D() && dO.getIs3D()) {
                     bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dy = reduce3Dfrom2D(dO, yD.getRows(), yD.getCols(), br, bc);
-                    other->grad = other->grad.add(dy);
+                    other->grad.add_inplace(dy);
                 } else {
                     throw std::runtime_error("add backward: unexpected (3D y, 2D dOut)");
                 }
@@ -238,7 +238,7 @@ std::shared_ptr<Variable> Variable::scale(float factor) const {
             output->grad.assertValid("Variable::scale(dOut)");
             if (self_ptr->requires_grad) {
                 Tensor scaled_grad = output->grad.scale(factor);
-                self_ptr->grad = self_ptr->grad.add(scaled_grad);
+                self_ptr->grad.add_inplace(scaled_grad);
             }
         });
     }
@@ -279,7 +279,7 @@ std::shared_ptr<Variable> Variable::softmax() const {
                             }
                         }
                     }
-                    self_ptr->grad = self_ptr->grad.add(temp_grad);
+                    self_ptr->grad.add_inplace(temp_grad);
                 } else {
                     Tensor temp_grad(result.getRows(), result.getCols());
                     temp_grad.fill(0.0f);
@@ -295,7 +295,7 @@ std::shared_ptr<Variable> Variable::softmax() const {
                             temp_grad.setValue(i, j, softmax_grad);
                         }
                     }
-                    self_ptr->grad = self_ptr->grad.add(temp_grad);
+                    self_ptr->grad.add_inplace(temp_grad);
                 }
             }
         });
@@ -356,11 +356,11 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
                                 }
                             }
                         }
-                        self_ptr->grad = self_ptr->grad.add(grad_tensor);
+                        self_ptr->grad.add_inplace(grad_tensor);
                     } else {
                         Tensor diff = self_ptr->data.subtract(targets->data);
                         Tensor scaled_diff = diff.scale(1.0f / self_ptr->data.getRows());
-                        self_ptr->grad = self_ptr->grad.add(scaled_diff);
+                        self_ptr->grad.add_inplace(scaled_diff);
                     }
                 }
             });
@@ -415,7 +415,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
                             }
                         }
                     }
-                    self_ptr->grad = self_ptr->grad.add(grad_tensor);
+                    self_ptr->grad.add_inplace(grad_tensor);
                 }
             });
         }
@@ -455,7 +455,7 @@ std::shared_ptr<Variable> Variable::gelu() const {
                     float grad_val = 0.5f * (1.0f + tanh_val + x * sech_sq * 0.79788456f * (1.0f + 3.0f * 0.044715f * x * x));
                     grad_tensor.raw()[i] = grad_val * output->grad.raw()[i];
                 }
-                self_ptr->grad = self_ptr->grad.add(grad_tensor);
+                self_ptr->grad.add_inplace(grad_tensor);
             }
         });
     }
@@ -488,7 +488,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
         output->setBackwardFn([self_ptr, output, mask]() {
             if (self_ptr->requires_grad) {
                 Tensor grad_tensor = output->grad.elementwise(mask);
-                self_ptr->grad = self_ptr->grad.add(grad_tensor);
+                self_ptr->grad.add_inplace(grad_tensor);
             }
         });
     }
@@ -556,7 +556,7 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                         grad.setValue(i, j, output->grad.getValue(i, j) - softmax_val * sum);
                     }
                 }
-                self_ptr->grad = self_ptr->grad.add(grad);
+                self_ptr->grad.add_inplace(grad);
             } else {
                 Tensor grad(result.getBatchSize(), result.getRows(), result.getCols());
                 for (int b = 0; b < result.getBatchSize(); b++) {
@@ -571,7 +571,7 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                         }
                     }
                 }
-                self_ptr->grad = self_ptr->grad.add(grad);
+                self_ptr->grad.add_inplace(grad);
             }
         });
     }
@@ -611,7 +611,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                         grad.setValue(i, target_idx, scale);
                     }
                 }
-                self_ptr->grad = self_ptr->grad.add(grad);
+                self_ptr->grad.add_inplace(grad);
             });
         }
         return output;
@@ -653,7 +653,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                         }
                     }
                 }
-                self_ptr->grad = self_ptr->grad.add(grad);
+                self_ptr->grad.add_inplace(grad);
             });
         }
         return output;
@@ -702,4 +702,15 @@ void Variable::zeroGrad() {
     if (requires_grad) {
         grad.fill(0.0f);
     }
+}
+
+void Variable::release_graph() {
+    for (auto& child : children) {
+        if (child) {
+            child->release_graph();
+        }
+    }
+
+    children.clear();
+    backward_fn = nullptr;
 }

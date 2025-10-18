@@ -176,7 +176,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         }
                     }
 
-                    dScores = dScores.scale(1.0f / std::sqrt(head_size));
+                    dScores.scale_inplace(1.0f / std::sqrt(head_size));
 
                     Tensor Q_head = self_Q->getData().slice(0, seq_len, start_col, head_size);
                     Tensor K_head = self_K->getData().slice(0, seq_len, start_col, head_size);
@@ -194,14 +194,14 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 }
 
                 Tensor input_T = self_input->getData().transpose();
-                self_Wq->getGrad() = self_Wq->getGrad().add(input_T.matmul(dQ));
-                self_Wk->getGrad() = self_Wk->getGrad().add(input_T.matmul(dK));
-                self_Wv->getGrad() = self_Wv->getGrad().add(input_T.matmul(dV));
+                self_Wq->getGrad().add_inplace(input_T.matmul(dQ));
+                self_Wk->getGrad().add_inplace(input_T.matmul(dK));
+                self_Wv->getGrad().add_inplace(input_T.matmul(dV));
 
                 Tensor dInput = dQ.matmul(self_Wq->getData().transpose())
                                .add(dK.matmul(self_Wk->getData().transpose()))
                                .add(dV.matmul(self_Wv->getData().transpose()));
-                self_input->getGrad() = self_input->getGrad().add(dInput);
+                self_input->getGrad().add_inplace(dInput);
 
                 Tensor concat_result(seq_len, self_d_model);
                 for (int h = 0; h < self_num_heads; h++) {
@@ -216,7 +216,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     }
                 }
 
-                self_Wo->getGrad() = self_Wo->getGrad().add(concat_result.transpose().matmul(output->getGrad()));
+                self_Wo->getGrad().add_inplace(concat_result.transpose().matmul(output->getGrad()));
             });
         }
 
@@ -252,8 +252,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
             Tensor K_transposed = K_head.transpose();
             Tensor scores = Q_head.matmul(K_transposed);
-            scores = scores.scale(1.0f / std::sqrt(head_size));
-            scores = scores.add(causal_mask);
+            scores.scale_inplace(1.0f / std::sqrt(head_size));
+            scores.add_inplace(causal_mask);
 
             Tensor attention_weights = scores.softmax();
             attention_weights = dropout(attention_weights, dropout_rate, training);
@@ -270,10 +270,17 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
         auto concat_var = Variable::create(result, input->requiresGrad());
         auto output = concat_var->matmul(W_o);
-        
+
         if (training && dropout_rate > 0.0f) {
-            Tensor output_dropped = dropout(output->getData(), dropout_rate, training);
-            output = Variable::create(output_dropped, input->requiresGrad());
+            output = output->dropout(dropout_rate, training);
+        }
+
+        if (input->requiresGrad()) {
+            output->addChild(input);
+            output->addChild(W_q);
+            output->addChild(W_k);
+            output->addChild(W_v);
+            output->addChild(W_o);
         }
 
         return output;

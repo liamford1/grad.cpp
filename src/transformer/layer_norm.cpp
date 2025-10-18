@@ -116,9 +116,9 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                     }
                 }
 
-                self_gamma->getGrad() = self_gamma->getGrad().add(dGamma);
-                self_beta->getGrad() = self_beta->getGrad().add(dBeta);
-                self_input->getGrad() = self_input->getGrad().add(dInput);
+                self_gamma->getGrad().add_inplace(dGamma);
+                self_beta->getGrad().add_inplace(dBeta);
+                self_input->getGrad().add_inplace(dInput);
             });
         }
 
@@ -229,9 +229,9 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                     }
                 }
 
-                self_gamma->getGrad() = self_gamma->getGrad().add(dGamma);
-                self_beta->getGrad() = self_beta->getGrad().add(dBeta);
-                self_input->getGrad() = self_input->getGrad().add(dInput);
+                self_gamma->getGrad().add_inplace(dGamma);
+                self_beta->getGrad().add_inplace(dBeta);
+                self_input->getGrad().add_inplace(dInput);
             });
         }
 

@@ -68,9 +68,6 @@ std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
     
     for (size_t i = 0; i < tokens.size(); i++) {
         result += static_cast<char>(tokens[i]);
-        if (i < tokens.size() - 1) {
-            result += " ";
-        }
     }
     return result;
 }

@@ -68,7 +68,7 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                     }
                 }
                 
-                self_embedding->getGrad() = self_embedding->getGrad().add(dEmbedding);
+                self_embedding->getGrad().add_inplace(dEmbedding);
             });
         }
         return output;
@@ -116,7 +116,7 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                     }
                 }
 
-                self_embedding->getGrad() = self_embedding->getGrad().add(dEmbedding);
+                self_embedding->getGrad().add_inplace(dEmbedding);
             });
         }
         return output;
@@ -169,7 +169,7 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                     }
                 }
 
-                self_embedding->getGrad() = self_embedding->getGrad().add(dEmbedding);
+                self_embedding->getGrad().add_inplace(dEmbedding);
             });
         }
         return output;
