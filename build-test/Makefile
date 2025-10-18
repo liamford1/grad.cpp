@@ -191,6 +191,19 @@ test_dropout/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/build
 .PHONY : test_dropout/fast
 
+#=============================================================================
+# Target rules for targets named test_attention_bias
+
+# Build rule for target.
+test_attention_bias: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_attention_bias
+.PHONY : test_attention_bias
+
+# fast build rule for target.
+test_attention_bias/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/build
+.PHONY : test_attention_bias/fast
+
 src/data/dataloader.o: src/data/dataloader.cpp.o
 .PHONY : src/data/dataloader.o
 
@@ -304,6 +317,7 @@ src/transformer/activations.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/activations.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/activations.cpp.o
 .PHONY : src/transformer/activations.cpp.o
 
 src/transformer/activations.i: src/transformer/activations.cpp.i
@@ -314,6 +328,7 @@ src/transformer/activations.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/activations.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/activations.cpp.i
 .PHONY : src/transformer/activations.cpp.i
 
 src/transformer/activations.s: src/transformer/activations.cpp.s
@@ -324,6 +339,7 @@ src/transformer/activations.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/activations.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/activations.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/activations.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/activations.cpp.s
 .PHONY : src/transformer/activations.cpp.s
 
 src/transformer/attention.o: src/transformer/attention.cpp.o
@@ -468,6 +484,7 @@ src/transformer/multihead_attention.o: src/transformer/multihead_attention.cpp.o
 src/transformer/multihead_attention.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/multihead_attention.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/multihead_attention.cpp.o
 .PHONY : src/transformer/multihead_attention.cpp.o
 
 src/transformer/multihead_attention.i: src/transformer/multihead_attention.cpp.i
@@ -477,6 +494,7 @@ src/transformer/multihead_attention.i: src/transformer/multihead_attention.cpp.i
 src/transformer/multihead_attention.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/multihead_attention.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/multihead_attention.cpp.i
 .PHONY : src/transformer/multihead_attention.cpp.i
 
 src/transformer/multihead_attention.s: src/transformer/multihead_attention.cpp.s
@@ -486,6 +504,7 @@ src/transformer/multihead_attention.s: src/transformer/multihead_attention.cpp.s
 src/transformer/multihead_attention.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/multihead_attention.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/multihead_attention.cpp.s
 .PHONY : src/transformer/multihead_attention.cpp.s
 
 src/transformer/optimizer.o: src/transformer/optimizer.cpp.o
@@ -550,6 +569,7 @@ src/transformer/tensor.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/tensor.cpp.o
 .PHONY : src/transformer/tensor.cpp.o
 
 src/transformer/tensor.i: src/transformer/tensor.cpp.i
@@ -560,6 +580,7 @@ src/transformer/tensor.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/tensor.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/tensor.cpp.i
 .PHONY : src/transformer/tensor.cpp.i
 
 src/transformer/tensor.s: src/transformer/tensor.cpp.s
@@ -570,6 +591,7 @@ src/transformer/tensor.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/tensor.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/tensor.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/tensor.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/tensor.cpp.s
 .PHONY : src/transformer/tensor.cpp.s
 
 src/transformer/text_gen.o: src/transformer/text_gen.cpp.o
@@ -661,6 +683,7 @@ src/transformer/variable.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/variable.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/variable.cpp.o
 .PHONY : src/transformer/variable.cpp.o
 
 src/transformer/variable.i: src/transformer/variable.cpp.i
@@ -671,6 +694,7 @@ src/transformer/variable.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/variable.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/variable.cpp.i
 .PHONY : src/transformer/variable.cpp.i
 
 src/transformer/variable.s: src/transformer/variable.cpp.s
@@ -681,7 +705,32 @@ src/transformer/variable.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/src/transformer/variable.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_gradients.dir/build.make CMakeFiles/test_gradients.dir/src/transformer/variable.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dropout.dir/build.make CMakeFiles/test_dropout.dir/src/transformer/variable.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/src/transformer/variable.cpp.s
 .PHONY : src/transformer/variable.cpp.s
+
+tests/unit/test_attention_bias.o: tests/unit/test_attention_bias.cpp.o
+.PHONY : tests/unit/test_attention_bias.o
+
+# target to build an object file
+tests/unit/test_attention_bias.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/tests/unit/test_attention_bias.cpp.o
+.PHONY : tests/unit/test_attention_bias.cpp.o
+
+tests/unit/test_attention_bias.i: tests/unit/test_attention_bias.cpp.i
+.PHONY : tests/unit/test_attention_bias.i
+
+# target to preprocess a source file
+tests/unit/test_attention_bias.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/tests/unit/test_attention_bias.cpp.i
+.PHONY : tests/unit/test_attention_bias.cpp.i
+
+tests/unit/test_attention_bias.s: tests/unit/test_attention_bias.cpp.s
+.PHONY : tests/unit/test_attention_bias.s
+
+# target to generate assembly for a file
+tests/unit/test_attention_bias.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_attention_bias.dir/build.make CMakeFiles/test_attention_bias.dir/tests/unit/test_attention_bias.cpp.s
+.PHONY : tests/unit/test_attention_bias.cpp.s
 
 tests/unit/test_dropout.o: tests/unit/test_dropout.cpp.o
 .PHONY : tests/unit/test_dropout.o
@@ -742,6 +791,7 @@ help:
 	@echo "... test"
 	@echo "... debug"
 	@echo "... fast"
+	@echo "... test_attention_bias"
 	@echo "... test_dropout"
 	@echo "... test_gradients"
 	@echo "... transformer"
@@ -799,6 +849,9 @@ help:
 	@echo "... src/transformer/variable.o"
 	@echo "... src/transformer/variable.i"
 	@echo "... src/transformer/variable.s"
+	@echo "... tests/unit/test_attention_bias.o"
+	@echo "... tests/unit/test_attention_bias.i"
+	@echo "... tests/unit/test_attention_bias.s"
 	@echo "... tests/unit/test_dropout.o"
 	@echo "... tests/unit/test_dropout.i"
 	@echo "... tests/unit/test_dropout.s"
