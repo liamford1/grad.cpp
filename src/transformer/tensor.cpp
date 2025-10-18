@@ -526,44 +526,63 @@ Tensor Tensor::transpose() const {
 
 Tensor Tensor::softmax() const {
     assertValid("softmax(this)");
+
     if (!this->is_3d) {
         Tensor result(this->rows, this->cols);
-        for (int i = 0; i < this->rows; i++) {
+        const float* input_data = this->raw();
+        float* output_data = result.raw();
 
-            float max_val = getValue(i, 0);
-            for (int j = 0; j < this->cols; j++) {
-                max_val = std::max(max_val, getValue(i, j));
+        for (int i = 0; i < this->rows; i++) {
+            const float* row_in = input_data + i * this->cols;
+            float* row_out = output_data + i * this->cols;
+
+            float max_val = row_in[0];
+            for (int j = 1; j < this->cols; j++) {
+                max_val = std::max(max_val, row_in[j]);
             }
 
             float sum = 0.0f;
             for (int j = 0; j < this->cols; j++) {
-                sum += std::expf(getValue(i, j) - max_val);
+                row_out[j] = std::expf(row_in[j] - max_val);
+                sum += row_out[j];
             }
 
             if (sum <= 0.0f) throw std::runtime_error("softmax sum <= 0 (numerical underflow)");
+
+            const float inv_sum = 1.0f / sum;
             for (int j = 0; j < this->cols; j++) {
-                result.setValue(i, j, std::expf(getValue(i, j) - max_val) / sum);
+                row_out[j] *= inv_sum;
             }
         }
         return result;
     } else {
         Tensor result(this->batch_size, this->rows, this->cols);
-        for (int b = 0; b < this->batch_size; b++) {
-            for (int i = 0; i < this->rows; i++) {
+        const float* input_data = this->raw();
+        float* output_data = result.raw();
 
-                float max_val = getValue(b, i, 0);
+        for (int b = 0; b < this->batch_size; b++) {
+            int batch_offset = b * this->rows * this->cols;
+
+            for (int i = 0; i < this->rows; i++) {
+                const float* row_in = input_data + batch_offset + i * this->cols;
+                float* row_out = output_data + batch_offset + i * this->cols;
+                
+                float max_val = row_in[0];
                 for (int j = 1; j < this->cols; j++) {
-                    max_val = std::max(max_val, getValue(b, i, j));
+                    max_val = std::max(max_val, row_in[j]);
                 }
 
                 float sum = 0.0f;
                 for (int j = 0; j < this->cols; j++) {
-                    sum += std::expf(getValue(b, i, j) - max_val);
+                    row_out[j] = std::expf(row_in[j] - max_val);
+                    sum += row_out[j];
                 }
 
                 if (sum <= 0.0f) throw std::runtime_error("softmax sum <= 0 (numerical underflow)");
+
+                const float inv_sum = 1.0f / sum;
                 for (int j = 0; j < this->cols; j++) {
-                    result.setValue(b, i, j, std::expf(getValue(b, i, j) - max_val) / sum);
+                    row_out[j] *= inv_sum;
                 }
             }
         }

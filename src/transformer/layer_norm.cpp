@@ -25,31 +25,39 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         int rows = input_tensor.getRows();
         Tensor result(rows, d_model);
         
+        const float* input_data = input_tensor.raw();
+        const float* gamma_data = gamma->getData().raw();
+        const float* beta_data = beta->getData().raw();
+        float* result_data = result.raw();
+        
         std::vector<float> means(rows);
         std::vector<float> variances(rows);
         std::vector<std::vector<float>> normalized(rows, std::vector<float>(d_model));
 
         for (int i = 0; i < rows; i++) {
+            const float* row_in = input_data + i * d_model;
+            float* row_out = result_data + i * d_model;
+
             float mean = 0.0f;
             for (int j = 0; j < d_model; j++) {
-                mean += input_tensor.getValue(i, j);
+                mean += row_in[j];
             }
-            mean = mean / d_model;
+            mean /= d_model;
             means[i] = mean;
 
             float variance = 0.0f;
             for (int j = 0; j < d_model; j++) {
-                float diff = input_tensor.getValue(i, j) - mean;
+                float diff = row_in[j] - mean;
                 variance += diff * diff;
             }
-            variance = variance / d_model;
+            variance /= d_model;
             variances[i] = variance;
 
+            const float std_inv = 1.0f / std::sqrt(variance + epsilon);
             for (int j = 0; j < d_model; j++) {
-                float norm = (input_tensor.getValue(i, j) - mean) / std::sqrt(variance + epsilon);
+                float norm = (row_in[j] - mean) * std_inv;
                 normalized[i][j] = norm;
-                float output = gamma->getData().getValue(0, j) * norm + beta->getData().getValue(0, j);
-                result.setValue(i, j, output);
+                row_out[j] = gamma_data[j] * norm + beta_data[j];
             }
         }
 
@@ -130,33 +138,43 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         
         Tensor result(batch_size, seq_len, d_model);
         
+        const float* input_data = input_tensor.raw();
+        const float* gamma_data = gamma->getData().raw();
+        const float* beta_data = beta->getData().raw();
+        float* result_data = result.raw();
+        
         std::vector<std::vector<float>> means(batch_size, std::vector<float>(seq_len));
         std::vector<std::vector<float>> variances(batch_size, std::vector<float>(seq_len));
         std::vector<std::vector<std::vector<float>>> normalized(batch_size, 
             std::vector<std::vector<float>>(seq_len, std::vector<float>(d_model)));
 
         for (int b = 0; b < batch_size; b++) {
+            const int batch_offset = b * seq_len * d_model;
+            
             for (int i = 0; i < seq_len; i++) {
+                const float* row_in = input_data + batch_offset + i * d_model;
+                float* row_out = result_data + batch_offset + i * d_model;
+  
                 float mean = 0.0f;
                 for (int j = 0; j < d_model; j++) {
-                    mean += input_tensor.getValue(b, i, j);
+                    mean += row_in[j];
                 }
-                mean = mean / d_model;
+                mean /= d_model;
                 means[b][i] = mean;
 
                 float variance = 0.0f;
                 for (int j = 0; j < d_model; j++) {
-                    float diff = input_tensor.getValue(b, i, j) - mean;
+                    float diff = row_in[j] - mean;
                     variance += diff * diff;
                 }
-                variance = variance / d_model;
+                variance /= d_model;
                 variances[b][i] = variance;
 
+                const float std_inv = 1.0f / std::sqrt(variance + epsilon);
                 for (int j = 0; j < d_model; j++) {
-                    float norm = (input_tensor.getValue(b, i, j) - mean) / std::sqrt(variance + epsilon);
+                    float norm = (row_in[j] - mean) * std_inv;
                     normalized[b][i][j] = norm;
-                    float output = gamma->getData().getValue(0, j) * norm + beta->getData().getValue(0, j);
-                    result.setValue(b, i, j, output);
+                    row_out[j] = gamma_data[j] * norm + beta_data[j];
                 }
             }
         }
@@ -190,7 +208,6 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                         float variance = variances[b][i];
                         float std_inv = 1.0f / std::sqrt(variance + self_epsilon);
 
-                        // Step 1: Compute dvar
                         float dvar = 0.0f;
                         for (int j = 0; j < self_d_model; j++) {
                             float dout = output->getGrad().getValue(b, i, j);
@@ -205,7 +222,6 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                             dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
                         }
 
-                        // Step 2: Compute dmean (after dvar is complete)
                         float dmean = 0.0f;
                         for (int j = 0; j < self_d_model; j++) {
                             float dout = output->getGrad().getValue(b, i, j);
@@ -216,7 +232,6 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                             dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d_model;
                         }
 
-                        // Step 3: Compute dx
                         for (int j = 0; j < self_d_model; j++) {
                             float dout = output->getGrad().getValue(b, i, j);
                             float gamma_val = self_gamma->getData().getValue(0, j);
