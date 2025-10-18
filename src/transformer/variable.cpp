@@ -499,39 +499,52 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
     Tensor result = this->data;
     
     if (!result.getIs3D()) {
+        const float* input_data = this->data.raw();
+        float* result_data = result.raw();
+
         for (int i = 0; i < result.getRows(); i++) {
-            
-            float max_val = result.getValue(i, 0);
+            const float* row_in = input_data + i * result.getCols();
+            float* row_out = result_data + i * result.getCols();
+
+            float max_val = row_in[0];
             for (int j = 1; j < result.getCols(); j++) {
-                max_val = std::max(max_val, result.getValue(i, j));
+                max_val = std::max(max_val, row_in[j]);
             }
             
             float sum_exp = 0.0f;
             for (int j = 0; j < result.getCols(); j++) {
-                sum_exp += std::expf(result.getValue(i, j) - max_val);
+                sum_exp += std::expf(row_in[j] - max_val);
             }
             float log_sum = std::logf(sum_exp) + max_val;
             
             for (int j = 0; j < result.getCols(); j++) {
-                result.setValue(i, j, result.getValue(i, j) - log_sum);
+                row_out[j] = row_in[j] - log_sum;
             }
         }
     } else {
+        const float* input_data = this->data.raw();
+        float* result_data = result.raw();
+
         for (int b = 0; b < result.getBatchSize(); b++) {
+            const int batch_offset = b * result.getRows() * result.getCols();
+
             for (int i = 0; i < result.getRows(); i++) {
-                float max_val = result.getValue(b, i, 0);
+                const float* row_in = input_data + batch_offset + i * result.getCols();
+                float* row_out = result_data + batch_offset + i * result.getCols();
+
+                float max_val = row_in[0];
                 for (int j = 1; j < result.getCols(); j++) {
-                    max_val = std::max(max_val, result.getValue(b, i, j));
+                    max_val = std::max(max_val, row_in[j]);
                 }
                 
                 float sum_exp = 0.0f;
                 for (int j = 0; j < result.getCols(); j++) {
-                    sum_exp += std::expf(result.getValue(b, i, j) - max_val);
+                    sum_exp += std::expf(row_in[j] - max_val);
                 }
                 float log_sum = std::logf(sum_exp) + max_val;
                 
                 for (int j = 0; j < result.getCols(); j++) {
-                    result.setValue(b, i, j, result.getValue(b, i, j) - log_sum);
+                    row_out[j] = row_in[j] - log_sum;
                 }
             }
         }
@@ -546,28 +559,48 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
         output->setBackwardFn([self_ptr, result, output]() {
             if (!result.getIs3D()) {
                 Tensor grad(result.getRows(), result.getCols());
+                const float* result_data = result.raw();
+                const float* grad_output_data = output->grad.raw();
+                float* grad_data = grad.raw();
+
                 for (int i = 0; i < result.getRows(); i++) {
+                    const float* row_result = result_data + i * result.getCols();
+                    const float* row_grad_out = grad_output_data + i * result.getCols();
+                    float* row_grad = grad_data + i * result.getCols();
+
                     float sum = 0.0f;
                     for (int j = 0; j < result.getCols(); j++) {
-                        sum += output->grad.getValue(i, j);
+                        sum += row_grad_out[j];
                     }
+
                     for (int j = 0; j < result.getCols(); j++) {
-                        float softmax_val = std::expf(result.getValue(i, j));
-                        grad.setValue(i, j, output->grad.getValue(i, j) - softmax_val * sum);
+                        float softmax_val = std::expf(row_result[j]);
+                        row_grad[j] = row_grad_out[j] - softmax_val * sum;
                     }
                 }
                 self_ptr->grad.add_inplace(grad);
             } else {
                 Tensor grad(result.getBatchSize(), result.getRows(), result.getCols());
+                const float* result_data = result.raw();
+                const float* grad_output_data = output->grad.raw();
+                float* grad_data = grad.raw();
+
                 for (int b = 0; b < result.getBatchSize(); b++) {
+                    const int batch_offset = b * result.getRows() * result.getCols();
+
                     for (int i = 0; i < result.getRows(); i++) {
+                        const float* row_result = result_data + batch_offset + i * result.getCols();
+                        const float* row_grad_out = grad_output_data + batch_offset + i * result.getCols();
+                        float* row_grad = grad_data + batch_offset + i * result.getCols();
+
                         float sum = 0.0f;
                         for (int j = 0; j < result.getCols(); j++) {
-                            sum += output->grad.getValue(b, i, j);
+                            sum += row_grad_out[j];
                         }
+
                         for (int j = 0; j < result.getCols(); j++) {
-                            float softmax_val = std::expf(result.getValue(b, i, j));
-                            grad.setValue(b, i, j, output->grad.getValue(b, i, j) - softmax_val * sum);
+                            float softmax_val = std::expf(row_result[j]);
+                            row_grad[j] = row_grad_out[j] - softmax_val * sum;
                         }
                     }
                 }
