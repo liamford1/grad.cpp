@@ -264,35 +264,47 @@ std::shared_ptr<Variable> Variable::softmax() const {
             if (self_ptr->requires_grad) {
                 if (result.getIs3D()) {
                     Tensor temp_grad(result.getBatchSize(), result.getRows(), result.getCols());
-                    temp_grad.fill(0.0f);
+                    const float* result_data = result.raw();
+                    const float* grad_out_data = output->grad.raw();
+                    float* temp_grad_data = temp_grad.raw();
                     
                     for (int b = 0; b < result.getBatchSize(); b++) {
+                        const int batch_offset = b * result.getRows() * result.getCols();
+                        
                         for (int i = 0; i < result.getRows(); i++) {
+                            const float* row_result = result_data + batch_offset + i * result.getCols();
+                            const float* row_grad_out = grad_out_data + batch_offset + i * result.getCols();
+                            float* row_grad = temp_grad_data + batch_offset + i * result.getCols();
+                            
                             float dot_product = 0.0f;
                             for (int j = 0; j < result.getCols(); j++) {
-                                dot_product += result.getValue(b, i, j) * output->grad.getValue(b, i, j);
+                                dot_product += row_result[j] * row_grad_out[j];
                             }
+                            
                             for (int j = 0; j < result.getCols(); j++) {
-                                float softmax_grad = result.getValue(b, i, j) * 
-                                    (output->grad.getValue(b, i, j) - dot_product);
-                                temp_grad.setValue(b, i, j, softmax_grad);
+                                row_grad[j] = row_result[j] * (row_grad_out[j] - dot_product);
                             }
                         }
                     }
                     self_ptr->grad.add_inplace(temp_grad);
                 } else {
                     Tensor temp_grad(result.getRows(), result.getCols());
-                    temp_grad.fill(0.0f);
+                    const float* result_data = result.raw();
+                    const float* grad_out_data = output->grad.raw();
+                    float* temp_grad_data = temp_grad.raw();
                     
                     for (int i = 0; i < result.getRows(); i++) {
+                        const float* row_result = result_data + i * result.getCols();
+                        const float* row_grad_out = grad_out_data + i * result.getCols();
+                        float* row_grad = temp_grad_data + i * result.getCols();
+                        
                         float dot_product = 0.0f;
                         for (int j = 0; j < result.getCols(); j++) {
-                            dot_product += result.getValue(i, j) * output->grad.getValue(i, j);
+                            dot_product += row_result[j] * row_grad_out[j];
                         }
+                        
                         for (int j = 0; j < result.getCols(); j++) {
-                            float softmax_grad = result.getValue(i, j) * 
-                                (output->grad.getValue(i, j) - dot_product);
-                            temp_grad.setValue(i, j, softmax_grad);
+                            row_grad[j] = row_result[j] * (row_grad_out[j] - dot_product);
                         }
                     }
                     self_ptr->grad.add_inplace(temp_grad);
@@ -615,11 +627,14 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
     if (!this->data.getIs3D()) {
         float total_loss = 0.0f;
         int n = this->data.getRows();
+
+        const float* data_ptr = this->data.raw();
+        const float* targets_ptr = targets->data.raw();
         
         for (int i = 0; i < n; i++) {
-            int target_idx = static_cast<int>(targets->data.getValue(i, 0));
+            int target_idx = static_cast<int>(targets_ptr[i]);
             if (target_idx >= 0 && target_idx < this->data.getCols()) {
-                total_loss -= this->data.getValue(i, target_idx);
+                total_loss -= data_ptr[i * this->data.getCols() + target_idx];
             }
         }
         total_loss /= n;
@@ -637,11 +652,14 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                 Tensor grad(self_ptr->data.getRows(), self_ptr->data.getCols());
                 grad.fill(0.0f);
                 float scale = -1.0f / n;
+
+                float* grad_ptr = grad.raw();
+                const float* targets_ptr = targets->data.raw();
                 
                 for (int i = 0; i < n; i++) {
-                    int target_idx = static_cast<int>(targets->data.getValue(i, 0));
+                    int target_idx = static_cast<int>(targets_ptr[i]);
                     if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
-                        grad.setValue(i, target_idx, scale);
+                        grad_ptr[i * self_ptr->data.getCols() + target_idx] = scale;
                     }
                 }
                 self_ptr->grad.add_inplace(grad);
@@ -651,14 +669,27 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
     } else {
         int batch_size = this->data.getBatchSize();
         int seq_len = this->data.getRows();
+        int vocab_size = this->data.getCols();
         int total = batch_size * seq_len;
         float total_loss = 0.0f;
         
+        const float* data_ptr = this->data.raw();
+        const float* targets_ptr = targets->data.raw();
+        
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {
-                int target_idx = static_cast<int>(targets->data.getValue(b, i, 0));
-                if (target_idx >= 0 && target_idx < this->data.getCols()) {
-                    total_loss -= this->data.getValue(b, i, target_idx);
+                int flat_idx = b * seq_len + i;
+                int target_idx = static_cast<int>(targets_ptr[flat_idx * (targets->data.getIs3D() ? 1 : 1) + 
+                                                             (targets->data.getIs3D() ? 0 : 0)]);
+                
+                if (targets->data.getIs3D()) {
+                    target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
+                } else {
+                    target_idx = static_cast<int>(targets_ptr[flat_idx]);
+                }
+                
+                if (target_idx >= 0 && target_idx < vocab_size) {
+                    total_loss -= data_ptr[b * seq_len * vocab_size + i * vocab_size + target_idx];
                 }
             }
         }
@@ -674,15 +705,25 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
             output->addChild(targets);
             
             output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total]() {
-                Tensor grad(batch_size, seq_len, self_ptr->data.getCols());
+                int vocab_size = self_ptr->data.getCols();
+                Tensor grad(batch_size, seq_len, vocab_size);
                 grad.fill(0.0f);
                 float scale = -1.0f / total;
                 
+                float* grad_ptr = grad.raw();
+                const float* targets_ptr = targets->data.raw();
+                
                 for (int b = 0; b < batch_size; b++) {
                     for (int i = 0; i < seq_len; i++) {
-                        int target_idx = static_cast<int>(targets->data.getValue(b, i, 0));
-                        if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
-                            grad.setValue(b, i, target_idx, scale);
+                        int target_idx;
+                        if (targets->data.getIs3D()) {
+                            target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
+                        } else {
+                            target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
+                        }
+                        
+                        if (target_idx >= 0 && target_idx < vocab_size) {
+                            grad_ptr[b * seq_len * vocab_size + i * vocab_size + target_idx] = scale;
                         }
                     }
                 }

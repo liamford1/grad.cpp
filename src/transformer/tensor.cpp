@@ -1,4 +1,5 @@
 #include "transformer/tensor.h"
+#include "transformer/blas_wrapper.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -145,6 +146,95 @@ void Tensor::display() const {
 }
 
 Tensor Tensor::matmul(const Tensor& other) const {
+    assertValid("matmul(lhs)");
+    other.assertValid("matmul(rhs)");
+    
+    if (!this->is_3d && !other.is_3d) {
+        if (this->cols != other.rows) {
+            throw std::invalid_argument("Matrix dimensions do not match for multiplication");
+        }
+
+        const int M = this->rows;
+        const int K = this->cols;
+        const int N = other.cols;
+
+        Tensor result(M, N);
+        
+        // Using OpenBLAS for matrix multiplication
+        // C = alpha * A * B + beta * C
+        // result = this * other, so alpha=1, beta=0
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    M, N, K,
+                    1.0f,          
+                    this->data, K,     
+                    other.data, N,       
+                    0.0f,          
+                    result.data, N);      
+        
+        return result;
+        
+    } else if (this->is_3d && !other.is_3d) {
+        if (this->cols != other.rows) {
+            throw std::invalid_argument("Matrix dimensions do not match for batch multiplication");
+        }
+        
+        const int batch_count = this->batch_size;
+        const int M = this->rows;
+        const int K = this->cols;
+        const int N = other.cols;
+
+        Tensor result(batch_count, M, N);
+
+        for (int b = 0; b < batch_count; ++b) {
+            const float* A = this->data + b * M * K;
+            float* C = result.data + b * M * N;
+            
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                        M, N, K,
+                        1.0f,
+                        A, K,
+                        other.data, N,
+                        0.0f,
+                        C, N);
+        }
+        
+        return result;
+        
+    } else if (this->is_3d && other.is_3d) {
+        if (this->batch_size != other.batch_size || this->cols != other.rows) {
+            throw std::invalid_argument("Batch matrix dimensions do not match");
+        }
+        
+        const int batch_count = this->batch_size;
+        const int M = this->rows;
+        const int K = this->cols;
+        const int N = other.cols;
+        
+        Tensor result(batch_count, M, N);
+        
+        for (int b = 0; b < batch_count; ++b) {
+            const float* A = this->data + b * M * K;
+            const float* B = other.data + b * K * N;
+            float* C = result.data + b * M * N;
+            
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                        M, N, K,
+                        1.0f,
+                        A, K,
+                        B, N,
+                        0.0f,
+                        C, N);
+        }
+        
+        return result;
+        
+    } else {
+        throw std::invalid_argument("Unsupported matrix multiplication configuration");
+    }
+}
+
+// Old Matrix Multuplication before using BLAS
+/* Tensor Tensor::matmul(const Tensor& other) const {
     assertValid("matmul(lhs)");
     other.assertValid("matmul(rhs)");
     
@@ -306,7 +396,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
     } else {
         throw std::invalid_argument("Unsupported matrix multiplication configuration");
     }
-}
+} */
 
 Tensor Tensor::add(const Tensor& other) const {
     assertValid("add(lhs)");

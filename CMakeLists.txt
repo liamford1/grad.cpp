@@ -27,6 +27,21 @@ add_executable(transformer
 
 target_include_directories(transformer PRIVATE include)
 
+# ============================================================================
+# BLAS INTEGRATION (Use Apple Accelerate on macOS)
+# ============================================================================
+if(APPLE)
+    # Use Apple's Accelerate framework (optimized for M1/M2/M3)
+    find_library(ACCELERATE_LIBRARY Accelerate)
+    target_link_libraries(transformer ${ACCELERATE_LIBRARY})
+    message(STATUS "Using Apple Accelerate framework for BLAS")
+else()
+    # Use OpenBLAS on Linux/Windows
+    find_package(BLAS REQUIRED)
+    target_link_libraries(transformer ${BLAS_LIBRARIES})
+    message(STATUS "Using OpenBLAS for BLAS")
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
