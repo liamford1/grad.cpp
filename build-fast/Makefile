@@ -57,13 +57,23 @@ RM = /opt/homebrew/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/liamford/Documents/transformer-from-scratch
+CMAKE_SOURCE_DIR = /Users/liamford/Documents/projects/transformer-from-scratch
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/liamford/Documents/transformer-from-scratch/build-fast
+CMAKE_BINARY_DIR = /Users/liamford/Documents/projects/transformer-from-scratch/build-fast
 
 #=============================================================================
 # Targets provided globally by CMake.
+
+# Special rule for the target test
+test:
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running tests..."
+	/opt/homebrew/bin/ctest $(ARGS)
+.PHONY : test
+
+# Special rule for the target test
+test/fast: test
+.PHONY : test/fast
 
 # Special rule for the target edit_cache
 edit_cache:
@@ -87,9 +97,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles /Users/liamford/Documents/transformer-from-scratch/build-fast//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles /Users/liamford/Documents/projects/transformer-from-scratch/build-fast//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -595,6 +605,7 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... test"
 	@echo "... debug"
 	@echo "... fast"
 	@echo "... transformer"

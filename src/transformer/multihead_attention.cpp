@@ -29,6 +29,21 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout
     W_k = Variable::create(wk_tensor, true);
     W_v = Variable::create(wv_tensor, true);
     W_o = Variable::create(wo_tensor, true);
+
+    Tensor bq_tensor(1, d_model);
+    Tensor bk_tensor(1, d_model);
+    Tensor bv_tensor(1, d_model);
+    Tensor bo_tensor(1, d_model);
+
+    bq_tensor.fill(0.0f);
+    bk_tensor.fill(0.0f);
+    bv_tensor.fill(0.0f);
+    bo_tensor.fill(0.0f);
+
+    b_q = Variable::create(bq_tensor, true);
+    b_k = Variable::create(bk_tensor, true);
+    b_v = Variable::create(bv_tensor, true);
+    b_o = Variable::create(bo_tensor, true);
 }
 
 MultiHeadAttention::~MultiHeadAttention() {}
@@ -40,9 +55,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         int seq_len = input_tensor.getRows();
         int head_size = d_model / num_heads;
 
-        auto Q = input->matmul(W_q);
-        auto K = input->matmul(W_k);
-        auto V = input->matmul(W_v);
+        auto Q = input->matmul(W_q)->add(b_q);
+        auto K = input->matmul(W_k)->add(b_k);
+        auto V = input->matmul(W_v)->add(b_v);
 
         Tensor result(seq_len, d_model);
         result.fill(0.0f);
@@ -121,7 +136,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         }
 
         auto concat_var = Variable::create(result, input->requiresGrad());
-        auto output = concat_var->matmul(W_o);
+        auto output = concat_var->matmul(W_o)->add(b_o);
 
         if (training && dropout_rate > 0.0f) {
             Tensor output_dropped = dropout(output->getData(), dropout_rate, training);
@@ -135,8 +150,14 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             output->addChild(W_v);
             output->addChild(W_o);
 
-            output->setBackwardFn([self_input, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo, 
-                                   attention_weights_all, V_heads_all, output, self_num_heads, 
+            auto self_bq = b_q;
+            auto self_bk = b_k;
+            auto self_bv = b_v;
+            auto self_bo = b_o;
+
+            output->setBackwardFn([self_input, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo,
+                                   self_bq, self_bk, self_bv, self_bo,
+                                   attention_weights_all, V_heads_all, output, self_num_heads,
                                    self_d_model, seq_len, head_size]() {
                 
                 Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
@@ -225,9 +246,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         int batch_size = input_tensor.getBatchSize();
         int seq_len = input_tensor.getRows();
 
-        auto Q = input->matmul(W_q);
-        auto K = input->matmul(W_k);
-        auto V = input->matmul(W_v);
+        auto Q = input->matmul(W_q)->add(b_q);
+        auto K = input->matmul(W_k)->add(b_k);
+        auto V = input->matmul(W_v)->add(b_v);
 
         int head_size = d_model / num_heads;
         Tensor result(batch_size, seq_len, d_model);
@@ -269,7 +290,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         }
 
         auto concat_var = Variable::create(result, input->requiresGrad());
-        auto output = concat_var->matmul(W_o);
+        auto output = concat_var->matmul(W_o)->add(b_o);
 
         if (training && dropout_rate > 0.0f) {
             output = output->dropout(dropout_rate, training);

@@ -53,10 +53,10 @@ RM = /opt/homebrew/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/liamford/Documents/transformer-from-scratch
+CMAKE_SOURCE_DIR = /Users/liamford/Documents/projects/transformer-from-scratch
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/liamford/Documents/transformer-from-scratch/build-fast
+CMAKE_BINARY_DIR = /Users/liamford/Documents/projects/transformer-from-scratch/build-fast
 
 # Utility rule file for debug.
 
@@ -67,9 +67,9 @@ include CMakeFiles/debug.dir/compiler_depend.make
 include CMakeFiles/debug.dir/progress.make
 
 CMakeFiles/debug:
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --blue --bold --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building with debug symbols"
-	/opt/homebrew/bin/cmake -DCMAKE_BUILD_TYPE=Debug -S /Users/liamford/Documents/transformer-from-scratch -B /Users/liamford/Documents/transformer-from-scratch/build-fast
-	/opt/homebrew/bin/cmake --build /Users/liamford/Documents/transformer-from-scratch/build-fast -j
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --blue --bold --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building with debug symbols"
+	/opt/homebrew/bin/cmake -DCMAKE_BUILD_TYPE=Debug -S /Users/liamford/Documents/projects/transformer-from-scratch -B /Users/liamford/Documents/projects/transformer-from-scratch/build-fast
+	/opt/homebrew/bin/cmake --build /Users/liamford/Documents/projects/transformer-from-scratch/build-fast -j
 
 CMakeFiles/debug.dir/codegen:
 .PHONY : CMakeFiles/debug.dir/codegen
@@ -87,6 +87,6 @@ CMakeFiles/debug.dir/clean:
 .PHONY : CMakeFiles/debug.dir/clean
 
 CMakeFiles/debug.dir/depend:
-	cd /Users/liamford/Documents/transformer-from-scratch/build-fast && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/liamford/Documents/transformer-from-scratch /Users/liamford/Documents/transformer-from-scratch /Users/liamford/Documents/transformer-from-scratch/build-fast /Users/liamford/Documents/transformer-from-scratch/build-fast /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles/debug.dir/DependInfo.cmake "--color=$(COLOR)"
+	cd /Users/liamford/Documents/projects/transformer-from-scratch/build-fast && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/liamford/Documents/projects/transformer-from-scratch /Users/liamford/Documents/projects/transformer-from-scratch /Users/liamford/Documents/projects/transformer-from-scratch/build-fast /Users/liamford/Documents/projects/transformer-from-scratch/build-fast /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles/debug.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/debug.dir/depend
 

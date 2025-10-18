@@ -221,7 +221,20 @@ GPTModel GPTModel::load(const std::string& filepath) {
             Tensor wk = readTensorFromBinary(file);
             Tensor wv = readTensorFromBinary(file);
             Tensor wo = readTensorFromBinary(file);
-            attention.setWeights(wq, wk, wv, wo);
+            Tensor bq = readTensorFromBinary(file);
+            Tensor bk = readTensorFromBinary(file);
+            Tensor bv = readTensorFromBinary(file);
+            Tensor bo = readTensorFromBinary(file);
+
+            auto params = attention.parameters();
+            params[0]->getData() = wq;  
+            params[1]->getData() = wk;  
+            params[2]->getData() = wv; 
+            params[3]->getData() = wo; 
+            params[4]->getData() = bq;
+            params[5]->getData() = bk;
+            params[6]->getData() = bv; 
+            params[7]->getData() = bo;
             
             FeedForward& ff = block->getFeedForwardRef();
             Tensor layer1_weights = readTensorFromBinary(file);

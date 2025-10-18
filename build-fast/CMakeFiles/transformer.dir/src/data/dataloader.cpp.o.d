@@ -1,7 +1,7 @@
 CMakeFiles/transformer.dir/src/data/dataloader.cpp.o: \
-  /Users/liamford/Documents/transformer-from-scratch/src/data/dataloader.cpp \
-  /Users/liamford/Documents/transformer-from-scratch/include/data/dataloader.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/data/dataset.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataloader.cpp \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/data/dataloader.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/data/dataset.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/vector \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/copy.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/copy_move_common.h \
@@ -904,7 +904,7 @@ CMakeFiles/transformer.dir/src/data/dataloader.cpp.o: \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdarg \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__memory/temp_value.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__split_buffer \
-  /Users/liamford/Documents/transformer-from-scratch/include/data/../transformer/tensor.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/data/../transformer/tensor.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/random \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__random/bernoulli_distribution.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__random/uniform_real_distribution.h \

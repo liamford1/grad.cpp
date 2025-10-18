@@ -53,10 +53,10 @@ RM = /opt/homebrew/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/liamford/Documents/transformer-from-scratch
+CMAKE_SOURCE_DIR = /Users/liamford/Documents/projects/transformer-from-scratch
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/liamford/Documents/transformer-from-scratch/build-fast
+CMAKE_BINARY_DIR = /Users/liamford/Documents/projects/transformer-from-scratch/build-fast
 
 # Include any dependencies generated for this target.
 include CMakeFiles/transformer.dir/depend.make
@@ -73,256 +73,256 @@ CMakeFiles/transformer.dir/codegen:
 .PHONY : CMakeFiles/transformer.dir/codegen
 
 CMakeFiles/transformer.dir/src/main.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/main.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/main.cpp
+CMakeFiles/transformer.dir/src/main.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/main.cpp
 CMakeFiles/transformer.dir/src/main.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/transformer.dir/src/main.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/main.cpp.o -MF CMakeFiles/transformer.dir/src/main.cpp.o.d -o CMakeFiles/transformer.dir/src/main.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/main.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/transformer.dir/src/main.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/main.cpp.o -MF CMakeFiles/transformer.dir/src/main.cpp.o.d -o CMakeFiles/transformer.dir/src/main.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/main.cpp
 
 CMakeFiles/transformer.dir/src/main.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/main.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/main.cpp > CMakeFiles/transformer.dir/src/main.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/main.cpp > CMakeFiles/transformer.dir/src/main.cpp.i
 
 CMakeFiles/transformer.dir/src/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/main.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/main.cpp -o CMakeFiles/transformer.dir/src/main.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/main.cpp -o CMakeFiles/transformer.dir/src/main.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/tensor.cpp
+CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/tensor.cpp
 CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/tensor.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/tensor.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/tensor.cpp
 
 CMakeFiles/transformer.dir/src/transformer/tensor.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/tensor.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/tensor.cpp > CMakeFiles/transformer.dir/src/transformer/tensor.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/tensor.cpp > CMakeFiles/transformer.dir/src/transformer/tensor.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/tensor.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/tensor.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/tensor.cpp -o CMakeFiles/transformer.dir/src/transformer/tensor.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/tensor.cpp -o CMakeFiles/transformer.dir/src/transformer/tensor.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/attention.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/attention.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/attention.cpp
+CMakeFiles/transformer.dir/src/transformer/attention.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/attention.cpp
 CMakeFiles/transformer.dir/src/transformer/attention.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/transformer.dir/src/transformer/attention.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/attention.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/attention.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/attention.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/attention.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/transformer.dir/src/transformer/attention.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/attention.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/attention.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/attention.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/attention.cpp
 
 CMakeFiles/transformer.dir/src/transformer/attention.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/attention.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/attention.cpp > CMakeFiles/transformer.dir/src/transformer/attention.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/attention.cpp > CMakeFiles/transformer.dir/src/transformer/attention.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/attention.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/attention.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/attention.cpp -o CMakeFiles/transformer.dir/src/transformer/attention.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/attention.cpp -o CMakeFiles/transformer.dir/src/transformer/attention.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/multihead_attention.cpp
+CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/multihead_attention.cpp
 CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/multihead_attention.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/multihead_attention.cpp
 
 CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/multihead_attention.cpp > CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/multihead_attention.cpp > CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/multihead_attention.cpp -o CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/multihead_attention.cpp -o CMakeFiles/transformer.dir/src/transformer/multihead_attention.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/layer_norm.cpp
+CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/layer_norm.cpp
 CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/layer_norm.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/layer_norm.cpp
 
 CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/layer_norm.cpp > CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/layer_norm.cpp > CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/layer_norm.cpp -o CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/layer_norm.cpp -o CMakeFiles/transformer.dir/src/transformer/layer_norm.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/linear.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/linear.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/linear.cpp
+CMakeFiles/transformer.dir/src/transformer/linear.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/linear.cpp
 CMakeFiles/transformer.dir/src/transformer/linear.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/transformer.dir/src/transformer/linear.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/linear.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/linear.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/linear.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/linear.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/transformer.dir/src/transformer/linear.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/linear.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/linear.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/linear.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/linear.cpp
 
 CMakeFiles/transformer.dir/src/transformer/linear.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/linear.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/linear.cpp > CMakeFiles/transformer.dir/src/transformer/linear.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/linear.cpp > CMakeFiles/transformer.dir/src/transformer/linear.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/linear.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/linear.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/linear.cpp -o CMakeFiles/transformer.dir/src/transformer/linear.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/linear.cpp -o CMakeFiles/transformer.dir/src/transformer/linear.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/feedforward.cpp
+CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/feedforward.cpp
 CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/feedforward.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/feedforward.cpp
 
 CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/feedforward.cpp > CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/feedforward.cpp > CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/feedforward.cpp -o CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/feedforward.cpp -o CMakeFiles/transformer.dir/src/transformer/feedforward.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/transformer_block.cpp
+CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/transformer_block.cpp
 CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/transformer_block.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/transformer_block.cpp
 
 CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/transformer_block.cpp > CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/transformer_block.cpp > CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/transformer_block.cpp -o CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/transformer_block.cpp -o CMakeFiles/transformer.dir/src/transformer/transformer_block.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/token_embedding.cpp
+CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/token_embedding.cpp
 CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/token_embedding.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/token_embedding.cpp
 
 CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/token_embedding.cpp > CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/token_embedding.cpp > CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/token_embedding.cpp -o CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/token_embedding.cpp -o CMakeFiles/transformer.dir/src/transformer/token_embedding.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/positional_encoding.cpp
+CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/positional_encoding.cpp
 CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/positional_encoding.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/positional_encoding.cpp
 
 CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/positional_encoding.cpp > CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/positional_encoding.cpp > CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/positional_encoding.cpp -o CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/positional_encoding.cpp -o CMakeFiles/transformer.dir/src/transformer/positional_encoding.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/gpt_model.cpp
+CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/gpt_model.cpp
 CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/gpt_model.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/gpt_model.cpp
 
 CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/gpt_model.cpp > CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/gpt_model.cpp > CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/gpt_model.cpp -o CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/gpt_model.cpp -o CMakeFiles/transformer.dir/src/transformer/gpt_model.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/activations.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/activations.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/activations.cpp
+CMakeFiles/transformer.dir/src/transformer/activations.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/activations.cpp
 CMakeFiles/transformer.dir/src/transformer/activations.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/transformer.dir/src/transformer/activations.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/activations.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/activations.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/activations.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/activations.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/transformer.dir/src/transformer/activations.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/activations.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/activations.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/activations.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/activations.cpp
 
 CMakeFiles/transformer.dir/src/transformer/activations.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/activations.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/activations.cpp > CMakeFiles/transformer.dir/src/transformer/activations.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/activations.cpp > CMakeFiles/transformer.dir/src/transformer/activations.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/activations.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/activations.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/activations.cpp -o CMakeFiles/transformer.dir/src/transformer/activations.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/activations.cpp -o CMakeFiles/transformer.dir/src/transformer/activations.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/text_gen.cpp
+CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/text_gen.cpp
 CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/text_gen.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/text_gen.cpp
 
 CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/text_gen.cpp > CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/text_gen.cpp > CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/text_gen.cpp -o CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/text_gen.cpp -o CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/variable.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/variable.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/variable.cpp
+CMakeFiles/transformer.dir/src/transformer/variable.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/variable.cpp
 CMakeFiles/transformer.dir/src/transformer/variable.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/transformer.dir/src/transformer/variable.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/variable.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/variable.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/variable.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/variable.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/transformer.dir/src/transformer/variable.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/variable.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/variable.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/variable.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/variable.cpp
 
 CMakeFiles/transformer.dir/src/transformer/variable.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/variable.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/variable.cpp > CMakeFiles/transformer.dir/src/transformer/variable.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/variable.cpp > CMakeFiles/transformer.dir/src/transformer/variable.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/variable.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/variable.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/variable.cpp -o CMakeFiles/transformer.dir/src/transformer/variable.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/variable.cpp -o CMakeFiles/transformer.dir/src/transformer/variable.cpp.s
 
 CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/transformer/optimizer.cpp
+CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/optimizer.cpp
 CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/transformer/optimizer.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o -MF CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o.d -o CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/optimizer.cpp
 
 CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/transformer/optimizer.cpp > CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/optimizer.cpp > CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.i
 
 CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/transformer/optimizer.cpp -o CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/optimizer.cpp -o CMakeFiles/transformer.dir/src/transformer/optimizer.cpp.s
 
 CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp
+CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp
 CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o -MF CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o.d -o CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o -MF CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o.d -o CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp
 
 CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp > CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp > CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.i
 
 CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp -o CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/tokenizer/bpe_tokenizer.cpp -o CMakeFiles/transformer.dir/src/tokenizer/bpe_tokenizer.cpp.s
 
 CMakeFiles/transformer.dir/src/data/dataset.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/data/dataset.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/data/dataset.cpp
+CMakeFiles/transformer.dir/src/data/dataset.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataset.cpp
 CMakeFiles/transformer.dir/src/data/dataset.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/transformer.dir/src/data/dataset.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/data/dataset.cpp.o -MF CMakeFiles/transformer.dir/src/data/dataset.cpp.o.d -o CMakeFiles/transformer.dir/src/data/dataset.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/data/dataset.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/transformer.dir/src/data/dataset.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/data/dataset.cpp.o -MF CMakeFiles/transformer.dir/src/data/dataset.cpp.o.d -o CMakeFiles/transformer.dir/src/data/dataset.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataset.cpp
 
 CMakeFiles/transformer.dir/src/data/dataset.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/data/dataset.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/data/dataset.cpp > CMakeFiles/transformer.dir/src/data/dataset.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataset.cpp > CMakeFiles/transformer.dir/src/data/dataset.cpp.i
 
 CMakeFiles/transformer.dir/src/data/dataset.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/data/dataset.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/data/dataset.cpp -o CMakeFiles/transformer.dir/src/data/dataset.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataset.cpp -o CMakeFiles/transformer.dir/src/data/dataset.cpp.s
 
 CMakeFiles/transformer.dir/src/data/dataloader.cpp.o: CMakeFiles/transformer.dir/flags.make
-CMakeFiles/transformer.dir/src/data/dataloader.cpp.o: /Users/liamford/Documents/transformer-from-scratch/src/data/dataloader.cpp
+CMakeFiles/transformer.dir/src/data/dataloader.cpp.o: /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataloader.cpp
 CMakeFiles/transformer.dir/src/data/dataloader.cpp.o: CMakeFiles/transformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/transformer.dir/src/data/dataloader.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/data/dataloader.cpp.o -MF CMakeFiles/transformer.dir/src/data/dataloader.cpp.o.d -o CMakeFiles/transformer.dir/src/data/dataloader.cpp.o -c /Users/liamford/Documents/transformer-from-scratch/src/data/dataloader.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/transformer.dir/src/data/dataloader.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/transformer.dir/src/data/dataloader.cpp.o -MF CMakeFiles/transformer.dir/src/data/dataloader.cpp.o.d -o CMakeFiles/transformer.dir/src/data/dataloader.cpp.o -c /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataloader.cpp
 
 CMakeFiles/transformer.dir/src/data/dataloader.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/transformer.dir/src/data/dataloader.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/transformer-from-scratch/src/data/dataloader.cpp > CMakeFiles/transformer.dir/src/data/dataloader.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataloader.cpp > CMakeFiles/transformer.dir/src/data/dataloader.cpp.i
 
 CMakeFiles/transformer.dir/src/data/dataloader.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/transformer.dir/src/data/dataloader.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/transformer-from-scratch/src/data/dataloader.cpp -o CMakeFiles/transformer.dir/src/data/dataloader.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/liamford/Documents/projects/transformer-from-scratch/src/data/dataloader.cpp -o CMakeFiles/transformer.dir/src/data/dataloader.cpp.s
 
 # Object files for target transformer
 transformer_OBJECTS = \
@@ -368,7 +368,7 @@ transformer: CMakeFiles/transformer.dir/src/data/dataset.cpp.o
 transformer: CMakeFiles/transformer.dir/src/data/dataloader.cpp.o
 transformer: CMakeFiles/transformer.dir/build.make
 transformer: CMakeFiles/transformer.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Linking CXX executable transformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Linking CXX executable transformer"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/transformer.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -380,6 +380,6 @@ CMakeFiles/transformer.dir/clean:
 .PHONY : CMakeFiles/transformer.dir/clean
 
 CMakeFiles/transformer.dir/depend:
-	cd /Users/liamford/Documents/transformer-from-scratch/build-fast && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/liamford/Documents/transformer-from-scratch /Users/liamford/Documents/transformer-from-scratch /Users/liamford/Documents/transformer-from-scratch/build-fast /Users/liamford/Documents/transformer-from-scratch/build-fast /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles/transformer.dir/DependInfo.cmake "--color=$(COLOR)"
+	cd /Users/liamford/Documents/projects/transformer-from-scratch/build-fast && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/liamford/Documents/projects/transformer-from-scratch /Users/liamford/Documents/projects/transformer-from-scratch /Users/liamford/Documents/projects/transformer-from-scratch/build-fast /Users/liamford/Documents/projects/transformer-from-scratch/build-fast /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles/transformer.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/transformer.dir/depend
 

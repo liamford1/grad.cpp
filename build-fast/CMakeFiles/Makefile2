@@ -54,10 +54,10 @@ RM = /opt/homebrew/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/liamford/Documents/transformer-from-scratch
+CMAKE_SOURCE_DIR = /Users/liamford/Documents/projects/transformer-from-scratch
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/liamford/Documents/transformer-from-scratch/build-fast
+CMAKE_BINARY_DIR = /Users/liamford/Documents/projects/transformer-from-scratch/build-fast
 
 #=============================================================================
 # Directory level rules for the build root directory
@@ -87,14 +87,14 @@ clean: CMakeFiles/debug.dir/clean
 CMakeFiles/transformer.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21 "Built target transformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21 "Built target transformer"
 .PHONY : CMakeFiles/transformer.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/transformer.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles 19
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles 19
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/transformer.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles 0
 .PHONY : CMakeFiles/transformer.dir/rule
 
 # Convenience name for target.
@@ -104,7 +104,7 @@ transformer: CMakeFiles/transformer.dir/rule
 # codegen rule for target.
 CMakeFiles/transformer.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/transformer.dir/build.make CMakeFiles/transformer.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21 "Finished codegen for target transformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21 "Finished codegen for target transformer"
 .PHONY : CMakeFiles/transformer.dir/codegen
 
 # clean rule for target.
@@ -119,14 +119,14 @@ CMakeFiles/transformer.dir/clean:
 CMakeFiles/fast.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fast.dir/build.make CMakeFiles/fast.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fast.dir/build.make CMakeFiles/fast.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=2 "Built target fast"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=2 "Built target fast"
 .PHONY : CMakeFiles/fast.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/fast.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles 1
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles 1
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/fast.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles 0
 .PHONY : CMakeFiles/fast.dir/rule
 
 # Convenience name for target.
@@ -136,7 +136,7 @@ fast: CMakeFiles/fast.dir/rule
 # codegen rule for target.
 CMakeFiles/fast.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fast.dir/build.make CMakeFiles/fast.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=2 "Finished codegen for target fast"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=2 "Finished codegen for target fast"
 .PHONY : CMakeFiles/fast.dir/codegen
 
 # clean rule for target.
@@ -151,14 +151,14 @@ CMakeFiles/fast.dir/clean:
 CMakeFiles/debug.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/debug.dir/build.make CMakeFiles/debug.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/debug.dir/build.make CMakeFiles/debug.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=1 "Built target debug"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=1 "Built target debug"
 .PHONY : CMakeFiles/debug.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/debug.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles 1
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles 1
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/debug.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles 0
 .PHONY : CMakeFiles/debug.dir/rule
 
 # Convenience name for target.
@@ -168,7 +168,7 @@ debug: CMakeFiles/debug.dir/rule
 # codegen rule for target.
 CMakeFiles/debug.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/debug.dir/build.make CMakeFiles/debug.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/transformer-from-scratch/build-fast/CMakeFiles --progress-num=1 "Finished codegen for target debug"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/liamford/Documents/projects/transformer-from-scratch/build-fast/CMakeFiles --progress-num=1 "Finished codegen for target debug"
 .PHONY : CMakeFiles/debug.dir/codegen
 
 # clean rule for target.

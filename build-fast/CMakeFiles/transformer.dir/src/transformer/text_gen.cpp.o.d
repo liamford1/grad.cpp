@@ -1,7 +1,7 @@
 CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o: \
-  /Users/liamford/Documents/transformer-from-scratch/src/transformer/text_gen.cpp \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/text_gen.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/tensor.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/text_gen.cpp \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/text_gen.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/tensor.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -812,9 +812,9 @@ CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o: \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__bit/byteswap.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__bit/endian.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__bit/has_single_bit.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/gpt_model.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/token_embedding.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/variable.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/gpt_model.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/token_embedding.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/variable.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/functional \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/binary_negate.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/bind.h \
@@ -933,13 +933,13 @@ CMakeFiles/transformer.dir/src/transformer/text_gen.cpp.o: \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/pointer_to_unary_function.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/unary_negate.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/unordered_set \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/positional_encoding.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/transformer_block.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/multihead_attention.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/layer_norm.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/feedforward.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/linear.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/module.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/positional_encoding.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/transformer_block.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/multihead_attention.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/linear.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/module.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/layer_norm.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/feedforward.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/fstream \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/filesystem \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__filesystem/copy_options.h \

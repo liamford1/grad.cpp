@@ -1,7 +1,7 @@
 CMakeFiles/transformer.dir/src/transformer/activations.cpp.o: \
-  /Users/liamford/Documents/transformer-from-scratch/src/transformer/activations.cpp \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/activations.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/tensor.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/activations.cpp \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/activations.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/tensor.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \

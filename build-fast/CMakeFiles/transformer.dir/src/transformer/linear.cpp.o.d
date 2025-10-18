@@ -1,7 +1,7 @@
 CMakeFiles/transformer.dir/src/transformer/linear.cpp.o: \
-  /Users/liamford/Documents/transformer-from-scratch/src/transformer/linear.cpp \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/linear.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/module.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/linear.cpp \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/linear.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/module.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/vector \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/copy.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/copy_move_common.h \
@@ -904,8 +904,8 @@ CMakeFiles/transformer.dir/src/transformer/linear.cpp.o: \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdarg \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__memory/temp_value.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__split_buffer \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/variable.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/tensor.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/variable.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/tensor.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/functional \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/binary_negate.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/bind.h \

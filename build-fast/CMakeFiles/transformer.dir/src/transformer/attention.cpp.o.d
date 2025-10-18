@@ -1,6 +1,6 @@
 CMakeFiles/transformer.dir/src/transformer/attention.cpp.o: \
-  /Users/liamford/Documents/transformer-from-scratch/src/transformer/attention.cpp \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/tensor.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/src/transformer/attention.cpp \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/tensor.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/string \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/max.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/comp.h \
@@ -811,7 +811,7 @@ CMakeFiles/transformer.dir/src/transformer/attention.cpp.o: \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__bit/byteswap.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__bit/endian.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__bit/has_single_bit.h \
-  /Users/liamford/Documents/transformer-from-scratch/include/transformer/attention.h \
+  /Users/liamford/Documents/projects/transformer-from-scratch/include/transformer/attention.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/iostream \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/ios \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__locale \
