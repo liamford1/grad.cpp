@@ -55,19 +55,6 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 endif()
 
 # ============================================================================
-# OPTIONAL: Link-Time Optimization (LTO) for extra 5-10% speedup
-# ============================================================================
-# Uncomment these lines if you want LTO (increases compile time)
-# include(CheckIPOSupported)
-# check_ipo_supported(RESULT ipo_supported OUTPUT ipo_output)
-# if(ipo_supported)
-#     set_property(TARGET transformer PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-#     message(STATUS "Link-Time Optimization (LTO) enabled")
-# else()
-#     message(STATUS "LTO not supported: ${ipo_output}")
-# endif()
-
-# ============================================================================
 # PLATFORM-SPECIFIC OPTIMIZATIONS
 # ============================================================================
 
@@ -121,3 +108,47 @@ else()
 endif()
 message(STATUS "===========================")
 message(STATUS "")
+
+# ============================================================================
+# TESTING (Optional - only built when explicitly requested)
+# ============================================================================
+
+# Enable testing framework
+enable_testing()
+
+# Option to build tests (OFF by default for faster builds)
+option(BUILD_TESTS "Build test suite" OFF)
+
+if(BUILD_TESTS)
+    message(STATUS "Building tests...")
+    
+    # Test executable for gradient checking
+    add_executable(test_gradients
+        tests/unit/test_gradients.cpp
+        # Reuse all the implementation files (no main.cpp!)
+        src/transformer/tensor.cpp
+        src/transformer/variable.cpp
+        src/transformer/activations.cpp
+        src/transformer/linear.cpp
+        src/transformer/layer_norm.cpp
+        src/transformer/attention.cpp
+        src/transformer/multihead_attention.cpp
+        src/transformer/feedforward.cpp
+        src/transformer/transformer_block.cpp
+        src/transformer/token_embedding.cpp
+        src/transformer/positional_encoding.cpp
+        src/transformer/gpt_model.cpp
+        src/transformer/text_gen.cpp
+        src/transformer/optimizer.cpp
+        src/tokenizer/bpe_tokenizer.cpp
+        src/data/dataset.cpp
+        src/data/dataloader.cpp
+    )
+    
+    target_include_directories(test_gradients PRIVATE include)
+    
+    # Register test with CTest
+    add_test(NAME GradientChecking COMMAND test_gradients)
+    
+    message(STATUS "Test targets added. Run with: make test_gradients && ./test_gradients")
+endif()
