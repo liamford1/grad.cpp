@@ -46,6 +46,112 @@ size_t get_memory_mb() {
                                     &size);
     return (kerr == KERN_SUCCESS) ? info.resident_size / (1024 * 1024) : 0;
 }
+
+// ============================================================================
+// BENCHMARK: Pure Training Performance (No I/O)
+// ============================================================================
+
+void benchmark_training_speed() {
+    print_header("Performance Benchmark: 100 Steps");
+    
+    // Load data
+    std::ifstream file("data/shakespeare.txt");
+    if (!file.is_open()) {
+        std::cerr << "❌ Can't open data/shakespeare.txt" << std::endl;
+        return;
+    }
+    
+    std::string text((std::istreambuf_iterator<char>(file)), 
+                     std::istreambuf_iterator<char>());
+    file.close();
+
+    BPETokenizer tokenizer(5000);
+    tokenizer.train(text);
+    std::vector<int> tokens = tokenizer.encode(text);
+    
+    // Same config as your real training
+    const int vocab_size = tokenizer.getCurrentVocabSize();
+    const int d_model = 256;
+    const int num_layers = 4;
+    const int num_heads = 4;
+    const int max_len = 512;
+    const int seq_length = 128;
+    const int batch_size = 2;
+    
+    GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.1f);
+    auto params = model.getAllParameters();
+    auto dataset = std::make_shared<TextDataset>(tokens, seq_length);
+    DataLoader loader(dataset, batch_size, true);
+    AdamOptimizer optimizer(params, 1e-4f);
+    
+    std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model 
+              << " layers=" << num_layers << " heads=" << num_heads << std::endl;
+    std::cout << "Running 100 steps...\n" << std::endl;
+    
+    // Warmup (5 steps to stabilize caches)
+    for (int step = 0; step < 5; step++) {
+        if (!loader.has_next()) loader.reset();
+        auto batch = loader.next_batch();
+        
+        int bs = batch.input.getBatchSize();
+        int sl = batch.input.getRows();
+        Tensor input_2d(bs * sl, 1), target_2d(bs * sl, 1);
+        
+        for (int b = 0; b < bs; b++) {
+            for (int s = 0; s < sl; s++) {
+                input_2d.setValue(b * sl + s, 0, batch.input.getValue(b, s, 0));
+                target_2d.setValue(b * sl + s, 0, batch.target.getValue(b, s, 0));
+            }
+        }
+        
+        auto in = Variable::create(input_2d, false);
+        auto tgt = Variable::create(target_2d, false);
+        auto loss = model.forward(in, true)->log_softmax()->nll_loss(tgt);
+        optimizer.zero_grad();
+        loss->backward();
+        loss->release_graph();
+        optimizer.clip_grad_norm(5.0f);
+        optimizer.step();
+    }
+    
+    std::cout << "Warmup complete. Starting benchmark..." << std::endl;
+    
+    // BENCHMARK: 100 steps
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    for (int step = 0; step < 100; step++) {
+        if (!loader.has_next()) loader.reset();
+        auto batch = loader.next_batch();
+        
+        int bs = batch.input.getBatchSize();
+        int sl = batch.input.getRows();
+        Tensor input_2d(bs * sl, 1), target_2d(bs * sl, 1);
+        
+        for (int b = 0; b < bs; b++) {
+            for (int s = 0; s < sl; s++) {
+                input_2d.setValue(b * sl + s, 0, batch.input.getValue(b, s, 0));
+                target_2d.setValue(b * sl + s, 0, batch.target.getValue(b, s, 0));
+            }
+        }
+        
+        auto in = Variable::create(input_2d, false);
+        auto tgt = Variable::create(target_2d, false);
+        auto loss = model.forward(in, true)->log_softmax()->nll_loss(tgt);
+        optimizer.zero_grad();
+        loss->backward();
+        loss->release_graph();
+        optimizer.clip_grad_norm(5.0f);
+        optimizer.step();
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    
+    std::cout << "\n=== BASELINE RESULTS ===" << std::endl;
+    std::cout << "100 steps took: " << duration.count() << "ms" << std::endl;
+    std::cout << "Average per step: " << (duration.count() / 100.0) << "ms" << std::endl;
+    std::cout << "Speed: " << (100000.0 / duration.count()) << " steps/sec" << std::endl;
+}
 // ============================================================================
 // TEST 1: OVERFITTING TEST (Sanity Check)
 // ============================================================================
@@ -203,7 +309,7 @@ void train_shakespeare() {
     print_header("Shakespeare Training... ");
 
     // ===== FAST TEST MODE =====
-    const bool FAST_MODE = true;  // Set to false for full training
+    const bool FAST_MODE = false;  // Set to false for full training
     const int vocab_target = FAST_MODE ? 500 : 5000;
     const int train_steps = FAST_MODE ? 50 : 1000;
     const int sequence_len = FAST_MODE ? 64 : 128;
@@ -404,6 +510,19 @@ void train_shakespeare() {
 
 int main() {
     std::cout << "🚀 TRANSFORMER TRAINING SUITE 🚀\n" << std::endl;
+
+    std::cout << "🚀 PERFORMANCE BENCHMARK 🚀\n" << std::endl;
+    
+    try {
+        benchmark_training_speed();  // Just this!
+        
+        std::cout << "\n✅ BENCHMARK COMPLETE!" << std::endl;
+        return 0;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "\n❌ Error: " << e.what() << std::endl;
+        return 1;
+    }
     
     try {
         test_overfit_tiny_sequence();
