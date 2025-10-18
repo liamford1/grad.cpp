@@ -4,7 +4,7 @@
 #include <cmath>
 #include <iostream>
 
-TextGen::TextGen(const GPTModel& model) : model(model) {}
+TextGen::TextGen(const GPTModel& model, const BPETokenizer* tok) : model(model), tokenizer(tok) {}
 
 std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens) {
     std::vector<int> tokens = prompt_tokens;
@@ -63,9 +63,12 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
 }
 
 std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
+    if (tokenizer != nullptr) {
+        return tokenizer->decode(tokens);
+    }
+    
     std::string result = "";
     result.reserve(tokens.size());
-    
     for (size_t i = 0; i < tokens.size(); i++) {
         result += static_cast<char>(tokens[i]);
     }

@@ -31,7 +31,7 @@ class BPETokenizer {
         BPETokenizer(int vocab_size);
         void train(const std::string& training_text);
         std::vector<int> encode(const std::string& text);
-        std::string decode(const std::vector<int>& tokens);
+        std::string decode(const std::vector<int>& tokens) const;
         
         int getCurrentVocabSize() const;
         int getVocabSize() const;
