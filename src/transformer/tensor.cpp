@@ -506,9 +506,7 @@ Tensor Tensor::add(const Tensor& other) const {
         float* C = result.raw();
         const int total = this->batch_size * this->rows * this->cols;
         
-        for (int i = 0; i < total; i++) {
-            C[i] = A[i] + B[i];
-        }
+        vDSP_vadd(A, 1, B, 1, C, 1, total);
         return result;
     } else {
         throw std::invalid_argument("Unsupported addition configuration");
@@ -581,11 +579,8 @@ Tensor Tensor::elementwise(const Tensor& other) const {
         float* C = result.raw();
         const int total = this->batch_size * this->rows * this->cols;
         
-        for (int i = 0; i < total; i++) {
-            C[i] = A[i] * B[i];
-        }
+        vDSP_vmul(A, 1, B, 1, C, 1, total);
         return result;
-        
     } else {
         throw std::invalid_argument("Cannot perform elementwise multiply on tensors with different dimensionalities");
     }
@@ -593,20 +588,49 @@ Tensor Tensor::elementwise(const Tensor& other) const {
 
 Tensor Tensor::transpose() const {
     assertValid("transpose(this)");
+    
     if (!this->is_3d) {
         Tensor result(this->cols, this->rows);
-        for (int i = 0; i < this->rows; i++) {
-            for (int j = 0; j < this->cols; j++) {
-                result.setValue(j, i, this->getValue(i, j));
+        const float* src = this->raw();
+        float* dst = result.raw();
+        
+        const int BLOCK = 32;
+        
+        for (int i0 = 0; i0 < this->rows; i0 += BLOCK) {
+            const int i_max = std::min(i0 + BLOCK, this->rows);
+            for (int j0 = 0; j0 < this->cols; j0 += BLOCK) {
+                const int j_max = std::min(j0 + BLOCK, this->cols);
+                
+                for (int i = i0; i < i_max; ++i) {
+                    for (int j = j0; j < j_max; ++j) {
+                        dst[j * this->rows + i] = src[i * this->cols + j];
+                    }
+                }
             }
         }
         return result;
+        
     } else {
         Tensor result(this->batch_size, this->cols, this->rows);
-        for (int b = 0; b < this->batch_size; b++) {
-            for (int i = 0; i < this->rows; i++) {
-                for (int j = 0; j < this->cols; j++) {
-                    result.setValue(b, j, i, this->getValue(b, i, j));
+        const float* src = this->raw();
+        float* dst = result.raw();
+        
+        const int BLOCK = 32;
+        
+        for (int b = 0; b < this->batch_size; ++b) {
+            const float* batch_src = src + b * this->rows * this->cols;
+            float* batch_dst = dst + b * this->cols * this->rows;
+            
+            for (int i0 = 0; i0 < this->rows; i0 += BLOCK) {
+                const int i_max = std::min(i0 + BLOCK, this->rows);
+                for (int j0 = 0; j0 < this->cols; j0 += BLOCK) {
+                    const int j_max = std::min(j0 + BLOCK, this->cols);
+                    
+                    for (int i = i0; i < i_max; ++i) {
+                        for (int j = j0; j < j_max; ++j) {
+                            batch_dst[j * this->rows + i] = batch_src[i * this->cols + j];
+                        }
+                    }
                 }
             }
         }
@@ -696,9 +720,7 @@ Tensor Tensor::scale(float scaler) const {
         float* dst = result.raw();
         const int total = this->rows * this->cols;
 
-        for (int i = 0; i < total; i++) {
-            dst[i] = src[i] * scaler;
-        }
+        vDSP_vsmul(src, 1, &scaler, dst, 1, total);
         return result;
     } else {
         Tensor result(this->batch_size, this->rows, this->cols);
@@ -706,9 +728,7 @@ Tensor Tensor::scale(float scaler) const {
         float* dst = result.raw();
         const int total = this->batch_size * this->rows * this->cols;
 
-        for (int i = 0; i < total; i++) {
-            dst[i] = src[i] * scaler;
-        }
+        vDSP_vsmul(src, 1, &scaler, dst, 1, total);
         return result;
     }
 }

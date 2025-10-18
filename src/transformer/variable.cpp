@@ -111,70 +111,106 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
             auto reduce2D = [](const Tensor& g, int R, int C, bool br, bool bc) -> Tensor {
                 if (!br && !bc && g.getRows() == R && g.getCols() == C && !g.getIs3D()) {
                     Tensor out(R, C);
-                    float* dst = out.raw();
                     const float* src = g.raw();
-                    for (int i = 0, n = R * C; i < n; ++i) dst[i] = src[i];
+                    float* dst = out.raw();
+                    const int total = R * C;
+                    for (int i = 0; i < total; ++i) dst[i] = src[i];
                     return out;
                 }
 
-                Tensor out(R, C); out.fill(0.0f);
+                Tensor out(R, C);
+                out.fill(0.0f);
                 const int GR = g.getRows();
                 const int GC = g.getCols();
+                
+                const float* g_ptr = g.raw();
+                float* out_ptr = out.raw();
 
-                for (int i = 0; i < R; ++i) {
+                if (br && bc) {
+                    float s = 0.0f;
+                    const int total = GR * GC;
+                    for (int i = 0; i < total; ++i) {
+                        s += g_ptr[i];
+                    }
+                    out_ptr[0] = s;
+                } else if (br) {
                     for (int j = 0; j < C; ++j) {
                         float s = 0.0f;
-                        if (br && bc) {
-                            for (int ii = 0; ii < GR; ++ii)
-                                for (int jj = 0; jj < GC; ++jj)
-                                    s += g.getValue(ii, jj);
-                        } else if (br) {
-                            for (int ii = 0; ii < GR; ++ii)
-                                s += g.getValue(ii, j);
-                        } else if (bc) {
-                            for (int jj = 0; jj < GC; ++jj)
-                                s += g.getValue(i, jj);
-                        } else {
-                            s = g.getValue(i, j);
+                        for (int ii = 0; ii < GR; ++ii) {
+                            s += g_ptr[ii * GC + j];
                         }
-                        out.setValue(i, j, s);
+                        out_ptr[j] = s;
+                    }
+                } else if (bc) {
+                    for (int i = 0; i < R; ++i) {
+                        float s = 0.0f;
+                        const float* g_row = g_ptr + i * GC;
+                        for (int jj = 0; jj < GC; ++jj) {
+                            s += g_row[jj];
+                        }
+                        out_ptr[i] = s;
+                    }
+                } else {
+                    for (int i = 0; i < R; ++i) {
+                        for (int j = 0; j < C; ++j) {
+                            out_ptr[i * C + j] = g_ptr[i * GC + j];
+                        }
                     }
                 }
                 return out;
             };
 
             auto reduce3Dfrom2D = [](const Tensor& g3, int R, int C, bool br, bool bc) -> Tensor {
-                Tensor out(R, C); out.fill(0.0f);
+                Tensor out(R, C);
+                out.fill(0.0f);
                 const int B  = g3.getBatchSize();
                 const int GR = g3.getRows();
                 const int GC = g3.getCols();
 
+                const float* g3_ptr = g3.raw();
+                float* out_ptr = out.raw();
+
                 if (!br && !bc) {
-                    for (int b = 0; b < B; ++b)
-                        for (int i = 0; i < R; ++i)
-                            for (int j = 0; j < C; ++j)
-                                out.setValue(i, j, out.getValue(i, j) + g3.getValue(b, i, j));
+                    for (int b = 0; b < B; ++b) {
+                        const float* batch_ptr = g3_ptr + b * GR * GC;
+                        for (int i = 0; i < R; ++i) {
+                            const float* row_ptr = batch_ptr + i * GC;
+                            float* out_row = out_ptr + i * C;
+                            for (int j = 0; j < C; ++j) {
+                                out_row[j] += row_ptr[j];
+                            }
+                        }
+                    }
                     return out;
                 }
 
-                for (int i = 0; i < R; ++i) {
+                if (br && bc) {
+                    float s = 0.0f;
+                    const int total = B * GR * GC;
+                    for (int i = 0; i < total; ++i) {
+                        s += g3_ptr[i];
+                    }
+                    out_ptr[0] = s;
+                } else if (br) {
                     for (int j = 0; j < C; ++j) {
                         float s = 0.0f;
-                        if (br && bc) {
-                            for (int b = 0; b < B; ++b)
-                                for (int ii = 0; ii < GR; ++ii)
-                                    for (int jj = 0; jj < GC; ++jj)
-                                        s += g3.getValue(b, ii, jj);
-                        } else if (br) { 
-                            for (int b = 0; b < B; ++b)
-                                for (int ii = 0; ii < GR; ++ii)
-                                    s += g3.getValue(b, ii, j);
-                        } else { 
-                            for (int b = 0; b < B; ++b)
-                                for (int jj = 0; jj < GC; ++jj)
-                                    s += g3.getValue(b, i, jj);
+                        for (int b = 0; b < B; ++b) {
+                            for (int ii = 0; ii < GR; ++ii) {
+                                s += g3_ptr[b * GR * GC + ii * GC + j];
+                            }
                         }
-                        out.setValue(i, j, s);
+                        out_ptr[j] = s;
+                    }
+                } else {
+                    for (int i = 0; i < R; ++i) {
+                        float s = 0.0f;
+                        for (int b = 0; b < B; ++b) {
+                            const float* batch_row = g3_ptr + b * GR * GC + i * GC;
+                            for (int jj = 0; jj < GC; ++jj) {
+                                s += batch_row[jj];
+                            }
+                        }
+                        out_ptr[i] = s;
                     }
                 }
                 return out;
