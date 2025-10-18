@@ -46,6 +46,7 @@ class Variable : public std::enable_shared_from_this<Variable> {
         
         void backward();
         void zeroGrad();
+        void release_graph();
 
         void addChild(std::shared_ptr<Variable> child) { children.push_back(child); }
         void setBackwardFn(std::function<void()> fn) { backward_fn = fn; } 
