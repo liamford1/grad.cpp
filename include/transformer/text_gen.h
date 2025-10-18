@@ -3,17 +3,19 @@
 
 #include "tensor.h"
 #include "gpt_model.h"
+#include "tokenizer/bpe_tokenizer.h"
 #include <string>
 #include <vector>
 
 class TextGen {
     private:
         const GPTModel& model;
+        const BPETokenizer* tokenizer;
 
         int sample_from_logits(const Tensor& logits, float temperature = 1.0f);
         std::string tokens_to_string(const std::vector<int>& tokens);
     public:
-        TextGen(const GPTModel& model);
+        TextGen(const GPTModel& model, const BPETokenizer* tok = nullptr);
 
         std::string generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens = 50);
         std::string generate_sample(const std::vector<int>& prompt_tokens, float temperature = 1.0f, int max_tokens = 50);

@@ -121,13 +121,17 @@ std::vector<int> BPETokenizer::encode(const std::string& text) {
     return token_ids;
 }
 
-std::string BPETokenizer::decode(const std::vector<int>& token_ids) {
+std::string BPETokenizer::decode(const std::vector<int>& token_ids) const {
     std::string result;
-
-    for (int id : token_ids) {
-        auto it = id_to_token.find(id);
+    
+    for (size_t i = 0; i < token_ids.size(); i++) {
+        auto it = id_to_token.find(token_ids[i]);
         if (it != id_to_token.end()) {
             result += it->second;
+            
+            if (i < token_ids.size() - 1) {
+                result += " ";
+            }
         }
     }
     return result;

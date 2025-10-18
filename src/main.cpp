@@ -5,6 +5,7 @@
 #include "data/dataset.h"
 #include "data/dataloader.h"
 #include "transformer/text_gen.h"
+#include "tokenizer/bpe_tokenizer.h"
 #include <iostream>
 #include <vector>
 #include <iomanip>
@@ -199,9 +200,15 @@ void test_dataloader() {
 // ============================================================================
 
 void train_shakespeare() {
-    print_header("Shakespeare Training - Goal 1");
+    print_header("Shakespeare Training... ");
+
+    // ===== FAST TEST MODE =====
+    const bool FAST_MODE = true;  // Set to false for full training
+    const int vocab_target = FAST_MODE ? 500 : 5000;
+    const int train_steps = FAST_MODE ? 50 : 1000;
+    const int sequence_len = FAST_MODE ? 64 : 128;
+    // ==========================
     
-    // Load data
     std::ifstream file("data/shakespeare.txt");
     if (!file.is_open()) {
         std::cerr << "❌ Can't open data/shakespeare.txt" << std::endl;
@@ -211,22 +218,24 @@ void train_shakespeare() {
     std::string text((std::istreambuf_iterator<char>(file)), 
                      std::istreambuf_iterator<char>());
     file.close();
+
+    std::cout << "Training tokenizer..." << std::endl;
+    BPETokenizer tokenizer(vocab_target);
+    tokenizer.train(text);
+    std::cout << "Tokenizer trained. Vocab size: " << tokenizer.getCurrentVocabSize() << std::endl;
     
-    std::vector<int> tokens;
-    for (char c : text) tokens.push_back(static_cast<unsigned char>(c));
-    
+    std::vector<int> tokens = tokenizer.encode(text);
     std::cout << "Loaded " << tokens.size() << " tokens\n" << std::endl;
-    
-    // Model config
-    const int vocab_size = 256;
+
+    const int vocab_size = tokenizer.getCurrentVocabSize();
     const int d_model = 256;
     const int num_layers = 4;
     const int num_heads = 4;
     const int max_len = 512;
-    const int seq_length = 128;
+    const int seq_length = sequence_len;
     const int batch_size = 2;
     const float lr = 1e-4f;
-    const int num_steps = 1000;
+    const int num_steps = train_steps;
     
     std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model 
               << " layers=" << num_layers << " heads=" << num_heads << std::endl;
@@ -256,7 +265,6 @@ void train_shakespeare() {
         auto batch = loader.next_batch();
         auto t1 = std::chrono::high_resolution_clock::now();
         
-        // Reuse pre-allocated tensors (no memory leak!)
         int batch_size = batch.input.getBatchSize();
         int seq_len = batch.input.getRows();
 
@@ -270,11 +278,9 @@ void train_shakespeare() {
             }
         }
         
-        // Create variables with the reused tensors
         auto in = Variable::create(input_2d, false);
         auto tgt = Variable::create(target_2d, false);
-        
-        // Forward pass
+
         auto logits = model.forward(in, true);
         auto loss = logits->log_softmax()->nll_loss(tgt);
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -344,15 +350,11 @@ void train_shakespeare() {
     std::cout << std::string(60, '=') << std::endl << std::endl;
 
     // Create text generator
-    TextGen generator(model);
+    TextGen generator(model, &tokenizer);
 
     // Helper function to create prompts
-    auto string_to_tokens = [](const std::string& str) {
-        std::vector<int> tokens;
-        for (char c : str) {
-            tokens.push_back(static_cast<unsigned char>(c));
-        }
-        return tokens;
+    auto string_to_tokens = [&tokenizer](const std::string& str) {
+        return tokenizer.encode(str);
     };
 
     // Try different prompts
