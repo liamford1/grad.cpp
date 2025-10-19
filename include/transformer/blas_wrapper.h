@@ -1,36 +1,86 @@
 #pragma once
 
-enum CBLAS_ORDER {CblasRowMajor=101, CblasColMajor=102};
-enum CBLAS_TRANSPOSE {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113};
+// Cross-platform BLAS + vDSP Wrapper
+#if defined(__APPLE__)
+    #include <Accelerate/Accelerate.h>
+#endif
 
-extern "C" {
-    void cblas_sgemm(const CBLAS_ORDER Order,
-                     const CBLAS_TRANSPOSE TransA,
-                     const CBLAS_TRANSPOSE TransB,
-                     const int M, const int N, const int K,
-                     const float alpha,
-                     const float *A, const int lda,
-                     const float *B, const int ldb,
-                     const float beta,
-                     float *C, const int ldc);
-    
-    void vDSP_vadd(const float *A, long strideA,
-                   const float *B, long strideB,
-                   float *C, long strideC,
-                   unsigned long n);
-    
-    void vDSP_vsub(const float *B, long strideB,
-                   const float *A, long strideA,
-                   float *C, long strideC,
-                   unsigned long n);
-    
-    void vDSP_vmul(const float *A, long strideA,
-                   const float *B, long strideB,
-                   float *C, long strideC,
-                   unsigned long n);
-    
-    void vDSP_vsmul(const float *A, long strideA,
-                    const float *B,
-                    float *C, long strideC,
-                    unsigned long n);
+// BLAS: Single-precision GEMM (matrix multiply)
+inline void blas_sgemm(const float* A, const float* B, float* C,
+                       int M, int N, int K,
+                       bool transA = false, bool transB = false)
+{
+#if defined(__APPLE__)
+    cblas_sgemm(CblasRowMajor,
+                transA ? CblasTrans : CblasNoTrans,
+                transB ? CblasTrans : CblasNoTrans,
+                M, N, K,
+                1.0f,
+                A, K,
+                B, N,
+                0.0f,
+                C, N);
+#else
+    // Fallback: Naive CPU implementation
+    for (int i = 0; i < M; ++i) {
+        for (int j = 0; j < N; ++j) {
+            float sum = 0.0f;
+            for (int k = 0; k < K; ++k)
+                sum += A[i*K + k] * B[k*N + j];
+            C[i*N + j] = sum;
+        }
+    }
+#endif
 }
+
+// vDSP-style Vector Operations
+inline void blas_vadd(const float* A, const float* B, float* C, size_t n)
+{
+#if defined(__APPLE__)
+    vDSP_vadd(A, 1, B, 1, C, 1, n);
+#else
+    for (size_t i = 0; i < n; ++i)
+        C[i] = A[i] + B[i];
+#endif
+}
+
+inline void blas_vsub(const float* A, const float* B, float* C, size_t n)
+{
+#if defined(__APPLE__)
+    vDSP_vsub(B, 1, A, 1, C, 1, n);
+#else
+    for (size_t i = 0; i < n; ++i)
+        C[i] = A[i] - B[i];
+#endif
+}
+
+inline void blas_vmul(const float* A, const float* B, float* C, size_t n)
+{
+#if defined(__APPLE__)
+    vDSP_vmul(A, 1, B, 1, C, 1, n);
+#else
+    for (size_t i = 0; i < n; ++i)
+        C[i] = A[i] * B[i];
+#endif
+}
+
+inline void blas_vsmul(const float* A, float scalar, float* C, size_t n)
+{
+#if defined(__APPLE__)
+    vDSP_vsmul(A, 1, &scalar, C, 1, n);
+#else
+    for (size_t i = 0; i < n; ++i)
+        C[i] = A[i] * scalar;
+#endif
+}
+
+inline void blas_vfill(float value, float* C, size_t n)
+{
+#if defined(__APPLE__)
+    vDSP_vfill(&value, C, 1, static_cast<vDSP_Length>(n));
+#else
+    for (size_t i = 0; i < n; ++i)
+        C[i] = value;
+#endif
+}
+

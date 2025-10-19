@@ -1,5 +1,6 @@
 #include "transformer/tensor.h"
 #include "transformer/blas_wrapper.h"
+
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -506,7 +507,7 @@ Tensor Tensor::add(const Tensor& other) const {
         float* C = result.raw();
         const int total = this->batch_size * this->rows * this->cols;
         
-        vDSP_vadd(A, 1, B, 1, C, 1, total);
+        blas_vadd(A, B, C, total);
         return result;
     } else {
         throw std::invalid_argument("Unsupported addition configuration");
@@ -526,10 +527,9 @@ Tensor Tensor::subtract(const Tensor& other) const {
         const float* B = other.raw();
         float* C = result.raw();
         const int total = this->rows * this->cols;
-
-        for (int i = 0; i < total; i++) {
-            C[i] = A[i] - B[i];
-        }
+        
+        blas_vsub(other.data, data, result.data, total);
+        
         return result;
     } else if (this->is_3d && other.is_3d) {
         if (this->batch_size != other.batch_size || this->rows != other.rows || this->cols != other.cols) {
@@ -541,9 +541,8 @@ Tensor Tensor::subtract(const Tensor& other) const {
         float* C = result.raw();
         const int total = this->batch_size * this->rows * this->cols;
 
-        for (int i = 0; i < total; i++) {
-            C[i] = A[i] - B[i];
-        }
+        blas_vsub(other.data, data, result.data, total);
+
         return result;
     } else {
         throw std::invalid_argument("Cannot subtract tensors with different dimensionalities");
@@ -564,9 +563,8 @@ Tensor Tensor::elementwise(const Tensor& other) const {
         float* C = result.raw();
         const int total = this->rows * this->cols;
         
-        for (int i = 0; i < total; i++) {
-            C[i] = A[i] * B[i];
-        }
+        blas_vmul(data, other.data, result.data, total);
+        
         return result;
         
     } else if (this->is_3d && other.is_3d) {
@@ -579,7 +577,7 @@ Tensor Tensor::elementwise(const Tensor& other) const {
         float* C = result.raw();
         const int total = this->batch_size * this->rows * this->cols;
         
-        vDSP_vmul(A, 1, B, 1, C, 1, total);
+        blas_vmul(A, B, C, total);
         return result;
     } else {
         throw std::invalid_argument("Cannot perform elementwise multiply on tensors with different dimensionalities");
@@ -706,9 +704,8 @@ Tensor Tensor::softmax() const {
 
 void Tensor::fill(float value) {
     assertValid("fill(this)");
-    for (int i = 0; i < this->batch_size * this->rows * this->cols; i++) {
-       data[i] = value;
-    }
+    const int total = batch_size * rows * cols;
+    blas_vfill(value, data, total);
 }
 
 Tensor Tensor::scale(float scaler) const {
@@ -720,7 +717,7 @@ Tensor Tensor::scale(float scaler) const {
         float* dst = result.raw();
         const int total = this->rows * this->cols;
 
-        vDSP_vsmul(src, 1, &scaler, dst, 1, total);
+        blas_vsmul(src, scaler, dst, total);
         return result;
     } else {
         Tensor result(this->batch_size, this->rows, this->cols);
@@ -728,7 +725,7 @@ Tensor Tensor::scale(float scaler) const {
         float* dst = result.raw();
         const int total = this->batch_size * this->rows * this->cols;
 
-        vDSP_vsmul(src, 1, &scaler, dst, 1, total);
+        blas_vsmul(src, scaler, dst, total);
         return result;
     }
 }
@@ -884,14 +881,7 @@ void Tensor::assertValid(const std::string& context) const {
 void Tensor::scale_inplace(float scalar) {
     assertValid("scale_inplace");
     const int total = batch_size * rows * cols;
-
-#if defined(__APPLE__)
-    vDSP_vsmul(data, 1, &scalar, data, 1, total);
-#else
-    for (int i = 0; i < total; i++) {
-        data[i] *= scalar;
-    }
-#endif
+    blas_vsmul(data, scalar, data, total);
 }
 
 void Tensor::add_inplace(const Tensor& other) {
@@ -905,13 +895,8 @@ void Tensor::add_inplace(const Tensor& other) {
         
         const int total = rows * cols;
         const float* other_data = other.raw();
-#if defined(__APPLE__)
-        vDSP_vadd(data, 1, other_data, 1, data, 1, total);
-#else
-        for (int i = 0; i < total; i++) {
-            data[i] += other_data[i];
-        }
-#endif
+        blas_vadd(data, other_data, data, total);
+
     } else if (is_3d && other.is_3d) {
         if (batch_size != other.batch_size || rows != other.rows || cols != other.cols) {
             throw std::invalid_argument("Shape mismatch for in-place add");
@@ -919,14 +904,8 @@ void Tensor::add_inplace(const Tensor& other) {
         
         const int total = batch_size * rows * cols;
         const float* other_data = other.raw();
-        
-#if defined(__APPLE__)
-            vDSP_vadd(data, 1, other_data, 1, data, 1, total);
-#else
-            for (int i = 0; i < total; i++) {
-                data[i] += other_data[i];
-            }
-#endif
+        blas_vadd(data, other_data, data, total);
+
     } else {
         throw std::invalid_argument("Cannot add 2D and 3D tensors in-place");
     }
@@ -942,14 +921,8 @@ void Tensor::multiply_inplace(const Tensor& other) {
     
     const int total = (is_3d ? batch_size : 1) * rows * cols;
     const float* other_data = other.raw();
+    blas_vmul(data, other_data, data, total);
 
-#if defined(__APPLE__)
-    vDSP_vmul(data, 1, other_data, 1, data, 1, total);
-#else
-    for (int i = 0; i < total; i++) {
-        data[i] *= other_data[i];
-    }
-#endif
 }
 
 void Tensor::zero() {
