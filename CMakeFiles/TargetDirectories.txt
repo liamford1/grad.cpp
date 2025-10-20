@@ -1,0 +1,11 @@
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/transformer.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/fast.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/debug.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/test_gradients.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/test_dropout.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/test_attention_bias.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/test_weight_tying.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/test_attention_gradients.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/test.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/edit_cache.dir
+/Users/liamford/Documents/projects/transformer-from-scratch/CMakeFiles/rebuild_cache.dir

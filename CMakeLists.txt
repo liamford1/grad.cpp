@@ -187,7 +187,17 @@ if(BUILD_TESTS)
         src/transformer/transformer_block.cpp
         src/transformer/gpt_model.cpp
     )
-    
+
+    add_executable(test_attention_gradients
+        tests/unit/test_attention_gradients.cpp
+        src/transformer/tensor.cpp
+        src/transformer/variable.cpp
+        src/transformer/activations.cpp
+        src/transformer/linear.cpp
+        src/transformer/attention.cpp
+        src/transformer/multihead_attention.cpp
+    )
+
     target_include_directories(test_gradients PRIVATE include)
     add_test(NAME GradientChecking COMMAND test_gradients)
 
@@ -199,6 +209,14 @@ if(BUILD_TESTS)
 
     target_include_directories(test_weight_tying PRIVATE include)
     add_test(NAME WeightTyingVerification COMMAND test_weight_tying)
+
+    target_include_directories(test_attention_gradients PRIVATE include)
+    if(APPLE)
+        target_link_libraries(test_attention_gradients ${ACCELERATE_LIBRARY})
+    else()
+        target_link_libraries(test_attention_gradients ${BLAS_LIBRARIES})
+    endif()
+    add_test(NAME AttentionGradientChecking COMMAND test_attention_gradients)
     
     message(STATUS "Test targets added. Run with: make test_gradients && ./test_gradients")
 endif()
