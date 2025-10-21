@@ -159,8 +159,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                    self_bq, self_bk, self_bv, self_bo,
                                    attention_weights_all, V_heads_all, self_concat, output, self_num_heads,
                                    self_d_model, seq_len, head_size]() {
-                
-                Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
+
+                self_Wo->getGrad().add_inplace(self_concat->getData().transpose().matmul(output->getGrad()));
 
                 Tensor db_o(1, self_d_model);
                 db_o.fill(0.0f);
@@ -170,6 +170,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     }
                 }
                 self_bo->getGrad().add_inplace(db_o);
+
+                Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
 
                 Tensor dQ(seq_len, self_d_model);
                 Tensor dK(seq_len, self_d_model);
@@ -251,10 +253,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                .add(dK.matmul(self_Wk->getData().transpose()))
                                .add(dV.matmul(self_Wv->getData().transpose()));
                 self_input->getGrad().add_inplace(dInput);
-
-                self_Wo->getGrad().add_inplace(self_concat->getData().transpose()
-                               .matmul(output->getGrad()));
-
             });
         }
 
@@ -359,7 +357,17 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                    attention_weights_all, V_heads_all, self_concat, output, self_num_heads,
                                    self_d_model, self_batch_size, seq_len, head_size]() {
 
-                Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
+                for (size_t b = 0; b < self_batch_size; b++) {
+                    Tensor concat_slice(seq_len, self_d_model);
+                    Tensor output_grad_slice(seq_len, self_d_model);
+                    for (int i = 0; i < seq_len; i++) {
+                        for (int j = 0; j < self_d_model; j++) {
+                            concat_slice.setValue(i, j, self_concat->getData().getValue(b, i, j));
+                            output_grad_slice.setValue(i, j, output->getGrad().getValue(b, i, j));
+                        }
+                    }
+                    self_Wo->getGrad().add_inplace(concat_slice.transpose().matmul(output_grad_slice));
+                }
 
                 Tensor db_o(1, self_d_model);
                 db_o.fill(0.0f);
@@ -371,6 +379,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     }
                 }
                 self_bo->getGrad().add_inplace(db_o);
+
+                Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
 
                 Tensor dQ(self_batch_size, seq_len, self_d_model);
                 Tensor dK(self_batch_size, seq_len, self_d_model);
@@ -519,18 +529,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     }
                 }
                 self_input->getGrad().add_inplace(dInput);
-
-                for (size_t b = 0; b < self_batch_size; b++) {
-                    Tensor concat_slice(seq_len, self_d_model);
-                    Tensor output_grad_slice(seq_len, self_d_model);
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < self_d_model; j++) {
-                            concat_slice.setValue(i, j, self_concat->getData().getValue(b, i, j));
-                            output_grad_slice.setValue(i, j, output->getGrad().getValue(b, i, j));
-                        }
-                    }
-                    self_Wo->getGrad().add_inplace(concat_slice.transpose().matmul(output_grad_slice));
-                }
             });
         }
 
