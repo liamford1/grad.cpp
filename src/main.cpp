@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <cmath>
 #include <fstream>
+#include <sstream>
 #include <chrono>
 #include <mach/mach.h>
 // ============================================================================
@@ -61,13 +62,28 @@ void benchmark_training_speed() {
         return;
     }
     
-    std::string text((std::istreambuf_iterator<char>(file)), 
+    std::string text((std::istreambuf_iterator<char>(file)),
                      std::istreambuf_iterator<char>());
     file.close();
 
-    BPETokenizer tokenizer(5000);
-    tokenizer.train(text);
+    // Train BPE on a sample to speed up (otherwise takes hours on full text)
+    std::istringstream sample_stream(text);
+    std::string sample_text;
+    std::string word;
+    int word_count = 0;
+    int max_training_words = 5000;  // Limit training to first 5K words
+
+    while (sample_stream >> word && word_count < max_training_words) {
+        sample_text += word + " ";
+        word_count++;
+    }
+
+    std::cout << "Training BPE tokenizer on " << word_count << " words..." << std::endl;
+    BPETokenizer tokenizer(1000);  // Reduced vocab size for faster training
+    tokenizer.train(sample_text);
+    std::cout << "Tokenizer trained! Encoding full text..." << std::endl;
     std::vector<int> tokens = tokenizer.encode(text);
+    std::cout << "Encoded " << tokens.size() << " tokens." << std::endl;
     
     // Same config as your real training
     const int vocab_size = tokenizer.getCurrentVocabSize();
