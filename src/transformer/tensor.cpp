@@ -550,9 +550,6 @@ Tensor Tensor::subtract(const Tensor& other) const {
             throw std::invalid_argument("Matrix dimensions do not match for subtraction");
         }
         Tensor result(this->rows, this->cols);
-        const float* A = this->raw();
-        const float* B = other.raw();
-        float* C = result.raw();
         const size_t total = this->rows * this->cols;
 
         blas_vsub(data, other.data, result.data, total);
@@ -563,9 +560,6 @@ Tensor Tensor::subtract(const Tensor& other) const {
             throw std::invalid_argument("3D tensor dimensions don't match for subtraction");
         }
         Tensor result(this->batch_size, this->rows, this->cols);
-        const float* A = this->raw();
-        const float* B = other.raw();
-        float* C = result.raw();
         const size_t total = this->batch_size * this->rows * this->cols;
 
         blas_vsub(data, other.data, result.data, total);
@@ -585,9 +579,6 @@ Tensor Tensor::elementwise(const Tensor& other) const {
             throw std::invalid_argument("Matrix dimensions do not match for elementwise multiply");
         }
         Tensor result(this->rows, this->cols);
-        const float* A = this->raw();
-        const float* B = other.raw();
-        float* C = result.raw();
         const size_t total = this->rows * this->cols;
 
         blas_vmul(data, other.data, result.data, total);
@@ -599,12 +590,9 @@ Tensor Tensor::elementwise(const Tensor& other) const {
             throw std::invalid_argument("3D tensor dimensions don't match for elementwise multiply");
         }
         Tensor result(this->batch_size, this->rows, this->cols);
-        const float* A = this->raw();
-        const float* B = other.raw();
-        float* C = result.raw();
         const size_t total = this->batch_size * this->rows * this->cols;
 
-        blas_vmul(A, B, C, total);
+        blas_vmul(data, other.data, result.data, total);
         return result;
     } else {
         throw std::invalid_argument("Cannot perform elementwise multiply on tensors with different dimensionalities");
