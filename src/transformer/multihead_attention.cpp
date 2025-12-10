@@ -52,6 +52,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     const Tensor& input_tensor = input->getData();
 
     if (!input_tensor.getIs3D()) {
+        // 2D case
         int seq_len = input_tensor.getRows();
         int head_size = d_model / num_heads;
 
@@ -73,14 +74,12 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         int self_num_heads = num_heads;
         int self_d_model = d_model;
 
-        std::vector<Tensor> attention_weights_all;
-        std::vector<Tensor> V_heads_all;
-
         const float* Q_data = Q->getData().raw();
         const float* K_data = K->getData().raw();
         const float* V_data = V->getData().raw();
         float* result_data = result.raw();
 
+        // Store causal mask for reuse in backward
         Tensor causal_mask = Tensor::create_causal_mask(seq_len);
         const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
 
@@ -110,24 +109,15 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 attention_weights = dropout(attention_weights, dropout_rate, training);
             }
 
-            Tensor V_head(seq_len, head_size);
-            for (int i = 0; i < seq_len; i++) {
-                for (int j = 0; j < head_size; j++) {
-                    V_head.setValue(i, j, V_data[i * d_model + head_offset + j]);
-                }
-            }
-
-            attention_weights_all.push_back(attention_weights);
-            V_heads_all.push_back(V_head);
-
             const float* attn_data = attention_weights.raw();
 
+            // Compute attention output directly without storing V_head
             for (int i = 0; i < seq_len; i++) {
                 for (int k = 0; k < head_size; k++) {
                     float sum = 0.0f;
                     
                     for (int j = 0; j < seq_len; j++) {
-                        sum += attn_data[i * seq_len + j] * V_head.getValue(j, k);
+                        sum += attn_data[i * seq_len + j] * V_data[j * d_model + head_offset + k];
                     }
                     
                     result_data[i * d_model + head_offset + k] = sum;
@@ -157,8 +147,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
             output->setBackwardFn([self_input, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo,
                                    self_bq, self_bk, self_bv, self_bo,
-                                   attention_weights_all, V_heads_all, self_concat, output, self_num_heads,
-                                   self_d_model, seq_len, head_size]() {
+                                   self_concat, output, self_num_heads,
+                                   self_d_model, seq_len, head_size, causal_mask, scale_factor]() {
 
                 self_Wo->getGrad().add_inplace(self_concat->getData().transpose().matmul(output->getGrad()));
 
@@ -180,6 +170,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 dK.fill(0.0f);
                 dV.fill(0.0f);
 
+                const float* Q_data = self_Q->getData().raw();
+                const float* K_data = self_K->getData().raw();
+                const float* V_data = self_V->getData().raw();
+
                 for (int h = 0; h < self_num_heads; h++) {
                     int start_col = h * head_size;
                     
@@ -190,12 +184,36 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         }
                     }
 
-                    const Tensor& attn_weights = attention_weights_all[h];
-                    const Tensor& V_head = V_heads_all[h];
+                    // Recompute Q and K attention weights
+                    Tensor scores(seq_len, seq_len);
+                    scores.fill(0.0f);
+                    float* scores_data = scores.raw();
+
+                    for (int i = 0; i < seq_len; i++) {
+                        for (int j = 0; j < seq_len; j++) {
+                            float sum = 0.0f;
+                            for (int k = 0; k < head_size; k++) {
+                                sum += Q_data[i * self_d_model + start_col + k] * 
+                                       K_data[j * self_d_model + start_col + k];
+                            }
+                            scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
+                        }
+                    }
+
+                    Tensor attn_weights = scores.softmax();
+
+                    // Recompute V head 
+                    Tensor V_head(seq_len, head_size);
+                    for (int i = 0; i < seq_len; i++) {
+                        for (int j = 0; j < head_size; j++) {
+                            V_head.setValue(i, j, V_data[i * self_d_model + start_col + j]);
+                        }
+                    }
 
                     Tensor dAttnWeights = dAttended.matmul(V_head.transpose());
                     Tensor dV_head = attn_weights.transpose().matmul(dAttended);
 
+                    // Softmax backward
                     Tensor dScores(seq_len, seq_len);
                     for (int i = 0; i < seq_len; i++) {
                         float sum = 0.0f;
@@ -208,27 +226,36 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         }
                     }
 
-                    dScores.scale_inplace(1.0f / std::sqrt(head_size));
+                    dScores.scale_inplace(scale_factor);
 
-                    Tensor Q_head = self_Q->getData().slice(0, seq_len, start_col, head_size);
-                    Tensor K_head = self_K->getData().slice(0, seq_len, start_col, head_size);
+                    // Compute Q and K head slices for gradient computation
+                    Tensor Q_head(seq_len, head_size);
+                    Tensor K_head(seq_len, head_size);
+                    for (int i = 0; i < seq_len; i++) {
+                        for (int j = 0; j < head_size; j++) {
+                            Q_head.setValue(i, j, Q_data[i * self_d_model + start_col + j]);
+                            K_head.setValue(i, j, K_data[i * self_d_model + start_col + j]);
+                        }
+                    }
 
                     Tensor dQ_head = dScores.matmul(K_head);
                     Tensor dK_head = dScores.transpose().matmul(Q_head);
 
                     for (int i = 0; i < seq_len; i++) {
                         for (int j = 0; j < head_size; j++) {
-                            dQ.setValue(i, start_col + j, dQ.getValue(i, start_col + j) + dQ_head.getValue(i, j));
-                            dK.setValue(i, start_col + j, dK.getValue(i, start_col + j) + dK_head.getValue(i, j));
-                            dV.setValue(i, start_col + j, dV.getValue(i, start_col + j) + dV_head.getValue(i, j));
+                            dQ.setValue(i, start_col + j,
+                                       dQ.getValue(i, start_col + j) + dQ_head.getValue(i, j));
+                            dK.setValue(i, start_col + j,
+                                       dK.getValue(i, start_col + j) + dK_head.getValue(i, j));
+                            dV.setValue(i, start_col + j,
+                                       dV.getValue(i, start_col + j) + dV_head.getValue(i, j));
                         }
                     }
                 }
 
-                Tensor input_T = self_input->getData().transpose();
-                self_Wq->getGrad().add_inplace(input_T.matmul(dQ));
-                self_Wk->getGrad().add_inplace(input_T.matmul(dK));
-                self_Wv->getGrad().add_inplace(input_T.matmul(dV));
+                self_Wq->getGrad().add_inplace(self_input->getData().transpose().matmul(dQ));
+                self_Wk->getGrad().add_inplace(self_input->getData().transpose().matmul(dK));
+                self_Wv->getGrad().add_inplace(self_input->getData().transpose().matmul(dV));
 
                 Tensor db_q(1, self_d_model);
                 Tensor db_k(1, self_d_model);
@@ -257,72 +284,89 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         }
 
         return output;
+
     } else {
+        // 3D case
         int batch_size = input_tensor.getBatchSize();
         int seq_len = input_tensor.getRows();
-
-        // Compute Q, K, V as raw Tensors to avoid automatic backward conflicting with custom backward
-        Tensor Q_data = input_tensor.matmul(W_q->getData()).add(b_q->getData());
-        Tensor K_data = input_tensor.matmul(W_k->getData()).add(b_k->getData());
-        Tensor V_data = input_tensor.matmul(W_v->getData()).add(b_v->getData());
-
-        // Wrap in Variables for the backward pass to access
-        auto Q = Variable::create(Q_data, false);  // Don't track gradients
-        auto K = Variable::create(K_data, false);
-        auto V = Variable::create(V_data, false);
-
         int head_size = d_model / num_heads;
+
+        auto Q = input->matmul(W_q)->add(b_q);
+        auto K = input->matmul(W_k)->add(b_k);
+        auto V = input->matmul(W_v)->add(b_v);
+
         Tensor result(batch_size, seq_len, d_model);
-        Tensor causal_mask = Tensor::create_causal_mask_batch(batch_size, seq_len);
+        result.fill(0.0f);
 
-        std::vector<Tensor> attention_weights_all;
-        std::vector<Tensor> V_heads_all;
+        auto self_input = input;
+        auto self_Q = Q;
+        auto self_K = K;
+        auto self_V = V;
+        auto self_Wq = W_q;
+        auto self_Wk = W_k;
+        auto self_Wv = W_v;
+        auto self_Wo = W_o;
+        int self_num_heads = num_heads;
+        int self_d_model = d_model;
 
-        for (int i = 0; i < num_heads; i++) {
-            int start_col = i * head_size;
+        const float* Q_data = Q->getData().raw();
+        const float* K_data = K->getData().raw();
+        const float* V_data = V->getData().raw();
+        float* result_data = result.raw();
 
-            Tensor Q_head(batch_size, seq_len, head_size);
-            Tensor K_head(batch_size, seq_len, head_size);
-            Tensor V_head(batch_size, seq_len, head_size);
+        Tensor causal_mask = Tensor::create_causal_mask(seq_len);
+        const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
 
-            for (int b = 0; b < batch_size; b++) {
-                for (int s = 0; s < seq_len; s++) {
-                    for (int h = 0; h < head_size; h++) {
-                        Q_head.setValue(b, s, h, Q->getData().getValue(b, s, start_col + h));
-                        K_head.setValue(b, s, h, K->getData().getValue(b, s, start_col + h));
-                        V_head.setValue(b, s, h, V->getData().getValue(b, s, start_col + h));
+        for (size_t b = 0; b < batch_size; b++) {
+            const int batch_offset = b * seq_len * d_model;
+
+            for (int h = 0; h < num_heads; h++) {
+                int head_offset = h * head_size;
+
+                Tensor scores(seq_len, seq_len);
+                scores.fill(0.0f);
+                float* scores_data = scores.raw();
+
+                for (int i = 0; i < seq_len; i++) {
+                    for (int j = 0; j < seq_len; j++) {
+                        float sum = 0.0f;
+                        
+                        for (int k = 0; k < head_size; k++) {
+                            sum += Q_data[batch_offset + i * d_model + head_offset + k] * 
+                                   K_data[batch_offset + j * d_model + head_offset + k];
+                        }
+                        
+                        scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
                     }
                 }
-            }
 
-            Tensor K_transposed = K_head.transpose();
-            Tensor scores = Q_head.matmul(K_transposed);
-            scores.scale_inplace(1.0f / std::sqrt(head_size));
-            scores.add_inplace(causal_mask);
+                Tensor attention_weights = scores.softmax();
+                
+                if (training && dropout_rate > 0.0f) {
+                    attention_weights = dropout(attention_weights, dropout_rate, training);
+                }
 
-            Tensor attention_weights = scores.softmax();
+                const float* attn_data = attention_weights.raw();
 
-            attention_weights_all.push_back(attention_weights);
-            V_heads_all.push_back(V_head);
-
-            attention_weights = dropout(attention_weights, dropout_rate, training);
-            Tensor attended_values = attention_weights.matmul(V_head);
-
-            for (int b = 0; b < batch_size; b++) {
-                for (int s = 0; s < seq_len; s++) {
-                    for (int h = 0; h < head_size; h++) {
-                        result.setValue(b, s, start_col + h, attended_values.getValue(b, s, h));
+                // Compute attention output
+                for (int i = 0; i < seq_len; i++) {
+                    for (int k = 0; k < head_size; k++) {
+                        float sum = 0.0f;
+                        
+                        for (int j = 0; j < seq_len; j++) {
+                            sum += attn_data[i * seq_len + j] * 
+                                   V_data[batch_offset + j * d_model + head_offset + k];
+                        }
+                        
+                        result_data[batch_offset + i * d_model + head_offset + k] = sum;
                     }
                 }
             }
         }
 
-        // Compute output as raw Tensor to avoid automatic backward for b_o
-        Tensor concat_result = result;
-        Tensor output_data = concat_result.matmul(W_o->getData()).add(b_o->getData());
-
-        auto concat_var = Variable::create(concat_result, false);  // Don't track gradients
-        auto output = Variable::create(output_data, input->requiresGrad());
+        auto concat_var = Variable::create(result, input->requiresGrad());
+        auto self_concat = concat_var;
+        auto output = concat_var->matmul(W_o)->add(b_o);
 
         if (training && dropout_rate > 0.0f) {
             output = output->dropout(dropout_rate, training);
@@ -335,27 +379,16 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             output->addChild(W_v);
             output->addChild(W_o);
 
-            auto self_input = input;
-            auto self_Q = Q;
-            auto self_K = K;
-            auto self_V = V;
-            auto self_Wq = W_q;
-            auto self_Wk = W_k;
-            auto self_Wv = W_v;
-            auto self_Wo = W_o;
             auto self_bq = b_q;
             auto self_bk = b_k;
             auto self_bv = b_v;
             auto self_bo = b_o;
-            auto self_concat = concat_var;
-            int self_num_heads = num_heads;
-            int self_d_model = d_model;
             size_t self_batch_size = batch_size;
 
             output->setBackwardFn([self_input, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo,
                                    self_bq, self_bk, self_bv, self_bo,
-                                   attention_weights_all, V_heads_all, self_concat, output, self_num_heads,
-                                   self_d_model, self_batch_size, seq_len, head_size]() {
+                                   self_concat, output, self_num_heads,
+                                   self_d_model, self_batch_size, seq_len, head_size, causal_mask, scale_factor]() {
 
                 for (size_t b = 0; b < self_batch_size; b++) {
                     Tensor concat_slice(seq_len, self_d_model);
@@ -390,6 +423,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 dV.fill(0.0f);
 
                 for (size_t b = 0; b < self_batch_size; b++) {
+                    const int batch_offset = b * seq_len * self_d_model;
+                    const float* Q_data = self_Q->getData().raw();
+                    const float* K_data = self_K->getData().raw();
+                    const float* V_data = self_V->getData().raw();
+
                     for (int h = 0; h < self_num_heads; h++) {
                         int start_col = h * head_size;
 
@@ -399,27 +437,37 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                 dAttended.setValue(i, j, dConcat.getValue(b, i, start_col + j));
                             }
                         }
-                        // Extract 2D slices from 3D tensors for this batch element
-                        // attention_weights_all[h] is (batch_size, seq_len, seq_len)
-                        // V_heads_all[h] is (batch_size, seq_len, head_size)
-                        const Tensor& attn_weights_3d = attention_weights_all[h];
-                        const Tensor& V_head_3d = V_heads_all[h];
 
-                        Tensor attn_weights(seq_len, seq_len);
-                        Tensor V_head(seq_len, head_size);
+                        // Recompute Q and K weights for memory reduction
+                        Tensor scores(seq_len, seq_len);
+                        scores.fill(0.0f);
+                        float* scores_data = scores.raw();
 
                         for (int i = 0; i < seq_len; i++) {
                             for (int j = 0; j < seq_len; j++) {
-                                attn_weights.setValue(i, j, attn_weights_3d.getValue(b, i, j));
+                                float sum = 0.0f;
+                                for (int k = 0; k < head_size; k++) {
+                                    sum += Q_data[batch_offset + i * self_d_model + start_col + k] * 
+                                           K_data[batch_offset + j * self_d_model + start_col + k];
+                                }
+                                scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
                             }
+                        }
+
+                        Tensor attn_weights = scores.softmax();
+
+                        // Recompute V head for memory reduction
+                        Tensor V_head(seq_len, head_size);
+                        for (int i = 0; i < seq_len; i++) {
                             for (int j = 0; j < head_size; j++) {
-                                V_head.setValue(i, j, V_head_3d.getValue(b, i, j));
+                                V_head.setValue(i, j, V_data[batch_offset + i * self_d_model + start_col + j]);
                             }
                         }
 
                         Tensor dAttnWeights = dAttended.matmul(V_head.transpose());
                         Tensor dV_head = attn_weights.transpose().matmul(dAttended);
 
+                        // Softmax backward
                         Tensor dScores(seq_len, seq_len);
                         for (int i = 0; i < seq_len; i++) {
                             float sum = 0.0f;
@@ -432,7 +480,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                             }
                         }
 
-                        dScores.scale_inplace(1.0f / std::sqrt(static_cast<float>(head_size)));
+                        dScores.scale_inplace(scale_factor);
 
                         Tensor Q_head_b(seq_len, head_size);
                         Tensor K_head_b(seq_len, head_size);
@@ -483,7 +531,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     self_Wk->getGrad().add_inplace(input_T.matmul(dK_slice));
                     self_Wv->getGrad().add_inplace(input_T.matmul(dV_slice));
                 }
-
                 Tensor db_q(1, self_d_model);
                 Tensor db_k(1, self_d_model);
                 Tensor db_v(1, self_d_model);
@@ -504,7 +551,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 self_bq->getGrad().add_inplace(db_q);
                 self_bk->getGrad().add_inplace(db_k);
                 self_bv->getGrad().add_inplace(db_v);
-
                 Tensor dInput(self_batch_size, seq_len, self_d_model);
                 for (size_t b = 0; b < self_batch_size; b++) {
                     Tensor dQ_slice(seq_len, self_d_model);
@@ -531,7 +577,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 self_input->getGrad().add_inplace(dInput);
             });
         }
-
         return output;
     }
 }

@@ -555,7 +555,7 @@ Tensor Tensor::subtract(const Tensor& other) const {
         float* C = result.raw();
         const size_t total = this->rows * this->cols;
 
-        blas_vsub(other.data, data, result.data, total);
+        blas_vsub(data, other.data, result.data, total);
         
         return result;
     } else if (this->is_3d && other.is_3d) {
@@ -568,7 +568,7 @@ Tensor Tensor::subtract(const Tensor& other) const {
         float* C = result.raw();
         const size_t total = this->batch_size * this->rows * this->cols;
 
-        blas_vsub(other.data, data, result.data, total);
+        blas_vsub(data, other.data, result.data, total);
 
         return result;
     } else {

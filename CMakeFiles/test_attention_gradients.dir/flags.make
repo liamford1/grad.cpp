@@ -6,7 +6,7 @@ CXX_DEFINES =
 
 CXX_INCLUDES = -I/Users/liamford/Documents/projects/transformer-from-scratch/include -F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks
 
-CXX_FLAGSarm64 = -g -O0 -Wall -Wextra -DDEBUG -std=gnu++17 -arch arm64
+CXX_FLAGSarm64 = -Wall -Wextra -Wpedantic -g -O0 -Wall -Wextra -DDEBUG -std=gnu++17 -arch arm64
 
-CXX_FLAGS = -g -O0 -Wall -Wextra -DDEBUG -std=gnu++17 -arch arm64
+CXX_FLAGS = -Wall -Wextra -Wpedantic -g -O0 -Wall -Wextra -DDEBUG -std=gnu++17 -arch arm64
 

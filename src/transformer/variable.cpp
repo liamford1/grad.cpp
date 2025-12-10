@@ -78,7 +78,24 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
             if (other->requires_grad) {
                 Tensor self_transposed = self_ptr->data.transpose();
                 Tensor other_grad = self_transposed.matmul(output->grad);
-                other->grad.add_inplace(other_grad);
+
+                // If self was 3D and other was 2D, other_grad will be 3D
+                // We need to sum across the batch dimension
+                if (other_grad.getIs3D() && !other->grad.getIs3D()) {
+                    Tensor other_grad_2d(other->grad.getRows(), other->grad.getCols());
+                    other_grad_2d.fill(0.0f);
+                    for (int b = 0; b < other_grad.getBatchSize(); b++) {
+                        for (int i = 0; i < other_grad.getRows(); i++) {
+                            for (int j = 0; j < other_grad.getCols(); j++) {
+                                other_grad_2d.setValue(i, j,
+                                    other_grad_2d.getValue(i, j) + other_grad.getValue(b, i, j));
+                            }
+                        }
+                    }
+                    other->grad.add_inplace(other_grad_2d);
+                } else {
+                    other->grad.add_inplace(other_grad);
+                }
             }
         });
     }
@@ -533,9 +550,10 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, output, mask]() {
+        auto mask_ptr = std::make_shared<Tensor>(std::move(mask));
+        output->setBackwardFn([self_ptr, output, mask_ptr]() {
             if (self_ptr->requires_grad) {
-                Tensor grad_tensor = output->grad.elementwise(mask);
+                Tensor grad_tensor = output->grad.elementwise(*mask_ptr);
                 self_ptr->grad.add_inplace(grad_tensor);
             }
         });
