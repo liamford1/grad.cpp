@@ -27,6 +27,21 @@ add_executable(transformer
 
 target_include_directories(transformer PRIVATE include)
 
+# ============================================================================
+# BLAS INTEGRATION (Use Apple Accelerate on macOS)
+# ============================================================================
+if(APPLE)
+    # Use Apple's Accelerate framework (optimized for M1/M2/M3)
+    find_library(ACCELERATE_LIBRARY Accelerate)
+    target_link_libraries(transformer ${ACCELERATE_LIBRARY})
+    message(STATUS "Using Apple Accelerate framework for BLAS")
+else()
+    # Use OpenBLAS on Linux/Windows
+    find_package(BLAS REQUIRED)
+    target_link_libraries(transformer ${BLAS_LIBRARIES})
+    message(STATUS "Using OpenBLAS for BLAS")
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -36,9 +51,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -DDEBUG")
 # Release flags - MAXIMUM PERFORMANCE
 if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
     # Apple Clang / Clang (for Mac M1/M2/Intel)
-    set(CMAKE_CXX_FLAGS_RELEASE 
-        "-O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno"
-    )
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno -DACCELERATE_NEW_LAPACK")
     message(STATUS "Using Clang optimizations for Mac")
     
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -174,7 +187,17 @@ if(BUILD_TESTS)
         src/transformer/transformer_block.cpp
         src/transformer/gpt_model.cpp
     )
-    
+
+    add_executable(test_attention_gradients
+        tests/unit/test_attention_gradients.cpp
+        src/transformer/tensor.cpp
+        src/transformer/variable.cpp
+        src/transformer/activations.cpp
+        src/transformer/linear.cpp
+        src/transformer/attention.cpp
+        src/transformer/multihead_attention.cpp
+    )
+
     target_include_directories(test_gradients PRIVATE include)
     add_test(NAME GradientChecking COMMAND test_gradients)
 
@@ -186,6 +209,14 @@ if(BUILD_TESTS)
 
     target_include_directories(test_weight_tying PRIVATE include)
     add_test(NAME WeightTyingVerification COMMAND test_weight_tying)
+
+    target_include_directories(test_attention_gradients PRIVATE include)
+    if(APPLE)
+        target_link_libraries(test_attention_gradients ${ACCELERATE_LIBRARY})
+    else()
+        target_link_libraries(test_attention_gradients ${BLAS_LIBRARIES})
+    endif()
+    add_test(NAME AttentionGradientChecking COMMAND test_attention_gradients)
     
     message(STATUS "Test targets added. Run with: make test_gradients && ./test_gradients")
 endif()
