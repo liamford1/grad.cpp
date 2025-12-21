@@ -75,7 +75,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             output->addChild(beta);
 
             output->setBackwardFn([self_input, self_gamma, self_beta, output, means, inv_stds, self_d_model, self_epsilon, rows]() {
-                
+
                 Tensor dGamma(1, self_d_model);
                 Tensor dBeta(1, self_d_model);
                 dGamma.fill(0.0f);
@@ -84,44 +84,44 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                 Tensor dInput(rows, self_d_model);
                 dInput.fill(0.0f);
 
+                const float* output_grad_data = output->getGrad().raw();
+                const float* gamma_data = self_gamma->getData().raw();
+                const float* input_data = self_input->getData().raw();
+                float* dGamma_data = dGamma.raw();
+                float* dBeta_data = dBeta.raw();
+                float* dInput_data = dInput.raw();
+
                 for (int i = 0; i < rows; i++) {
-                    float std_inv = inv_stds[i];
-                    float variance = (1.0f / (std_inv * std_inv)) - self_epsilon;
+                    const float std_inv = inv_stds[i];
+                    const float variance = (1.0f / (std_inv * std_inv)) - self_epsilon;
+                    const float mean = means[i];
+                    const float* dout_row = output_grad_data + i * self_d_model;
+                    const float* input_row = input_data + i * self_d_model;
 
                     float dvar = 0.0f;
                     for (int j = 0; j < self_d_model; j++) {
-                        float dout = output->getGrad().getValue(i, j);
-                        float gamma_val = self_gamma->getData().getValue(0, j);
+                        const float x_minus_mean = input_row[j] - mean;
+                        const float normalized_ij = x_minus_mean * std_inv;
 
-                        float x_minus_mean = self_input->getData().getValue(i, j) - means[i];
-                        float normalized_ij = x_minus_mean * std_inv;
+                        dGamma_data[j] += dout_row[j] * normalized_ij;
+                        dBeta_data[j] += dout_row[j];
 
-                        dGamma.setValue(0, j, dGamma.getValue(0, j) + dout * normalized_ij);
-                        dBeta.setValue(0, j, dBeta.getValue(0, j) + dout);
-
-                        float dnorm = dout * gamma_val;
-
+                        const float dnorm = dout_row[j] * gamma_data[j];
                         dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
                     }
 
                     float dmean = 0.0f;
                     for (int j = 0; j < self_d_model; j++) {
-                        float dout = output->getGrad().getValue(i, j);
-                        float gamma_val = self_gamma->getData().getValue(0, j);
-                        float dnorm = dout * gamma_val;
-                        float x_minus_mean = self_input->getData().getValue(i, j) - means[i];
-
+                        const float dnorm = dout_row[j] * gamma_data[j];
+                        const float x_minus_mean = input_row[j] - mean;
                         dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d_model;
                     }
 
+                    float* dInput_row = dInput_data + i * self_d_model;
                     for (int j = 0; j < self_d_model; j++) {
-                        float dout = output->getGrad().getValue(i, j);
-                        float gamma_val = self_gamma->getData().getValue(0, j);
-                        float dnorm = dout * gamma_val;
-                        float x_minus_mean = self_input->getData().getValue(i, j) - means[i];
-
-                        float dx = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
-                        dInput.setValue(i, j, dx);
+                        const float dnorm = dout_row[j] * gamma_data[j];
+                        const float x_minus_mean = input_row[j] - mean;
+                        dInput_row[j] = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
                     }
                 }
 
@@ -195,7 +195,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             output->addChild(beta);
 
             output->setBackwardFn([self_input, self_gamma, self_beta, output, means, inv_stds, self_d_model, self_epsilon, batch_size, seq_len]() {
-                
+
                 Tensor dGamma(1, self_d_model);
                 Tensor dBeta(1, self_d_model);
                 dGamma.fill(0.0f);
@@ -204,47 +204,49 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                 Tensor dInput(batch_size, seq_len, self_d_model);
                 dInput.fill(0.0f);
 
+                const float* output_grad_data = output->getGrad().raw();
+                const float* gamma_data = self_gamma->getData().raw();
+                const float* input_data = self_input->getData().raw();
+                float* dGamma_data = dGamma.raw();
+                float* dBeta_data = dBeta.raw();
+                float* dInput_data = dInput.raw();
+
                 for (int b = 0; b < batch_size; b++) {
+                    const int batch_offset = b * seq_len * self_d_model;
+
                     for (int i = 0; i < seq_len; i++) {
                         const int row_idx = b * seq_len + i;
-                        
-                        float std_inv = inv_stds[row_idx];
-                        float variance = (1.0f / (std_inv * std_inv)) - self_epsilon;
+                        const float std_inv = inv_stds[row_idx];
+                        const float variance = (1.0f / (std_inv * std_inv)) - self_epsilon;
+                        const float mean = means[row_idx];
+
+                        const float* dout_row = output_grad_data + batch_offset + i * self_d_model;
+                        const float* input_row = input_data + batch_offset + i * self_d_model;
 
                         float dvar = 0.0f;
                         for (int j = 0; j < self_d_model; j++) {
-                            float dout = output->getGrad().getValue(b, i, j);
-                            float gamma_val = self_gamma->getData().getValue(0, j);
+                            const float x_minus_mean = input_row[j] - mean;
+                            const float normalized_ij = x_minus_mean * std_inv;
 
-                            float x_minus_mean = self_input->getData().getValue(b, i, j) - means[row_idx];
-                            float normalized_ij = x_minus_mean * std_inv;
+                            dGamma_data[j] += dout_row[j] * normalized_ij;
+                            dBeta_data[j] += dout_row[j];
 
-                            dGamma.setValue(0, j, dGamma.getValue(0, j) + dout * normalized_ij);
-                            dBeta.setValue(0, j, dBeta.getValue(0, j) + dout);
-
-                            float dnorm = dout * gamma_val;
-
+                            const float dnorm = dout_row[j] * gamma_data[j];
                             dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
                         }
 
                         float dmean = 0.0f;
                         for (int j = 0; j < self_d_model; j++) {
-                            float dout = output->getGrad().getValue(b, i, j);
-                            float gamma_val = self_gamma->getData().getValue(0, j);
-                            float dnorm = dout * gamma_val;
-                            float x_minus_mean = self_input->getData().getValue(b, i, j) - means[row_idx];
-
+                            const float dnorm = dout_row[j] * gamma_data[j];
+                            const float x_minus_mean = input_row[j] - mean;
                             dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d_model;
                         }
 
+                        float* dInput_row = dInput_data + batch_offset + i * self_d_model;
                         for (int j = 0; j < self_d_model; j++) {
-                            float dout = output->getGrad().getValue(b, i, j);
-                            float gamma_val = self_gamma->getData().getValue(0, j);
-                            float dnorm = dout * gamma_val;
-                            float x_minus_mean = self_input->getData().getValue(b, i, j) - means[row_idx];
-
-                            float dx = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
-                            dInput.setValue(b, i, j, dx);
+                            const float dnorm = dout_row[j] * gamma_data[j];
+                            const float x_minus_mean = input_row[j] - mean;
+                            dInput_row[j] = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
                         }
                     }
                 }

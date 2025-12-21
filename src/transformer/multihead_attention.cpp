@@ -165,9 +165,12 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
                 Tensor db_o(1, self_d_model);
                 db_o.fill(0.0f);
+                float* db_o_data = db_o.raw();
+                const float* output_grad_data = output->getGrad().raw();
+
                 for (int i = 0; i < seq_len; i++) {
                     for (int j = 0; j < self_d_model; j++) {
-                        db_o.setValue(0, j, db_o.getValue(0, j) + output->getGrad().getValue(i, j));
+                        db_o_data[j] += output_grad_data[i * self_d_model + j];
                     }
                 }
                 self_bo->getGrad().add_inplace(db_o);
@@ -184,81 +187,81 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 const float* Q_data = self_Q->getData().raw();
                 const float* K_data = self_K->getData().raw();
                 const float* V_data = self_V->getData().raw();
+                const float* dConcat_data = dConcat.raw();
+                const float* mask_data = causal_mask.raw();
+                float* dQ_data = dQ.raw();
+                float* dK_data = dK.raw();
+                float* dV_data = dV.raw();
+
+                Tensor Q_head(seq_len, head_size);
+                Tensor K_head(seq_len, head_size);
+                Tensor V_head(seq_len, head_size);
+                Tensor dAttended(seq_len, head_size);
+                Tensor scores(seq_len, seq_len);
+                Tensor dScores(seq_len, seq_len);
+
+                float* Q_head_data = Q_head.raw();
+                float* K_head_data = K_head.raw();
+                float* V_head_data = V_head.raw();
+                float* dAttended_data = dAttended.raw();
+                float* scores_data = scores.raw();
+                float* dScores_data = dScores.raw();
 
                 for (int h = 0; h < self_num_heads; h++) {
-                    int start_col = h * head_size;
-                    
-                    Tensor dAttended(seq_len, head_size);
+                    const int start_col = h * head_size;
+
                     for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < head_size; j++) {
-                            dAttended.setValue(i, j, dConcat.getValue(i, start_col + j));
-                        }
+                        std::memcpy(dAttended_data + i * head_size,
+                                   dConcat_data + i * self_d_model + start_col,
+                                   head_size * sizeof(float));
+                        std::memcpy(Q_head_data + i * head_size,
+                                   Q_data + i * self_d_model + start_col,
+                                   head_size * sizeof(float));
+                        std::memcpy(K_head_data + i * head_size,
+                                   K_data + i * self_d_model + start_col,
+                                   head_size * sizeof(float));
+                        std::memcpy(V_head_data + i * head_size,
+                                   V_data + i * self_d_model + start_col,
+                                   head_size * sizeof(float));
                     }
 
-                    Tensor scores(seq_len, seq_len);
-                    scores.fill(0.0f);
-                    float* scores_data = scores.raw();
+                    blas_sgemm(Q_head_data, K_head_data, scores_data,
+                              seq_len, seq_len, head_size, false, true);
 
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < seq_len; j++) {
-                            float sum = 0.0f;
-                            for (int k = 0; k < head_size; k++) {
-                                sum += Q_data[i * self_d_model + start_col + k] * 
-                                       K_data[j * self_d_model + start_col + k];
-                            }
-                            scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
-                        }
+                    for (int i = 0; i < seq_len * seq_len; i++) {
+                        scores_data[i] = scores_data[i] * scale_factor + mask_data[i];
                     }
 
                     Tensor attn_weights = scores.softmax();
-
-                    // Recompute V head 
-                    Tensor V_head(seq_len, head_size);
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < head_size; j++) {
-                            V_head.setValue(i, j, V_data[i * self_d_model + start_col + j]);
-                        }
-                    }
+                    const float* attn_data = attn_weights.raw();
 
                     Tensor dAttnWeights = dAttended.matmul(V_head.transpose());
                     Tensor dV_head = attn_weights.transpose().matmul(dAttended);
+                    const float* dAttnWeights_data = dAttnWeights.raw();
 
-                    // Softmax backward
-                    Tensor dScores(seq_len, seq_len);
                     for (int i = 0; i < seq_len; i++) {
                         float sum = 0.0f;
                         for (int j = 0; j < seq_len; j++) {
-                            sum += dAttnWeights.getValue(i, j) * attn_weights.getValue(i, j);
+                            sum += dAttnWeights_data[i * seq_len + j] * attn_data[i * seq_len + j];
                         }
                         for (int j = 0; j < seq_len; j++) {
-                            float grad = attn_weights.getValue(i, j) * (dAttnWeights.getValue(i, j) - sum);
-                            dScores.setValue(i, j, grad);
-                        }
-                    }
-
-                    dScores.scale_inplace(scale_factor);
-
-                    // Compute Q and K head slices for gradient computation
-                    Tensor Q_head(seq_len, head_size);
-                    Tensor K_head(seq_len, head_size);
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < head_size; j++) {
-                            Q_head.setValue(i, j, Q_data[i * self_d_model + start_col + j]);
-                            K_head.setValue(i, j, K_data[i * self_d_model + start_col + j]);
+                            dScores_data[i * seq_len + j] = attn_data[i * seq_len + j] *
+                                (dAttnWeights_data[i * seq_len + j] - sum) * scale_factor;
                         }
                     }
 
                     Tensor dQ_head = dScores.matmul(K_head);
                     Tensor dK_head = dScores.transpose().matmul(Q_head);
 
+                    const float* dQ_head_data = dQ_head.raw();
+                    const float* dK_head_data = dK_head.raw();
+                    const float* dV_head_data = dV_head.raw();
+
                     for (int i = 0; i < seq_len; i++) {
                         for (int j = 0; j < head_size; j++) {
-                            dQ.setValue(i, start_col + j,
-                                       dQ.getValue(i, start_col + j) + dQ_head.getValue(i, j));
-                            dK.setValue(i, start_col + j,
-                                       dK.getValue(i, start_col + j) + dK_head.getValue(i, j));
-                            dV.setValue(i, start_col + j,
-                                       dV.getValue(i, start_col + j) + dV_head.getValue(i, j));
+                            dQ_data[i * self_d_model + start_col + j] += dQ_head_data[i * head_size + j];
+                            dK_data[i * self_d_model + start_col + j] += dK_head_data[i * head_size + j];
+                            dV_data[i * self_d_model + start_col + j] += dV_head_data[i * head_size + j];
                         }
                     }
                 }
@@ -274,11 +277,15 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 db_k.fill(0.0f);
                 db_v.fill(0.0f);
 
+                float* db_q_data = db_q.raw();
+                float* db_k_data = db_k.raw();
+                float* db_v_data = db_v.raw();
+
                 for (int i = 0; i < seq_len; i++) {
                     for (int j = 0; j < self_d_model; j++) {
-                        db_q.setValue(0, j, db_q.getValue(0, j) + dQ.getValue(i, j));
-                        db_k.setValue(0, j, db_k.getValue(0, j) + dK.getValue(i, j));
-                        db_v.setValue(0, j, db_v.getValue(0, j) + dV.getValue(i, j));
+                        db_q_data[j] += dQ_data[i * self_d_model + j];
+                        db_k_data[j] += dK_data[i * self_d_model + j];
+                        db_v_data[j] += dV_data[i * self_d_model + j];
                     }
                 }
 
@@ -410,24 +417,27 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                    self_concat, output, self_num_heads,
                                    self_d_model, self_batch_size, seq_len, head_size, causal_mask, scale_factor]() {
 
+                const float* concat_data = self_concat->getData().raw();
+                const float* output_grad_data = output->getGrad().raw();
+                const int slice_size = seq_len * self_d_model;
+
+                Tensor concat_slice(seq_len, self_d_model);
+                Tensor output_grad_slice(seq_len, self_d_model);
+
                 for (size_t b = 0; b < self_batch_size; b++) {
-                    Tensor concat_slice(seq_len, self_d_model);
-                    Tensor output_grad_slice(seq_len, self_d_model);
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < self_d_model; j++) {
-                            concat_slice.setValue(i, j, self_concat->getData().getValue(b, i, j));
-                            output_grad_slice.setValue(i, j, output->getGrad().getValue(b, i, j));
-                        }
-                    }
+                    std::memcpy(concat_slice.raw(), concat_data + b * slice_size, slice_size * sizeof(float));
+                    std::memcpy(output_grad_slice.raw(), output_grad_data + b * slice_size, slice_size * sizeof(float));
                     self_Wo->getGrad().add_inplace(concat_slice.transpose().matmul(output_grad_slice));
                 }
 
                 Tensor db_o(1, self_d_model);
                 db_o.fill(0.0f);
+                float* db_o_data = db_o.raw();
+
                 for (size_t b = 0; b < self_batch_size; b++) {
                     for (int i = 0; i < seq_len; i++) {
                         for (int j = 0; j < self_d_model; j++) {
-                            db_o.setValue(0, j, db_o.getValue(0, j) + output->getGrad().getValue(b, i, j));
+                            db_o_data[j] += output_grad_data[b * slice_size + i * self_d_model + j];
                         }
                     }
                 }
@@ -442,113 +452,110 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 dK.fill(0.0f);
                 dV.fill(0.0f);
 
+                const float* Q_data = self_Q->getData().raw();
+                const float* K_data = self_K->getData().raw();
+                const float* V_data = self_V->getData().raw();
+                const float* dConcat_data = dConcat.raw();
+                const float* mask_data = causal_mask.raw();
+                float* dQ_data = dQ.raw();
+                float* dK_data = dK.raw();
+                float* dV_data = dV.raw();
+
+                Tensor Q_head(seq_len, head_size);
+                Tensor K_head(seq_len, head_size);
+                Tensor V_head(seq_len, head_size);
+                Tensor dAttended(seq_len, head_size);
+                Tensor scores(seq_len, seq_len);
+                Tensor dScores(seq_len, seq_len);
+
+                float* Q_head_data = Q_head.raw();
+                float* K_head_data = K_head.raw();
+                float* V_head_data = V_head.raw();
+                float* dAttended_data = dAttended.raw();
+                float* scores_data = scores.raw();
+                float* dScores_data = dScores.raw();
+
                 for (size_t b = 0; b < self_batch_size; b++) {
                     const int batch_offset = b * seq_len * self_d_model;
-                    const float* Q_data = self_Q->getData().raw();
-                    const float* K_data = self_K->getData().raw();
-                    const float* V_data = self_V->getData().raw();
 
                     for (int h = 0; h < self_num_heads; h++) {
-                        int start_col = h * head_size;
+                        const int start_col = h * head_size;
 
-                        Tensor dAttended(seq_len, head_size);
                         for (int i = 0; i < seq_len; i++) {
-                            for (int j = 0; j < head_size; j++) {
-                                dAttended.setValue(i, j, dConcat.getValue(b, i, start_col + j));
-                            }
+                            std::memcpy(dAttended_data + i * head_size,
+                                       dConcat_data + batch_offset + i * self_d_model + start_col,
+                                       head_size * sizeof(float));
+                            std::memcpy(Q_head_data + i * head_size,
+                                       Q_data + batch_offset + i * self_d_model + start_col,
+                                       head_size * sizeof(float));
+                            std::memcpy(K_head_data + i * head_size,
+                                       K_data + batch_offset + i * self_d_model + start_col,
+                                       head_size * sizeof(float));
+                            std::memcpy(V_head_data + i * head_size,
+                                       V_data + batch_offset + i * self_d_model + start_col,
+                                       head_size * sizeof(float));
                         }
 
-                        Tensor scores(seq_len, seq_len);
-                        scores.fill(0.0f);
-                        float* scores_data = scores.raw();
+                        blas_sgemm(Q_head_data, K_head_data, scores_data,
+                                  seq_len, seq_len, head_size, false, true);
 
-                        for (int i = 0; i < seq_len; i++) {
-                            for (int j = 0; j < seq_len; j++) {
-                                float sum = 0.0f;
-                                for (int k = 0; k < head_size; k++) {
-                                    sum += Q_data[batch_offset + i * self_d_model + start_col + k] * 
-                                           K_data[batch_offset + j * self_d_model + start_col + k];
-                                }
-                                scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
-                            }
+                        for (int i = 0; i < seq_len * seq_len; i++) {
+                            scores_data[i] = scores_data[i] * scale_factor + mask_data[i];
                         }
 
                         Tensor attn_weights = scores.softmax();
-
-                        Tensor V_head(seq_len, head_size);
-                        for (int i = 0; i < seq_len; i++) {
-                            for (int j = 0; j < head_size; j++) {
-                                V_head.setValue(i, j, V_data[batch_offset + i * self_d_model + start_col + j]);
-                            }
-                        }
+                        const float* attn_data = attn_weights.raw();
 
                         Tensor dAttnWeights = dAttended.matmul(V_head.transpose());
                         Tensor dV_head = attn_weights.transpose().matmul(dAttended);
+                        const float* dAttnWeights_data = dAttnWeights.raw();
 
-                        // Softmax backward
-                        Tensor dScores(seq_len, seq_len);
                         for (int i = 0; i < seq_len; i++) {
                             float sum = 0.0f;
                             for (int j = 0; j < seq_len; j++) {
-                                sum += dAttnWeights.getValue(i, j) * attn_weights.getValue(i, j);
+                                sum += dAttnWeights_data[i * seq_len + j] * attn_data[i * seq_len + j];
                             }
                             for (int j = 0; j < seq_len; j++) {
-                                float grad = attn_weights.getValue(i, j) * (dAttnWeights.getValue(i, j) - sum);
-                                dScores.setValue(i, j, grad);
+                                dScores_data[i * seq_len + j] = attn_data[i * seq_len + j] *
+                                    (dAttnWeights_data[i * seq_len + j] - sum) * scale_factor;
                             }
                         }
 
-                        dScores.scale_inplace(scale_factor);
+                        Tensor dQ_head = dScores.matmul(K_head);
+                        Tensor dK_head = dScores.transpose().matmul(Q_head);
 
-                        Tensor Q_head_b(seq_len, head_size);
-                        Tensor K_head_b(seq_len, head_size);
-                        for (int i = 0; i < seq_len; i++) {
-                            for (int j = 0; j < head_size; j++) {
-                                Q_head_b.setValue(i, j, self_Q->getData().getValue(b, i, start_col + j));
-                                K_head_b.setValue(i, j, self_K->getData().getValue(b, i, start_col + j));
-                            }
-                        }
-
-                        Tensor dQ_head = dScores.matmul(K_head_b);
-                        Tensor dK_head = dScores.transpose().matmul(Q_head_b);
+                        const float* dQ_head_data = dQ_head.raw();
+                        const float* dK_head_data = dK_head.raw();
+                        const float* dV_head_data = dV_head.raw();
 
                         for (int i = 0; i < seq_len; i++) {
                             for (int j = 0; j < head_size; j++) {
-                                dQ.setValue(b, i, start_col + j,
-                                           dQ.getValue(b, i, start_col + j) + dQ_head.getValue(i, j));
-                                dK.setValue(b, i, start_col + j,
-                                           dK.getValue(b, i, start_col + j) + dK_head.getValue(i, j));
-                                dV.setValue(b, i, start_col + j,
-                                           dV.getValue(b, i, start_col + j) + dV_head.getValue(i, j));
+                                dQ_data[batch_offset + i * self_d_model + start_col + j] += dQ_head_data[i * head_size + j];
+                                dK_data[batch_offset + i * self_d_model + start_col + j] += dK_head_data[i * head_size + j];
+                                dV_data[batch_offset + i * self_d_model + start_col + j] += dV_head_data[i * head_size + j];
                             }
                         }
                     }
                 }
 
+                const float* input_data = self_input->getData().raw();
+                Tensor input_slice(seq_len, self_d_model);
+                Tensor dQ_slice(seq_len, self_d_model);
+                Tensor dK_slice(seq_len, self_d_model);
+                Tensor dV_slice(seq_len, self_d_model);
+
                 for (size_t b = 0; b < self_batch_size; b++) {
-                    Tensor input_slice(seq_len, self_d_model);
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < self_d_model; j++) {
-                            input_slice.setValue(i, j, self_input->getData().getValue(b, i, j));
-                        }
-                    }
+                    std::memcpy(input_slice.raw(), input_data + b * slice_size, slice_size * sizeof(float));
+                    std::memcpy(dQ_slice.raw(), dQ_data + b * slice_size, slice_size * sizeof(float));
+                    std::memcpy(dK_slice.raw(), dK_data + b * slice_size, slice_size * sizeof(float));
+                    std::memcpy(dV_slice.raw(), dV_data + b * slice_size, slice_size * sizeof(float));
+
                     Tensor input_T = input_slice.transpose();
-
-                    Tensor dQ_slice(seq_len, self_d_model);
-                    Tensor dK_slice(seq_len, self_d_model);
-                    Tensor dV_slice(seq_len, self_d_model);
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < self_d_model; j++) {
-                            dQ_slice.setValue(i, j, dQ.getValue(b, i, j));
-                            dK_slice.setValue(i, j, dK.getValue(b, i, j));
-                            dV_slice.setValue(i, j, dV.getValue(b, i, j));
-                        }
-                    }
-
                     self_Wq->getGrad().add_inplace(input_T.matmul(dQ_slice));
                     self_Wk->getGrad().add_inplace(input_T.matmul(dK_slice));
                     self_Wv->getGrad().add_inplace(input_T.matmul(dV_slice));
                 }
+
                 Tensor db_q(1, self_d_model);
                 Tensor db_k(1, self_d_model);
                 Tensor db_v(1, self_d_model);
@@ -556,12 +563,17 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 db_k.fill(0.0f);
                 db_v.fill(0.0f);
 
+                float* db_q_data = db_q.raw();
+                float* db_k_data = db_k.raw();
+                float* db_v_data = db_v.raw();
+
                 for (size_t b = 0; b < self_batch_size; b++) {
                     for (int i = 0; i < seq_len; i++) {
                         for (int j = 0; j < self_d_model; j++) {
-                            db_q.setValue(0, j, db_q.getValue(0, j) + dQ.getValue(b, i, j));
-                            db_k.setValue(0, j, db_k.getValue(0, j) + dK.getValue(b, i, j));
-                            db_v.setValue(0, j, db_v.getValue(0, j) + dV.getValue(b, i, j));
+                            const int idx = b * slice_size + i * self_d_model + j;
+                            db_q_data[j] += dQ_data[idx];
+                            db_k_data[j] += dK_data[idx];
+                            db_v_data[j] += dV_data[idx];
                         }
                     }
                 }
@@ -570,27 +582,18 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 self_bk->getGrad().add_inplace(db_k);
                 self_bv->getGrad().add_inplace(db_v);
                 Tensor dInput(self_batch_size, seq_len, self_d_model);
+                float* dInput_data = dInput.raw();
+
                 for (size_t b = 0; b < self_batch_size; b++) {
-                    Tensor dQ_slice(seq_len, self_d_model);
-                    Tensor dK_slice(seq_len, self_d_model);
-                    Tensor dV_slice(seq_len, self_d_model);
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < self_d_model; j++) {
-                            dQ_slice.setValue(i, j, dQ.getValue(b, i, j));
-                            dK_slice.setValue(i, j, dK.getValue(b, i, j));
-                            dV_slice.setValue(i, j, dV.getValue(b, i, j));
-                        }
-                    }
+                    std::memcpy(dQ_slice.raw(), dQ_data + b * slice_size, slice_size * sizeof(float));
+                    std::memcpy(dK_slice.raw(), dK_data + b * slice_size, slice_size * sizeof(float));
+                    std::memcpy(dV_slice.raw(), dV_data + b * slice_size, slice_size * sizeof(float));
 
                     Tensor dInput_slice = dQ_slice.matmul(self_Wq->getData().transpose())
                                          .add(dK_slice.matmul(self_Wk->getData().transpose()))
                                          .add(dV_slice.matmul(self_Wv->getData().transpose()));
 
-                    for (int i = 0; i < seq_len; i++) {
-                        for (int j = 0; j < self_d_model; j++) {
-                            dInput.setValue(b, i, j, dInput_slice.getValue(i, j));
-                        }
-                    }
+                    std::memcpy(dInput_data + b * slice_size, dInput_slice.raw(), slice_size * sizeof(float));
                 }
                 self_input->getGrad().add_inplace(dInput);
             });

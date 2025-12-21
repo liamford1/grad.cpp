@@ -323,28 +323,53 @@ void test_dataloader() {
 void train_shakespeare() {
     print_header("Shakespeare Training... ");
 
-    const bool FAST_MODE = true;
+    const bool FAST_MODE = false;
     const int vocab_target = FAST_MODE ? 500 : 5000;
     const int train_steps = FAST_MODE ? 50 : 1000;
     const int sequence_len = FAST_MODE ? 64 : 128;
     
+    std::cout << "Loading shakespeare.txt..." << std::flush;
+    auto file_start = std::chrono::high_resolution_clock::now();
     std::ifstream file("data/shakespeare.txt");
     if (!file.is_open()) {
-        std::cerr << "❌ Can't open data/shakespeare.txt" << std::endl;
+        std::cerr << "\n❌ Can't open data/shakespeare.txt" << std::endl;
         return;
     }
-    
-    std::string text((std::istreambuf_iterator<char>(file)), 
+
+    std::string text((std::istreambuf_iterator<char>(file)),
                      std::istreambuf_iterator<char>());
     file.close();
+    auto file_end = std::chrono::high_resolution_clock::now();
+    auto file_ms = std::chrono::duration_cast<std::chrono::milliseconds>(file_end - file_start).count();
+    std::cout << " " << (text.size() / 1024) << "KB (" << file_ms << "ms)" << std::endl;
 
-    std::cout << "Training tokenizer..." << std::endl;
     BPETokenizer tokenizer(vocab_target);
-    tokenizer.train(text);
-    std::cout << "Tokenizer trained. Vocab size: " << tokenizer.getCurrentVocabSize() << std::endl;
-    
+    std::string cache_file = "tokenizer_" + std::to_string(vocab_target) + ".cache";
+
+    std::ifstream cache_check(cache_file);
+    if (cache_check.good()) {
+        cache_check.close();
+        std::cout << "Loading cached tokenizer..." << std::flush;
+        auto tok_start = std::chrono::high_resolution_clock::now();
+        tokenizer.load(cache_file);
+        auto tok_end = std::chrono::high_resolution_clock::now();
+        auto tok_ms = std::chrono::duration_cast<std::chrono::milliseconds>(tok_end - tok_start).count();
+        std::cout << " done (" << tok_ms << "ms)" << std::endl;
+        std::cout << "Vocab size: " << tokenizer.getCurrentVocabSize() << std::endl;
+    } else {
+        std::cout << "Training tokenizer..." << std::endl;
+        tokenizer.train(text);
+        std::cout << "Tokenizer trained. Vocab size: " << tokenizer.getCurrentVocabSize() << std::endl;
+        tokenizer.save(cache_file);
+        std::cout << "Tokenizer cached to " << cache_file << std::endl;
+    }
+
+    std::cout << "Encoding text (" << text.size() << " chars)..." << std::endl;
+    auto encode_start = std::chrono::high_resolution_clock::now();
     std::vector<int> tokens = tokenizer.encode(text);
-    std::cout << "Loaded " << tokens.size() << " tokens\n" << std::endl;
+    auto encode_end = std::chrono::high_resolution_clock::now();
+    auto encode_ms = std::chrono::duration_cast<std::chrono::milliseconds>(encode_end - encode_start).count();
+    std::cout << " - done (" << encode_ms << "ms, " << tokens.size() << " tokens)\n" << std::endl;
 
     const int vocab_size = tokenizer.getCurrentVocabSize();
     const int d_model = 256;
@@ -356,21 +381,37 @@ void train_shakespeare() {
     const float lr = 1e-4f;
     const int num_steps = train_steps;
     
-    std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model 
+    std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model
               << " layers=" << num_layers << " heads=" << num_heads << std::endl;
-    
+
+    std::cout << "Initializing model..." << std::endl;
+    auto model_start = std::chrono::high_resolution_clock::now();
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.1f);
-    
+    auto model_end = std::chrono::high_resolution_clock::now();
+    auto model_ms = std::chrono::duration_cast<std::chrono::milliseconds>(model_end - model_start).count();
+
     auto params = model.getAllParameters();
     int total = 0;
     for (const auto& p : params) total += p->getData().numel();
-    std::cout << "Parameters: " << (total / 1e6f) << "M\n" << std::endl;
-    
+    std::cout << "  Model initialized (" << model_ms << "ms)" << std::endl;
+    std::cout << "  Parameters: " << (total / 1e6f) << "M\n" << std::endl;
+
+    std::cout << "Creating dataset..." << std::flush;
+    auto dataset_start = std::chrono::high_resolution_clock::now();
     auto dataset = std::make_shared<TextDataset>(tokens, seq_length);
     DataLoader loader(dataset, batch_size, true);
+    auto dataset_end = std::chrono::high_resolution_clock::now();
+    auto dataset_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dataset_end - dataset_start).count();
+    std::cout << " " << dataset->size() << " sequences (" << dataset_ms << "ms)" << std::endl;
+
+    std::cout << "Initializing optimizer..." << std::flush;
+    auto opt_start = std::chrono::high_resolution_clock::now();
     AdamOptimizer optimizer(params, lr);
-    
-    std::cout << "Training for " << num_steps << " steps...\n" << std::endl;
+    auto opt_end = std::chrono::high_resolution_clock::now();
+    auto opt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(opt_end - opt_start).count();
+    std::cout << " done (" << opt_ms << "ms)" << std::endl;
+
+    std::cout << "\nTraining for " << num_steps << " steps...\n" << std::endl;
     std::cout << std::setw(10) << "Step" << std::setw(15) << "Loss" 
               << std::setw(15) << "Grad Norm" << std::endl;
     std::cout << std::string(40, '-') << std::endl;

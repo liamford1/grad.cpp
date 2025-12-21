@@ -6,6 +6,7 @@
 #include "transformer/layer_norm.h"
 #include "transformer/gpt_model.h"
 #include <iostream>
+#include <iomanip>
 #include <memory>
 #include <vector>
 
@@ -20,9 +21,14 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
     pos_encoding(max_len, d_model),
     final_norm(d_model)
 {
+    std::cout << "  Initializing " << num_layers << " transformer layers..." << std::endl;
     for (int i = 0; i < num_layers; i++) {
+        float progress = 100.0f * i / num_layers;
+        std::cout << "\r    Layer [" << i << "/" << num_layers << "] "
+                  << std::fixed << std::setprecision(1) << progress << "%     " << std::flush;
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, num_heads, -1, dropout_rate));
     }
+    std::cout << "\r    Layer [" << num_layers << "/" << num_layers << "] 100.0%     " << std::endl;
 }
 
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {

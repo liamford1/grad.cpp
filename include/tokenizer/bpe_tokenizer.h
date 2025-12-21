@@ -4,10 +4,20 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <queue>
 
 struct PairHash {
     size_t operator()(const std::pair<std::string, std::string>& p) const {
         return std::hash<std::string>()(p.first) ^ (std::hash<std::string>()(p.second) << 1);
+    }
+};
+
+struct PairFreq {
+    std::pair<std::string, std::string> pair;
+    int freq;
+
+    bool operator<(const PairFreq& other) const {
+        return freq < other.freq;
     }
 };
 
@@ -32,7 +42,10 @@ class BPETokenizer {
         void train(const std::string& training_text);
         std::vector<int> encode(const std::string& text);
         std::string decode(const std::vector<int>& tokens) const;
-        
+
+        void save(const std::string& filepath) const;
+        void load(const std::string& filepath);
+
         int getCurrentVocabSize() const;
         int getVocabSize() const;
 };
