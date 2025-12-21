@@ -6,8 +6,6 @@
 
 class Linear : public Module {
     private:
-        int input_dim;
-        int output_dim;
         std::shared_ptr<Variable> weights;
         std::shared_ptr<Variable> bias;
         bool use_bias;

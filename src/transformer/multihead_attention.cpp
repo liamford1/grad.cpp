@@ -317,7 +317,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         Tensor causal_mask = Tensor::create_causal_mask(seq_len);
         const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
 
-        for (size_t b = 0; b < batch_size; b++) {
+        for (int b = 0; b < batch_size; b++) {
             const int batch_offset = b * seq_len * d_model;
 
             for (int h = 0; h < num_heads; h++) {

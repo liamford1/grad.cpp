@@ -23,7 +23,7 @@ float compute_grad_norm(const std::vector<std::shared_ptr<Variable>>& params) {
     float grad_norm = 0.0f;
     for (const auto& param : params) {
         const Tensor& grad = param->getGrad();
-        for (int i = 0; i < grad.numel(); i++) {
+        for (size_t i = 0; i < grad.numel(); i++) {
             float g = grad.raw()[i];
             grad_norm += g * g;
         }
@@ -66,20 +66,19 @@ void benchmark_training_speed() {
                      std::istreambuf_iterator<char>());
     file.close();
 
-    // Train BPE on a sample to speed up (otherwise takes hours on full text)
     std::istringstream sample_stream(text);
     std::string sample_text;
     std::string word;
     int word_count = 0;
-    int max_training_words = 5000;  // Limit training to first 5K words
+    int max_training_words = 20000;
 
     while (sample_stream >> word && word_count < max_training_words) {
         sample_text += word + " ";
         word_count++;
     }
 
-    std::cout << "Training BPE tokenizer on " << word_count << " words..." << std::endl;
-    BPETokenizer tokenizer(1000);  // Reduced vocab size for faster training
+    std::cout << "Training BPE tokenizer on " << word_count << " words (sampled)..." << std::endl;
+    BPETokenizer tokenizer(3000);
     tokenizer.train(sample_text);
     std::cout << "Tokenizer trained! Encoding full text..." << std::endl;
     std::vector<int> tokens = tokenizer.encode(text);
@@ -527,18 +526,16 @@ void train_shakespeare() {
 int main() {
     std::cout << "🚀 TRANSFORMER TRAINING SUITE 🚀\n" << std::endl;
 
-    std::cout << "🚀 PERFORMANCE BENCHMARK 🚀\n" << std::endl;
-    
-    try {
-        benchmark_training_speed();  // Just this!
-        
-        std::cout << "\n✅ BENCHMARK COMPLETE!" << std::endl;
-        return 0;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "\n❌ Error: " << e.what() << std::endl;
-        return 1;
-    }
+    // Uncomment to run benchmark only:
+    // std::cout << "🚀 PERFORMANCE BENCHMARK 🚀\n" << std::endl;
+    // try {
+    //     benchmark_training_speed();
+    //     std::cout << "\n✅ BENCHMARK COMPLETE!" << std::endl;
+    //     return 0;
+    // } catch (const std::exception& e) {
+    //     std::cerr << "\n❌ Error: " << e.what() << std::endl;
+    //     return 1;
+    // }
     
     try {
         test_overfit_tiny_sequence();

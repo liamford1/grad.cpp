@@ -9,7 +9,6 @@
 TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim, float dropout_rate) :
     attention(d_model, num_heads, dropout_rate),
     ffn(d_model, ffn_hidden_dim, dropout_rate),
-    dropout_rate(dropout_rate),
     norm1(d_model),
     norm2(d_model) {}
 

@@ -22,8 +22,7 @@ int main() {
         total_params += p->getData().numel();
     }
     std::cout << "Total parameter count: " << total_params << std::endl;
-    
-    int embedding_params = vocab_size * d_model;
+
     int without_tying = total_params + (d_model * vocab_size) + vocab_size;
     
     std::cout << "\nWith weight tying: " << total_params << " parameters" << std::endl;
@@ -41,8 +40,8 @@ int main() {
     std::cout << "Input shape: (1, " << input->getData().getCols() << ")" << std::endl;
     std::cout << "Output shape: (" << output->getData().getRows() << ", " << output->getData().getCols() << ")" << std::endl;
     std::cout << "Expected output cols: " << vocab_size << std::endl;
-    
-    bool correct_shape = (output->getData().getCols() == vocab_size);
+
+    bool correct_shape = (output->getData().getCols() == static_cast<size_t>(vocab_size));
     
     std::cout << "\n" << (correct_shape ? "✓" : "✗") << " Output shape correct" << std::endl;
     std::cout << "✓ Weight tying implemented successfully!" << std::endl;

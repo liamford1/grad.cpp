@@ -20,13 +20,13 @@ std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int 
 
         int last_token = tokens.size() - 1;
         Tensor last_token_logits(1, logits.getCols());
-        for (int j = 0; j < logits.getCols(); j++) {
+        for (size_t j = 0; j < logits.getCols(); j++) {
             last_token_logits.setValue(0, j, logits.getValue(0, last_token, j));
         }
 
         int next_token = 0;
         float max_score = last_token_logits.getValue(0, 0);
-        for (int j = 1; j < last_token_logits.getCols(); j++) {
+        for (size_t j = 1; j < last_token_logits.getCols(); j++) {
             if (last_token_logits.getValue(0, j) > max_score) {
                 max_score = last_token_logits.getValue(0, j);
                 next_token = j;
@@ -51,7 +51,7 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
 
         int last_token = tokens.size() - 1;
         Tensor last_token_logits(1, logits.getCols());
-        for (int j = 0; j < logits.getCols(); j++) {
+        for (size_t j = 0; j < logits.getCols(); j++) {
             last_token_logits.setValue(0, j, logits.getValue(0, last_token, j));
         }
 
@@ -85,8 +85,8 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature) {
     
     float random_val = dis(gen);
     float cumulative = 0.0f;
-    
-    for (int i = 0; i < probabilities.getCols(); i++) {
+
+    for (size_t i = 0; i < probabilities.getCols(); i++) {
         cumulative += probabilities.getValue(0, i);
         if (random_val <= cumulative) {
             return i;

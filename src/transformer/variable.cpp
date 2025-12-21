@@ -84,9 +84,9 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
                 if (other_grad.getIs3D() && !other->grad.getIs3D()) {
                     Tensor other_grad_2d(other->grad.getRows(), other->grad.getCols());
                     other_grad_2d.fill(0.0f);
-                    for (int b = 0; b < other_grad.getBatchSize(); b++) {
-                        for (int i = 0; i < other_grad.getRows(); i++) {
-                            for (int j = 0; j < other_grad.getCols(); j++) {
+                    for (size_t b = 0; b < other_grad.getBatchSize(); b++) {
+                        for (size_t i = 0; i < other_grad.getRows(); i++) {
+                            for (size_t j = 0; j < other_grad.getCols(); j++) {
                                 other_grad_2d.setValue(i, j,
                                     other_grad_2d.getValue(i, j) + other_grad.getValue(b, i, j));
                             }
@@ -122,11 +122,10 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
             output->grad.assertValid("Variable::add(dOut)");
 
             const Tensor& x  = self_ptr->data;
-            const Tensor& y  = other->data;
             const Tensor& dO = output->grad;
 
             auto reduce2D = [](const Tensor& g, int R, int C, bool br, bool bc) -> Tensor {
-                if (!br && !bc && g.getRows() == R && g.getCols() == C && !g.getIs3D()) {
+                if (!br && !bc && g.getRows() == static_cast<size_t>(R) && g.getCols() == static_cast<size_t>(C) && !g.getIs3D()) {
                     Tensor out(R, C);
                     const float* src = g.raw();
                     float* dst = out.raw();
@@ -320,21 +319,21 @@ std::shared_ptr<Variable> Variable::softmax() const {
                     const float* result_data = result.raw();
                     const float* grad_out_data = output->grad.raw();
                     float* temp_grad_data = temp_grad.raw();
-                    
-                    for (int b = 0; b < result.getBatchSize(); b++) {
-                        const int batch_offset = b * result.getRows() * result.getCols();
-                        
-                        for (int i = 0; i < result.getRows(); i++) {
+
+                    for (size_t b = 0; b < result.getBatchSize(); b++) {
+                        const size_t batch_offset = b * result.getRows() * result.getCols();
+
+                        for (size_t i = 0; i < result.getRows(); i++) {
                             const float* row_result = result_data + batch_offset + i * result.getCols();
                             const float* row_grad_out = grad_out_data + batch_offset + i * result.getCols();
                             float* row_grad = temp_grad_data + batch_offset + i * result.getCols();
-                            
+
                             float dot_product = 0.0f;
-                            for (int j = 0; j < result.getCols(); j++) {
+                            for (size_t j = 0; j < result.getCols(); j++) {
                                 dot_product += row_result[j] * row_grad_out[j];
                             }
-                            
-                            for (int j = 0; j < result.getCols(); j++) {
+
+                            for (size_t j = 0; j < result.getCols(); j++) {
                                 row_grad[j] = row_result[j] * (row_grad_out[j] - dot_product);
                             }
                         }
@@ -345,18 +344,18 @@ std::shared_ptr<Variable> Variable::softmax() const {
                     const float* result_data = result.raw();
                     const float* grad_out_data = output->grad.raw();
                     float* temp_grad_data = temp_grad.raw();
-                    
-                    for (int i = 0; i < result.getRows(); i++) {
+
+                    for (size_t i = 0; i < result.getRows(); i++) {
                         const float* row_result = result_data + i * result.getCols();
                         const float* row_grad_out = grad_out_data + i * result.getCols();
                         float* row_grad = temp_grad_data + i * result.getCols();
-                        
+
                         float dot_product = 0.0f;
-                        for (int j = 0; j < result.getCols(); j++) {
+                        for (size_t j = 0; j < result.getCols(); j++) {
                             dot_product += row_result[j] * row_grad_out[j];
                         }
-                        
-                        for (int j = 0; j < result.getCols(); j++) {
+
+                        for (size_t j = 0; j < result.getCols(); j++) {
                             row_grad[j] = row_result[j] * (row_grad_out[j] - dot_product);
                         }
                     }
@@ -376,17 +375,17 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
         Tensor loss_tensor(1, 1);
         float total_loss = 0.0f;
         
-        if (targets->data.getCols() == 1) { 
-            for (int i = 0; i < this->data.getRows(); i++) {
+        if (targets->data.getCols() == 1) {
+            for (size_t i = 0; i < this->data.getRows(); i++) {
                 int target_idx = static_cast<int>(targets->data.getValue(i, 0));
-                if (target_idx >= 0 && target_idx < this->data.getCols()) {
+                if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
                     float prob = std::max(this->data.getValue(i, target_idx), 1e-15f);
                     total_loss -= std::log(prob);
                 }
             }
         } else {
-            for (int i = 0; i < this->data.getRows(); i++) {
-                for (int j = 0; j < this->data.getCols(); j++) {
+            for (size_t i = 0; i < this->data.getRows(); i++) {
+                for (size_t j = 0; j < this->data.getCols(); j++) {
                     if (targets->data.getValue(i, j) > 0.0f) {
                         float prob = std::max(this->data.getValue(i, j), 1e-15f);
                         total_loss -= targets->data.getValue(i, j) * std::log(prob);
@@ -408,13 +407,13 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
                         Tensor grad_tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
                         grad_tensor.fill(0.0f);
                         float scale = 1.0f / self_ptr->data.getRows();
-                        
-                        for (int i = 0; i < self_ptr->data.getRows(); i++) {
+
+                        for (size_t i = 0; i < self_ptr->data.getRows(); i++) {
                             int target_idx = static_cast<int>(targets->data.getValue(i, 0));
-                            if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
-                                for (int j = 0; j < self_ptr->data.getCols(); j++) {
+                            if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
+                                for (size_t j = 0; j < self_ptr->data.getCols(); j++) {
                                     float grad_val = self_ptr->data.getValue(i, j) * scale;
-                                    if (j == target_idx) {
+                                    if (j == static_cast<size_t>(target_idx)) {
                                         grad_val -= scale;
                                     }
                                     grad_tensor.setValue(i, j, grad_val);
@@ -443,7 +442,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
             for (int i = 0; i < seq_len; i++) {
                 int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
 
-                if (target_idx >= 0 && target_idx < this->data.getCols()) {
+                if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
                     float prob = std::max(this->data.getValue(b, i, target_idx), 1e-15f);
                     total_loss -= std::log(prob);
                 }
@@ -464,15 +463,15 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
                     Tensor grad_tensor(batch_size, seq_len, self_ptr->data.getCols());
                     grad_tensor.fill(0.0f);
                     float scale = 1.0f / total_elements;
-                    
+
                     for (int b = 0; b < batch_size; b++) {
                         for (int i = 0; i < seq_len; i++) {
                             int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
 
-                            if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
-                                for (int j = 0; j < self_ptr->data.getCols(); j++) {
+                            if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
+                                for (size_t j = 0; j < self_ptr->data.getCols(); j++) {
                                     float grad_val = self_ptr->data.getValue(b, i, j) * scale;
-                                    if (j == target_idx) {
+                                    if (j == static_cast<size_t>(target_idx)) {
                                         grad_val -= scale;
                                     }
                                     grad_tensor.setValue(b, i, j, grad_val);
@@ -494,14 +493,14 @@ std::shared_ptr<Variable> Variable::gelu() const {
     data.assertValid("Variable::gelu(x)");
 
     Tensor result = this->data;
-    for (int i = 0; i < result.numel(); i++) {
+    for (size_t i = 0; i < result.numel(); i++) {
         float x = result.raw()[i];
         float cube = x * x * x;
         float gelu_val = 0.5f * x * (1.0f + std::tanh(0.79788456f * (x + 0.044715f * cube)));
         result.raw()[i] = gelu_val;
     }
     auto output = createOutput(result, this->requires_grad);
-    
+
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
@@ -512,7 +511,7 @@ std::shared_ptr<Variable> Variable::gelu() const {
                 Tensor grad_tensor = self_ptr->data.getIs3D() ? Tensor(self_ptr->data.getBatchSize(), self_ptr->data.getRows(), self_ptr->data.getCols()) : Tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
 
                 grad_tensor.fill(0.0f);
-                for (int i = 0; i < self_ptr->data.numel(); i++) {
+                for (size_t i = 0; i < self_ptr->data.numel(); i++) {
                     float x = self_ptr->data.raw()[i];
                     float cube = x * x * x;
                     float tanh_val = std::tanh(0.79788456f * (x + 0.044715f * cube));
@@ -535,12 +534,12 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
     data.assertValid("Variable::dropout(x)");
     float scale = 1.0f / (1.0f - dropout_rate);
     Tensor mask = data.getIs3D() ? Tensor(data.getBatchSize(), data.getRows(), data.getCols()) : Tensor(data.getRows(), data.getCols());
-    
+
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-    
-    for (int i = 0; i < mask.numel(); i++) {
+
+    for (size_t i = 0; i < mask.numel(); i++) {
         mask.raw()[i] = (dis(gen) < dropout_rate) ? 0.0f : scale;
     }
 
@@ -568,22 +567,22 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
         const float* input_data = this->data.raw();
         float* result_data = result.raw();
 
-        for (int i = 0; i < result.getRows(); i++) {
+        for (size_t i = 0; i < result.getRows(); i++) {
             const float* row_in = input_data + i * result.getCols();
             float* row_out = result_data + i * result.getCols();
 
             float max_val = row_in[0];
-            for (int j = 1; j < result.getCols(); j++) {
+            for (size_t j = 1; j < result.getCols(); j++) {
                 max_val = std::max(max_val, row_in[j]);
             }
-            
+
             float sum_exp = 0.0f;
-            for (int j = 0; j < result.getCols(); j++) {
+            for (size_t j = 0; j < result.getCols(); j++) {
                 sum_exp += std::expf(row_in[j] - max_val);
             }
             float log_sum = std::logf(sum_exp) + max_val;
-            
-            for (int j = 0; j < result.getCols(); j++) {
+
+            for (size_t j = 0; j < result.getCols(); j++) {
                 row_out[j] = row_in[j] - log_sum;
             }
         }
@@ -591,25 +590,25 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
         const float* input_data = this->data.raw();
         float* result_data = result.raw();
 
-        for (int b = 0; b < result.getBatchSize(); b++) {
-            const int batch_offset = b * result.getRows() * result.getCols();
+        for (size_t b = 0; b < result.getBatchSize(); b++) {
+            const size_t batch_offset = b * result.getRows() * result.getCols();
 
-            for (int i = 0; i < result.getRows(); i++) {
+            for (size_t i = 0; i < result.getRows(); i++) {
                 const float* row_in = input_data + batch_offset + i * result.getCols();
                 float* row_out = result_data + batch_offset + i * result.getCols();
 
                 float max_val = row_in[0];
-                for (int j = 1; j < result.getCols(); j++) {
+                for (size_t j = 1; j < result.getCols(); j++) {
                     max_val = std::max(max_val, row_in[j]);
                 }
-                
+
                 float sum_exp = 0.0f;
-                for (int j = 0; j < result.getCols(); j++) {
+                for (size_t j = 0; j < result.getCols(); j++) {
                     sum_exp += std::expf(row_in[j] - max_val);
                 }
                 float log_sum = std::logf(sum_exp) + max_val;
-                
-                for (int j = 0; j < result.getCols(); j++) {
+
+                for (size_t j = 0; j < result.getCols(); j++) {
                     row_out[j] = row_in[j] - log_sum;
                 }
             }
@@ -629,17 +628,17 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                 const float* grad_output_data = output->grad.raw();
                 float* grad_data = grad.raw();
 
-                for (int i = 0; i < result.getRows(); i++) {
+                for (size_t i = 0; i < result.getRows(); i++) {
                     const float* row_result = result_data + i * result.getCols();
                     const float* row_grad_out = grad_output_data + i * result.getCols();
                     float* row_grad = grad_data + i * result.getCols();
 
                     float sum = 0.0f;
-                    for (int j = 0; j < result.getCols(); j++) {
+                    for (size_t j = 0; j < result.getCols(); j++) {
                         sum += row_grad_out[j];
                     }
 
-                    for (int j = 0; j < result.getCols(); j++) {
+                    for (size_t j = 0; j < result.getCols(); j++) {
                         float softmax_val = std::expf(row_result[j]);
                         row_grad[j] = row_grad_out[j] - softmax_val * sum;
                     }
@@ -651,20 +650,20 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                 const float* grad_output_data = output->grad.raw();
                 float* grad_data = grad.raw();
 
-                for (int b = 0; b < result.getBatchSize(); b++) {
-                    const int batch_offset = b * result.getRows() * result.getCols();
+                for (size_t b = 0; b < result.getBatchSize(); b++) {
+                    const size_t batch_offset = b * result.getRows() * result.getCols();
 
-                    for (int i = 0; i < result.getRows(); i++) {
+                    for (size_t i = 0; i < result.getRows(); i++) {
                         const float* row_result = result_data + batch_offset + i * result.getCols();
                         const float* row_grad_out = grad_output_data + batch_offset + i * result.getCols();
                         float* row_grad = grad_data + batch_offset + i * result.getCols();
 
                         float sum = 0.0f;
-                        for (int j = 0; j < result.getCols(); j++) {
+                        for (size_t j = 0; j < result.getCols(); j++) {
                             sum += row_grad_out[j];
                         }
 
-                        for (int j = 0; j < result.getCols(); j++) {
+                        for (size_t j = 0; j < result.getCols(); j++) {
                             float softmax_val = std::expf(row_result[j]);
                             row_grad[j] = row_grad_out[j] - softmax_val * sum;
                         }
@@ -687,7 +686,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
         
         for (int i = 0; i < n; i++) {
             int target_idx = static_cast<int>(targets_ptr[i]);
-            if (target_idx >= 0 && target_idx < this->data.getCols()) {
+            if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
                 total_loss -= data_ptr[i * this->data.getCols() + target_idx];
             }
         }
@@ -712,7 +711,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                 
                 for (int i = 0; i < n; i++) {
                     int target_idx = static_cast<int>(targets_ptr[i]);
-                    if (target_idx >= 0 && target_idx < self_ptr->data.getCols()) {
+                    if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
                         grad_ptr[i * self_ptr->data.getCols() + target_idx] = scale;
                     }
                 }

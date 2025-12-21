@@ -13,7 +13,6 @@ class Variable : public std::enable_shared_from_this<Variable> {
         bool requires_grad;
         std::vector<std::shared_ptr<Variable>> children;
         std::function<void()> backward_fn;
-        mutable bool visited = false;
         
     public:
         Variable(const Tensor& data, bool requires_grad = false);

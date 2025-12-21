@@ -5,10 +5,6 @@
 
 class Attention {
     private:
-        int d_model;
-        int d_k;
-        int d_v;
-
         Tensor W_q;
         Tensor W_k;
         Tensor W_v;

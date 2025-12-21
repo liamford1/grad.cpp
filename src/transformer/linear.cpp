@@ -2,8 +2,6 @@
 #include <iostream>
 
 Linear::Linear(int input_dim, int output_dim, bool use_bias) :
-    input_dim(input_dim),
-    output_dim(output_dim),
     use_bias(use_bias)
 {
     Tensor w_tensor(input_dim, output_dim);

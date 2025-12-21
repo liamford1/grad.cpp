@@ -21,7 +21,7 @@ int main() {
     std::cout << "W_o: " << attn.getW_o()->getData().getRows() << "x" << attn.getW_o()->getData().getCols() << std::endl;
     
     auto input = Variable::create(Tensor(10, d_model), true);
-    for (int i = 0; i < input->getData().numel(); i++) {
+    for (size_t i = 0; i < input->getData().numel(); i++) {
         input->getData().raw()[i] = 0.01f * (i % 100);
     }
     
