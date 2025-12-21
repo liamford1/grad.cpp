@@ -5,6 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <cstring>
+#include "transformer/blas_wrapper.h"
 
 MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout_rate) : 
     d_model(d_model),
@@ -79,49 +80,59 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         const float* V_data = V->getData().raw();
         float* result_data = result.raw();
 
-        // Store causal mask for reuse in backward
         Tensor causal_mask = Tensor::create_causal_mask(seq_len);
         const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
+        const float* mask_data = causal_mask.raw();
+
+        Tensor Q_head(seq_len, head_size);
+        Tensor K_head(seq_len, head_size);
+        Tensor V_head(seq_len, head_size);
+        Tensor scores(seq_len, seq_len);
+
+        float* Q_head_data = Q_head.raw();
+        float* K_head_data = K_head.raw();
+        float* V_head_data = V_head.raw();
+        float* scores_data = scores.raw();
 
         for (int h = 0; h < num_heads; h++) {
-            int head_offset = h * head_size;
-
-            Tensor scores(seq_len, seq_len);
-            scores.fill(0.0f);
-            float* scores_data = scores.raw();
+            const int head_offset = h * head_size;
 
             for (int i = 0; i < seq_len; i++) {
-                for (int j = 0; j < seq_len; j++) {
-                    float sum = 0.0f;
-                    
-                    for (int k = 0; k < head_size; k++) {
-                        sum += Q_data[i * d_model + head_offset + k] * 
-                               K_data[j * d_model + head_offset + k];
-                    }
-                    
-                    scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
-                }
+                const float* q_row = Q_data + i * d_model + head_offset;
+                const float* k_row = K_data + i * d_model + head_offset;
+                const float* v_row = V_data + i * d_model + head_offset;
+
+                float* q_out = Q_head_data + i * head_size;
+                float* k_out = K_head_data + i * head_size;
+                float* v_out = V_head_data + i * head_size;
+
+                std::memcpy(q_out, q_row, head_size * sizeof(float));
+                std::memcpy(k_out, k_row, head_size * sizeof(float));
+                std::memcpy(v_out, v_row, head_size * sizeof(float));
+            }
+
+            blas_sgemm(Q_head_data, K_head_data, scores_data,
+                      seq_len, seq_len, head_size, false, true);
+
+            for (int i = 0; i < seq_len * seq_len; i++) {
+                scores_data[i] = scores_data[i] * scale_factor + mask_data[i];
             }
 
             Tensor attention_weights = scores.softmax();
-            
+
             if (training && dropout_rate > 0.0f) {
                 attention_weights = dropout(attention_weights, dropout_rate, training);
             }
 
-            const float* attn_data = attention_weights.raw();
+            Tensor attended(seq_len, head_size);
+            blas_sgemm(attention_weights.raw(), V_head_data, attended.raw(),
+                      seq_len, head_size, seq_len, false, false);
 
-            // Compute attention output directly without storing V_head
+            const float* attended_data = attended.raw();
             for (int i = 0; i < seq_len; i++) {
-                for (int k = 0; k < head_size; k++) {
-                    float sum = 0.0f;
-                    
-                    for (int j = 0; j < seq_len; j++) {
-                        sum += attn_data[i * seq_len + j] * V_data[j * d_model + head_offset + k];
-                    }
-                    
-                    result_data[i * d_model + head_offset + k] = sum;
-                }
+                float* out_row = result_data + i * d_model + head_offset;
+                const float* in_row = attended_data + i * head_size;
+                std::memcpy(out_row, in_row, head_size * sizeof(float));
             }
         }
 
@@ -184,7 +195,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         }
                     }
 
-                    // Recompute Q and K attention weights
                     Tensor scores(seq_len, seq_len);
                     scores.fill(0.0f);
                     float* scores_data = scores.raw();
@@ -316,50 +326,60 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
         Tensor causal_mask = Tensor::create_causal_mask(seq_len);
         const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
+        const float* mask_data = causal_mask.raw();
+
+        Tensor Q_head(seq_len, head_size);
+        Tensor K_head(seq_len, head_size);
+        Tensor V_head(seq_len, head_size);
+        Tensor scores(seq_len, seq_len);
+
+        float* Q_head_data = Q_head.raw();
+        float* K_head_data = K_head.raw();
+        float* V_head_data = V_head.raw();
+        float* scores_data = scores.raw();
 
         for (int b = 0; b < batch_size; b++) {
             const int batch_offset = b * seq_len * d_model;
 
             for (int h = 0; h < num_heads; h++) {
-                int head_offset = h * head_size;
-
-                Tensor scores(seq_len, seq_len);
-                scores.fill(0.0f);
-                float* scores_data = scores.raw();
+                const int head_offset = h * head_size;
 
                 for (int i = 0; i < seq_len; i++) {
-                    for (int j = 0; j < seq_len; j++) {
-                        float sum = 0.0f;
-                        
-                        for (int k = 0; k < head_size; k++) {
-                            sum += Q_data[batch_offset + i * d_model + head_offset + k] * 
-                                   K_data[batch_offset + j * d_model + head_offset + k];
-                        }
-                        
-                        scores_data[i * seq_len + j] = sum * scale_factor + causal_mask.getValue(i, j);
-                    }
+                    const float* q_row = Q_data + batch_offset + i * d_model + head_offset;
+                    const float* k_row = K_data + batch_offset + i * d_model + head_offset;
+                    const float* v_row = V_data + batch_offset + i * d_model + head_offset;
+
+                    float* q_out = Q_head_data + i * head_size;
+                    float* k_out = K_head_data + i * head_size;
+                    float* v_out = V_head_data + i * head_size;
+
+                    std::memcpy(q_out, q_row, head_size * sizeof(float));
+                    std::memcpy(k_out, k_row, head_size * sizeof(float));
+                    std::memcpy(v_out, v_row, head_size * sizeof(float));
+                }
+
+                blas_sgemm(Q_head_data, K_head_data, scores_data,
+                          seq_len, seq_len, head_size, false, true);
+
+                for (int i = 0; i < seq_len * seq_len; i++) {
+                    scores_data[i] = scores_data[i] * scale_factor + mask_data[i];
                 }
 
                 Tensor attention_weights = scores.softmax();
-                
+
                 if (training && dropout_rate > 0.0f) {
                     attention_weights = dropout(attention_weights, dropout_rate, training);
                 }
 
-                const float* attn_data = attention_weights.raw();
+                Tensor attended(seq_len, head_size);
+                blas_sgemm(attention_weights.raw(), V_head_data, attended.raw(),
+                          seq_len, head_size, seq_len, false, false);
 
-                // Compute attention output
+                const float* attended_data = attended.raw();
                 for (int i = 0; i < seq_len; i++) {
-                    for (int k = 0; k < head_size; k++) {
-                        float sum = 0.0f;
-                        
-                        for (int j = 0; j < seq_len; j++) {
-                            sum += attn_data[i * seq_len + j] * 
-                                   V_data[batch_offset + j * d_model + head_offset + k];
-                        }
-                        
-                        result_data[batch_offset + i * d_model + head_offset + k] = sum;
-                    }
+                    float* out_row = result_data + batch_offset + i * d_model + head_offset;
+                    const float* in_row = attended_data + i * head_size;
+                    std::memcpy(out_row, in_row, head_size * sizeof(float));
                 }
             }
         }
@@ -438,7 +458,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                             }
                         }
 
-                        // Recompute Q and K weights for memory reduction
                         Tensor scores(seq_len, seq_len);
                         scores.fill(0.0f);
                         float* scores_data = scores.raw();
@@ -456,7 +475,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
                         Tensor attn_weights = scores.softmax();
 
-                        // Recompute V head for memory reduction
                         Tensor V_head(seq_len, head_size);
                         for (int i = 0; i < seq_len; i++) {
                             for (int j = 0; j < head_size; j++) {

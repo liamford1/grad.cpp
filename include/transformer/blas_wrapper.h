@@ -5,23 +5,25 @@
     #include <Accelerate/Accelerate.h>
 #endif
 
-// BLAS: Single-precision GEMM (matrix multiply)
 inline void blas_sgemm(const float* A, const float* B, float* C,
                        int M, int N, int K,
                        bool transA = false, bool transB = false)
 {
 #if defined(__APPLE__)
+    int lda = transA ? M : K;
+    int ldb = transB ? K : N;
+    int ldc = N;
+
     cblas_sgemm(CblasRowMajor,
                 transA ? CblasTrans : CblasNoTrans,
                 transB ? CblasTrans : CblasNoTrans,
                 M, N, K,
                 1.0f,
-                A, K,
-                B, N,
+                A, lda,
+                B, ldb,
                 0.0f,
-                C, N);
+                C, ldc);
 #else
-    // Fallback: Naive CPU implementation
     for (int i = 0; i < M; ++i) {
         for (int j = 0; j < N; ++j) {
             float sum = 0.0f;

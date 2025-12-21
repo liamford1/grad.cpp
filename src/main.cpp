@@ -323,12 +323,10 @@ void test_dataloader() {
 void train_shakespeare() {
     print_header("Shakespeare Training... ");
 
-    // ===== FAST TEST MODE =====
-    const bool FAST_MODE = false;  // Set to false for full training
+    const bool FAST_MODE = true;
     const int vocab_target = FAST_MODE ? 500 : 5000;
     const int train_steps = FAST_MODE ? 50 : 1000;
     const int sequence_len = FAST_MODE ? 64 : 128;
-    // ==========================
     
     std::ifstream file("data/shakespeare.txt");
     if (!file.is_open()) {
@@ -417,30 +415,35 @@ void train_shakespeare() {
         optimizer.step();
         auto t5 = std::chrono::high_resolution_clock::now();
         
-        // Capture loss value before cleanup
         float loss_val = loss->getData().getValue(0, 0);
-        
-        // Log every 10 steps
+
+        auto now = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start).count();
+        float progress = 100.0f * (step + 1) / num_steps;
+        float steps_per_sec = (step + 1) / (float)(elapsed + 1);
+        int eta_sec = (int)((num_steps - step - 1) / (steps_per_sec + 0.0001f));
+
+        std::cout << "\r[" << (step + 1) << "/" << num_steps << "] "
+                  << std::fixed << std::setprecision(1) << progress << "% "
+                  << "loss=" << std::setprecision(4) << loss_val << " "
+                  << "speed=" << std::setprecision(2) << steps_per_sec << "it/s "
+                  << "eta=" << (eta_sec / 60) << "m" << (eta_sec % 60) << "s     " << std::flush;
+
         if (step % 10 == 0) {
             float grad_norm = compute_grad_norm(params);
-            
-            auto now = std::chrono::high_resolution_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-                now - start).count();
-            
-            std::cout << std::setw(10) << step
+
+            std::cout << "\n" << std::setw(10) << step
                       << std::setw(15) << std::fixed << std::setprecision(6) << loss_val
                       << std::setw(15) << std::fixed << std::setprecision(4) << grad_norm
                       << "  (" << elapsed << "s)"
                       << " [" << get_memory_mb() << "MB]"
                       << std::endl;
-            
-            // Timing breakdown
-            auto ms = [](auto a, auto b) { 
-                return std::chrono::duration<double, std::milli>(b - a).count(); 
+
+            auto ms = [](auto a, auto b) {
+                return std::chrono::duration<double, std::milli>(b - a).count();
             };
-            std::cout << "  [perf] loader=" << std::fixed << std::setprecision(1) 
-                      << ms(t0,t1) << "ms fwd=" << ms(t1,t2) << "ms bwd=" 
+            std::cout << "  [perf] loader=" << std::fixed << std::setprecision(1)
+                      << ms(t0,t1) << "ms fwd=" << ms(t1,t2) << "ms bwd="
                       << ms(t3,t4) << "ms opt=" << ms(t4,t5) << "ms" << std::endl;
         }
         
@@ -526,25 +529,14 @@ void train_shakespeare() {
 int main() {
     std::cout << "🚀 TRANSFORMER TRAINING SUITE 🚀\n" << std::endl;
 
-    // Uncomment to run benchmark only:
-    // std::cout << "🚀 PERFORMANCE BENCHMARK 🚀\n" << std::endl;
-    // try {
-    //     benchmark_training_speed();
-    //     std::cout << "\n✅ BENCHMARK COMPLETE!" << std::endl;
-    //     return 0;
-    // } catch (const std::exception& e) {
-    //     std::cerr << "\n❌ Error: " << e.what() << std::endl;
-    //     return 1;
-    // }
-    
     try {
         test_overfit_tiny_sequence();
         test_dataloader();
         train_shakespeare();
-        
+
         std::cout << "\n\n✅ ALL TESTS COMPLETED!" << std::endl;
         return 0;
-        
+
     } catch (const std::exception& e) {
         std::cerr << "\n❌ Error: " << e.what() << std::endl;
         return 1;
