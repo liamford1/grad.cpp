@@ -33,7 +33,9 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
             
             auto self_pos_emb = position_embeddings;
             int self_d_model = d_model;
-            output->setBackwardFn([embeddings, self_pos_emb, output, seq_len, self_d_model]() {
+            output->setBackwardFn([embeddings, self_pos_emb, output_weak = std::weak_ptr<Variable>(output), seq_len, self_d_model]() {
+                auto output = output_weak.lock();
+                if (!output) return;
                 if (embeddings->requiresGrad()) {
                     embeddings->getGrad() = embeddings->getGrad().add(output->getGrad());
                 }
@@ -78,7 +80,9 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
             
             auto self_pos_emb = position_embeddings;
             int self_d_model = d_model;
-            output->setBackwardFn([embeddings, self_pos_emb, output, batch_size, seq_len, self_d_model]() {
+            output->setBackwardFn([embeddings, self_pos_emb, output_weak = std::weak_ptr<Variable>(output), batch_size, seq_len, self_d_model]() {
+                auto output = output_weak.lock();
+                if (!output) return;
                 if (embeddings->requiresGrad()) {
                     embeddings->getGrad() = embeddings->getGrad().add(output->getGrad());
                 }

@@ -66,7 +66,9 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
         output->addChild(self_ptr);
         output->addChild(other);
         
-        output->setBackwardFn([self_ptr, other, output]() {
+        output->setBackwardFn([self_ptr, other, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output) return;
             output->grad.assertValid("Variable::matmul(dOut)");
             self_ptr->data.assertValid("Variable::matmul(self.data)");
             other->data.assertValid("Variable::matmul(other.data)");
@@ -118,7 +120,9 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
         output->addChild(self_ptr);
         output->addChild(other);
 
-        output->setBackwardFn([self_ptr, other, output]() {
+        output->setBackwardFn([self_ptr, other, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output) return;
             output->grad.assertValid("Variable::add(dOut)");
 
             const Tensor& x  = self_ptr->data;
@@ -286,7 +290,9 @@ std::shared_ptr<Variable> Variable::scale(float factor) const {
         );
         
         output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, factor, output]() {
+        output->setBackwardFn([self_ptr, factor, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output) return;
             output->grad.assertValid("Variable::scale(dOut)");
             if (self_ptr->requires_grad) {
                 Tensor scaled_grad = output->grad.scale(factor);
@@ -309,7 +315,9 @@ std::shared_ptr<Variable> Variable::softmax() const {
         );
         
         output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, result, output]() {
+        output->setBackwardFn([self_ptr, result, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output) return;
             result.assertValid("Variable::softmax(y)");
             output->grad.assertValid("Variable::softmax(dOut)");
 
@@ -401,7 +409,9 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
             output->addChild(self_ptr);
             output->addChild(targets);
-            output->setBackwardFn([self_ptr, targets, output]() {
+            output->setBackwardFn([self_ptr, targets, output_weak = std::weak_ptr<Variable>(output)]() {
+                auto output = output_weak.lock();
+                if (!output) return;
                 if (self_ptr->requires_grad) {
                     if (targets->data.getCols() == 1) {
                         Tensor grad_tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
@@ -458,7 +468,9 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
             output->addChild(self_ptr);
             output->addChild(targets);
             
-            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total_elements]() {
+            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total_elements, output_weak = std::weak_ptr<Variable>(output)]() {
+                auto output = output_weak.lock();
+                if (!output) return;
                 if (self_ptr->requires_grad) {
                     Tensor grad_tensor(batch_size, seq_len, self_ptr->data.getCols());
                     grad_tensor.fill(0.0f);
@@ -504,7 +516,9 @@ std::shared_ptr<Variable> Variable::gelu() const {
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, output]() {
+        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output) return;
             output->grad.assertValid("Variable::gelu(dOut)");
 
             if (self_ptr->requires_grad) {
@@ -550,7 +564,9 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
         auto mask_ptr = std::make_shared<Tensor>(std::move(mask));
-        output->setBackwardFn([self_ptr, output, mask_ptr]() {
+        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output), mask_ptr]() {
+            auto output = output_weak.lock();
+            if (!output) return;
             if (self_ptr->requires_grad) {
                 Tensor grad_tensor = output->grad.elementwise(*mask_ptr);
                 self_ptr->grad.add_inplace(grad_tensor);
@@ -621,7 +637,9 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
         
-        output->setBackwardFn([self_ptr, result, output]() {
+        output->setBackwardFn([self_ptr, result, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output) return;
             if (!result.getIs3D()) {
                 Tensor grad(result.getRows(), result.getCols());
                 const float* result_data = result.raw();
@@ -701,7 +719,9 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
             output->addChild(self_ptr);
             output->addChild(targets);
             
-            output->setBackwardFn([self_ptr, targets, n]() {
+            output->setBackwardFn([self_ptr, targets, n, output_weak = std::weak_ptr<Variable>(output)]() {
+                auto output = output_weak.lock();
+                if (!output) return;
                 Tensor grad(self_ptr->data.getRows(), self_ptr->data.getCols());
                 grad.fill(0.0f);
                 float scale = -1.0f / n;
@@ -757,7 +777,9 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
             output->addChild(self_ptr);
             output->addChild(targets);
             
-            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total]() {
+            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total, output_weak = std::weak_ptr<Variable>(output)]() {
+                auto output = output_weak.lock();
+                if (!output) return;
                 int vocab_size = self_ptr->data.getCols();
                 Tensor grad(batch_size, seq_len, vocab_size);
                 grad.fill(0.0f);

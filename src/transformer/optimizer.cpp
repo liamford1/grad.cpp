@@ -2,10 +2,16 @@
 #include <cmath>
 #include <algorithm>
 
-AdamOptimizer::AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr, float beta1, float beta2, float epsilon, float weight_decay) : parameters_(parameters), lr_(lr), beta1_(beta1), beta2_(beta2), epsilon_(epsilon), weight_decay_(weight_decay), step_count_(0) {}
+AdamOptimizer::AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr, float beta1, float beta2, float epsilon, float weight_decay) : parameters_(parameters), lr_(lr), base_lr_(lr), beta1_(beta1), beta2_(beta2), epsilon_(epsilon), weight_decay_(weight_decay), step_count_(0), warmup_steps_(0) {}
 
 void AdamOptimizer::step() {
     step_count_++;
+
+    if (warmup_steps_ > 0 && step_count_ <= warmup_steps_) {
+        lr_ = base_lr_ * (static_cast<float>(step_count_) / warmup_steps_);
+    } else {
+        lr_ = base_lr_;
+    }
 
     const float bc1 = 1.0f - std::pow(beta1_, step_count_);
     const float bc2 = 1.0f - std::pow(beta2_, step_count_);

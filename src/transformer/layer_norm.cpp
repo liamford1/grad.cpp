@@ -74,7 +74,9 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             output->addChild(gamma);
             output->addChild(beta);
 
-            output->setBackwardFn([self_input, self_gamma, self_beta, output, means, inv_stds, self_d_model, self_epsilon, rows]() {
+            output->setBackwardFn([self_input, self_gamma, self_beta, output_weak = std::weak_ptr<Variable>(output), means, inv_stds, self_d_model, self_epsilon, rows]() {
+                auto output = output_weak.lock();
+                if (!output) return;
 
                 Tensor dGamma(1, self_d_model);
                 Tensor dBeta(1, self_d_model);
@@ -194,7 +196,9 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             output->addChild(gamma);
             output->addChild(beta);
 
-            output->setBackwardFn([self_input, self_gamma, self_beta, output, means, inv_stds, self_d_model, self_epsilon, batch_size, seq_len]() {
+            output->setBackwardFn([self_input, self_gamma, self_beta, output_weak = std::weak_ptr<Variable>(output), means, inv_stds, self_d_model, self_epsilon, batch_size, seq_len]() {
+                auto output = output_weak.lock();
+                if (!output) return;
 
                 Tensor dGamma(1, self_d_model);
                 Tensor dBeta(1, self_d_model);

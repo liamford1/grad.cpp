@@ -325,7 +325,7 @@ void train_shakespeare() {
 
     const bool FAST_MODE = false;
     const int vocab_target = FAST_MODE ? 500 : 5000;
-    const int train_steps = FAST_MODE ? 50 : 1000;
+    const int train_steps = FAST_MODE ? 50 : 2000;
     const int sequence_len = FAST_MODE ? 64 : 128;
     
     std::cout << "Loading shakespeare.txt..." << std::flush;
@@ -378,7 +378,8 @@ void train_shakespeare() {
     const int max_len = 512;
     const int seq_length = sequence_len;
     const int batch_size = 2;
-    const float lr = 1e-4f;
+    const float lr = 3e-4f;
+    const int warmup_steps = 500;
     const int num_steps = train_steps;
     
     std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model
@@ -407,6 +408,7 @@ void train_shakespeare() {
     std::cout << "Initializing optimizer..." << std::flush;
     auto opt_start = std::chrono::high_resolution_clock::now();
     AdamOptimizer optimizer(params, lr);
+    optimizer.set_warmup_steps(warmup_steps);
     auto opt_end = std::chrono::high_resolution_clock::now();
     auto opt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(opt_end - opt_start).count();
     std::cout << " done (" << opt_ms << "ms)" << std::endl;
@@ -488,8 +490,7 @@ void train_shakespeare() {
                       << ms(t3,t4) << "ms opt=" << ms(t4,t5) << "ms" << std::endl;
         }
         
-        // Save checkpoint every 500 steps
-        if (step > 0 && step % 500 == 0) {
+        if (step > 0 && step % 2500 == 0) {
             model.save("shakespeare_step_" + std::to_string(step) + ".bin");
             std::cout << "  [checkpoint saved]" << std::endl;
         }

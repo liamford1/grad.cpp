@@ -57,11 +57,13 @@ class AdamOptimizer : public Optimizer {
     private:
         std::vector<std::shared_ptr<Variable>> parameters_;
         float lr_;
+        float base_lr_;
         float beta1_;
         float beta2_;
         float epsilon_;
         float weight_decay_;
         int step_count_;
+        int warmup_steps_;
 
         std::unordered_map<Variable*, Tensor> m_;
         std::unordered_map<Variable*, Tensor> v_;
@@ -71,4 +73,5 @@ class AdamOptimizer : public Optimizer {
         void step() override;
         void zero_grad() override;
         void clip_grad_norm(float max_norm);
+        void set_warmup_steps(int steps) { warmup_steps_ = steps; }
 };

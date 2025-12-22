@@ -47,11 +47,68 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
 
     auto normalized_output = final_norm.forward(transformer_output);
 
-    auto embedding_weights_transposed = Variable::create(
-        token_embedding.getEmbeddingTable()->getData().transpose(),
-        false
-    );
-    auto logits = normalized_output->matmul(embedding_weights_transposed);
+    auto embedding_table = token_embedding.getEmbeddingTable();
+    const Tensor& emb_data = embedding_table->getData();
+    const Tensor& norm_data = normalized_output->getData();
+
+    bool is_3d = norm_data.getIs3D();
+    int batch_size = is_3d ? norm_data.getBatchSize() : 1;
+    int seq_len = norm_data.getRows();
+    int d_model_dim = norm_data.getCols();
+    int vocab = emb_data.getRows();
+
+    Tensor emb_transposed = emb_data.transpose();
+    Tensor logits_tensor = norm_data.matmul(emb_transposed);
+
+    auto logits = Variable::create(logits_tensor,
+                                     normalized_output->requiresGrad() || embedding_table->requiresGrad());
+
+    if (logits->requiresGrad()) {
+        logits->addChild(normalized_output);
+        logits->addChild(embedding_table);
+
+        logits->setBackwardFn([normalized_output, embedding_table, logits, is_3d]() {
+            const Tensor& grad_logits = logits->getGrad();
+            const Tensor& norm_data = normalized_output->getData();
+            const Tensor& emb_data = embedding_table->getData();
+
+            if (normalized_output->requiresGrad()) {
+                Tensor grad_norm = grad_logits.matmul(emb_data);
+                normalized_output->getGrad().add_inplace(grad_norm);
+            }
+
+            if (embedding_table->requiresGrad()) {
+                Tensor grad_logits_transposed = grad_logits.transpose();
+                Tensor grad_emb;
+
+                if (is_3d) {
+                    int batch = grad_logits.getBatchSize();
+                    int seq = grad_logits.getRows();
+                    int v = grad_logits.getCols();
+                    int d = norm_data.getCols();
+
+                    grad_emb = Tensor(v, d);
+                    grad_emb.fill(0.0f);
+
+                    for (int b = 0; b < batch; b++) {
+                        for (int s = 0; s < seq; s++) {
+                            for (int vi = 0; vi < v; vi++) {
+                                float g = grad_logits.getValue(b, s, vi);
+                                for (int di = 0; di < d; di++) {
+                                    float n = norm_data.getValue(b, s, di);
+                                    grad_emb.setValue(vi, di, grad_emb.getValue(vi, di) + g * n);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    grad_emb = grad_logits_transposed.matmul(norm_data);
+                }
+
+                embedding_table->getGrad().add_inplace(grad_emb);
+            }
+        });
+    }
 
     return logits;
 }

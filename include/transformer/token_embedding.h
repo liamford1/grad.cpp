@@ -7,6 +7,7 @@ class TokenEmbedding {
     private:
         int vocab_size;
         int d_model;
+        float embedding_scale;
         std::shared_ptr<Variable> embedding_table;
     public:
         TokenEmbedding(int vocab_size, int d_model);

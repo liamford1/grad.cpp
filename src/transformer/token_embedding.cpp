@@ -5,7 +5,8 @@
 
 TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
     vocab_size(vocab_size),
-    d_model(d_model)
+    d_model(d_model),
+    embedding_scale(1.0f)
 {
     Tensor embedding_tensor(vocab_size, d_model);
     embedding_tensor.xavier(vocab_size, d_model);
@@ -35,39 +36,40 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                     throw std::out_of_range("Token ID out of vocab range");
                 }
                 token_ids[b][i] = token_id;
-                
+
                 for (int j = 0; j < d_model; j++) {
-                    result.setValue(b, i, j, embedding_table->getData().getValue(token_id, j));
+                    result.setValue(b, i, j, embedding_table->getData().getValue(token_id, j) * embedding_scale);
                 }
             }
         }
-        
+
         auto output = Variable::create(result, input_ids->requiresGrad());
         
         if (input_ids->requiresGrad()) {
             auto self_embedding = embedding_table;
             int self_vocab_size = vocab_size;
             int self_d_model = d_model;
-            
+            float self_scale = embedding_scale;
+
             output->addChild(input_ids);
             output->addChild(embedding_table);
-            
-            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size, 
-                                   self_d_model, batch_size, seq_len]() {
+
+            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size,
+                                   self_d_model, self_scale, batch_size, seq_len]() {
                 Tensor dEmbedding(self_vocab_size, self_d_model);
                 dEmbedding.fill(0.0f);
-                
+
                 for (int b = 0; b < batch_size; b++) {
                     for (int i = 0; i < seq_len; i++) {
                         int token_id = token_ids[b][i];
                         for (int j = 0; j < self_d_model; j++) {
-                            float grad = output->getGrad().getValue(b, i, j);
-                            dEmbedding.setValue(token_id, j, 
+                            float grad = output->getGrad().getValue(b, i, j) * self_scale;
+                            dEmbedding.setValue(token_id, j,
                                 dEmbedding.getValue(token_id, j) + grad);
                         }
                     }
                 }
-                
+
                 self_embedding->getGrad().add_inplace(dEmbedding);
             });
         }
@@ -85,9 +87,9 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                 throw std::out_of_range("Token ID out of vocabulary range");
             }
             token_ids[i] = token_id;
-            
+
             for (int j = 0; j < d_model; j++) {
-                result.setValue(i, j, embedding_table->getData().getValue(token_id, j));
+                result.setValue(i, j, embedding_table->getData().getValue(token_id, j) * embedding_scale);
             }
         }
 
@@ -97,21 +99,22 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
             auto self_embedding = embedding_table;
             int self_vocab_size = vocab_size;
             int self_d_model = d_model;
+            float self_scale = embedding_scale;
 
             output->addChild(input_ids);
             output->addChild(embedding_table);
 
-            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size, 
-                                   self_d_model, seq_len]() {
-                
+            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size,
+                                   self_d_model, self_scale, seq_len]() {
+
                 Tensor dEmbedding(self_vocab_size, self_d_model);
                 dEmbedding.fill(0.0f);
 
                 for (int i = 0; i < seq_len; i++) {
                     int token_id = token_ids[i];
                     for (int j = 0; j < self_d_model; j++) {
-                        float grad = output->getGrad().getValue(i, j);
-                        dEmbedding.setValue(token_id, j, 
+                        float grad = output->getGrad().getValue(i, j) * self_scale;
+                        dEmbedding.setValue(token_id, j,
                             dEmbedding.getValue(token_id, j) + grad);
                     }
                 }
@@ -136,9 +139,9 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                     throw std::out_of_range("Token ID out of vocab range");
                 }
                 token_ids[b][i] = token_id;
-                
+
                 for (int j = 0; j < d_model; j++) {
-                    result.setValue(b, i, j, embedding_table->getData().getValue(token_id, j));
+                    result.setValue(b, i, j, embedding_table->getData().getValue(token_id, j) * embedding_scale);
                 }
             }
         }
@@ -148,12 +151,13 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
             auto self_embedding = embedding_table;
             int self_vocab_size = vocab_size;
             int self_d_model = d_model;
+            float self_scale = embedding_scale;
 
             output->addChild(input_ids);
             output->addChild(embedding_table);
 
-            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size, 
-                                   self_d_model, batch_size, seq_len]() {
+            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size,
+                                   self_d_model, self_scale, batch_size, seq_len]() {
                 
                 Tensor dEmbedding(self_vocab_size, self_d_model);
                 dEmbedding.fill(0.0f);
@@ -162,8 +166,8 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                     for (int i = 0; i < seq_len; i++) {
                         int token_id = token_ids[b][i];
                         for (int j = 0; j < self_d_model; j++) {
-                            float grad = output->getGrad().getValue(b, i, j);
-                            dEmbedding.setValue(token_id, j, 
+                            float grad = output->getGrad().getValue(b, i, j) * self_scale;
+                            dEmbedding.setValue(token_id, j,
                                 dEmbedding.getValue(token_id, j) + grad);
                         }
                     }
