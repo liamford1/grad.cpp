@@ -205,13 +205,17 @@ bool GPTModel::save(const std::string& filepath) const {
 
         for (int i = 0; i < num_layers; i++) {
             const TransformerBlock* block = transformer_blocks[i].get();
-            
+
             const MultiHeadAttention& attention = block->getAttention();
             writeTensorToBinary(file, attention.getW_q()->getData());
             writeTensorToBinary(file, attention.getW_k()->getData());
             writeTensorToBinary(file, attention.getW_v()->getData());
             writeTensorToBinary(file, attention.getW_o()->getData());
-            
+            writeTensorToBinary(file, attention.getB_q()->getData());
+            writeTensorToBinary(file, attention.getB_k()->getData());
+            writeTensorToBinary(file, attention.getB_v()->getData());
+            writeTensorToBinary(file, attention.getB_o()->getData());
+
             const FeedForward& ff = block->getFFN();
             writeTensorToBinary(file, ff.getLayer1Weights()->getData());
             writeTensorToBinary(file, ff.getLayer1Bias()->getData());

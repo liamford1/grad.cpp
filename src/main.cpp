@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <chrono>
+#include <algorithm>
 #include <mach/mach.h>
 // ============================================================================
 // UTILITIES
@@ -83,21 +84,21 @@ void benchmark_training_speed() {
     std::cout << "Tokenizer trained! Encoding full text..." << std::endl;
     std::vector<int> tokens = tokenizer.encode(text);
     std::cout << "Encoded " << tokens.size() << " tokens." << std::endl;
-    
+
     // Same config as your real training
     const int vocab_size = tokenizer.getCurrentVocabSize();
-    const int d_model = 256;
-    const int num_layers = 4;
-    const int num_heads = 4;
-    const int max_len = 512;
+    const int d_model = 512;
+    const int num_layers = 6;
+    const int num_heads = 8;
+    const int max_len = 1024;  // Increased to handle batch_size * seq_len
     const int seq_length = 128;
-    const int batch_size = 2;
+    const int batch_size = 8;
     
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.1f);
     auto params = model.getAllParameters();
     auto dataset = std::make_shared<TextDataset>(tokens, seq_length);
     DataLoader loader(dataset, batch_size, true);
-    AdamOptimizer optimizer(params, 1e-4f);
+    AdamOptimizer optimizer(params, 1e-4f, 0.9f, 0.999f, 1e-8f, 0.0f);
     
     std::cout << "Config: vocab=" << vocab_size << " d_model=" << d_model 
               << " layers=" << num_layers << " heads=" << num_heads << std::endl;
@@ -184,7 +185,7 @@ void test_overfit_tiny_sequence() {
     
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len);
     auto params = model.getAllParameters();
-    AdamOptimizer optimizer(params, 0.001f);
+    AdamOptimizer optimizer(params, 0.001f, 0.9f, 0.999f, 1e-8f, 0.0f);
     
     // Target sequence
     std::vector<int> sequence = {1, 2, 3, 4, 5};
@@ -263,7 +264,7 @@ void test_dataloader() {
     DataLoader loader(dataset, 2, true);
     
     auto params = model.getAllParameters();
-    AdamOptimizer optimizer(params, 1e-5f);
+    AdamOptimizer optimizer(params, 1e-5f, 0.9f, 0.999f, 1e-8f, 0.0f);
     
     for (int epoch = 0; epoch < 3; epoch++) {
         std::cout << "\nEpoch " << (epoch + 1) << std::endl;
@@ -325,8 +326,8 @@ void train_shakespeare() {
 
     const bool FAST_MODE = false;
     const int vocab_target = FAST_MODE ? 500 : 5000;
-    const int train_steps = FAST_MODE ? 50 : 2000;
-    const int sequence_len = FAST_MODE ? 64 : 128;
+    const int train_steps = FAST_MODE ? 50 : 10000;
+    const int sequence_len = FAST_MODE ? 64 : 96;  // Reduced from 128 → 25% faster
     
     std::cout << "Loading shakespeare.txt..." << std::flush;
     auto file_start = std::chrono::high_resolution_clock::now();
@@ -372,12 +373,12 @@ void train_shakespeare() {
     std::cout << " - done (" << encode_ms << "ms, " << tokens.size() << " tokens)\n" << std::endl;
 
     const int vocab_size = tokenizer.getCurrentVocabSize();
-    const int d_model = 256;
-    const int num_layers = 4;
-    const int num_heads = 4;
-    const int max_len = 512;
+    const int d_model = 512;
+    const int num_layers = 6;
+    const int num_heads = 8;
+    const int max_len = 1024;  // Increased to handle batch_size * seq_len
     const int seq_length = sequence_len;
-    const int batch_size = 2;
+    const int batch_size = 8;  // Increased from 2 → 4x throughput!
     const float lr = 3e-4f;
     const int warmup_steps = 500;
     const int num_steps = train_steps;
@@ -407,7 +408,7 @@ void train_shakespeare() {
 
     std::cout << "Initializing optimizer..." << std::flush;
     auto opt_start = std::chrono::high_resolution_clock::now();
-    AdamOptimizer optimizer(params, lr);
+    AdamOptimizer optimizer(params, lr, 0.9f, 0.999f, 1e-8f, 0.0f);
     optimizer.set_warmup_steps(warmup_steps);
     auto opt_end = std::chrono::high_resolution_clock::now();
     auto opt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(opt_end - opt_start).count();
@@ -472,7 +473,7 @@ void train_shakespeare() {
                   << "speed=" << std::setprecision(2) << steps_per_sec << "it/s "
                   << "eta=" << (eta_sec / 60) << "m" << (eta_sec % 60) << "s     " << std::flush;
 
-        if (step % 10 == 0) {
+        if (step % 100 == 0) {  // Changed from 10 to 100 → 10x less overhead
             float grad_norm = compute_grad_norm(params);
 
             std::cout << "\n" << std::setw(10) << step
@@ -506,6 +507,49 @@ void train_shakespeare() {
     
     model.save("shakespeare_final.bin");
     std::cout << "\n✅ Goal 1 Complete!" << std::endl;
+
+    std::cout << "\n=== Diagnostic Check ===" << std::endl;
+    auto emb_table = model.getAllParameters()[0];
+    const Tensor& emb_data = emb_table->getData();
+    float emb_mean = 0.0f, emb_abs_mean = 0.0f;
+    for (size_t i = 0; i < emb_data.numel(); i++) {
+        float val = emb_data.raw()[i];
+        emb_mean += val;
+        emb_abs_mean += std::abs(val);
+    }
+    emb_mean /= emb_data.numel();
+    emb_abs_mean /= emb_data.numel();
+    std::cout << "Embedding mean: " << emb_mean << ", abs mean: " << emb_abs_mean << std::endl;
+
+    Tensor test_input(10, 1);
+    for (int i = 0; i < 10; i++) test_input.setValue(i, 0, static_cast<float>(i));
+    auto test_var = Variable::create(test_input, false);
+    auto test_logits = model.forward(test_var, false);
+    const Tensor& logit_data = test_logits->getData();
+    float logit_mean = 0.0f, logit_abs_mean = 0.0f;
+    for (size_t i = 0; i < logit_data.numel(); i++) {
+        float val = logit_data.raw()[i];
+        logit_mean += val;
+        logit_abs_mean += std::abs(val);
+    }
+    logit_mean /= logit_data.numel();
+    logit_abs_mean /= logit_data.numel();
+    std::cout << "Logit mean: " << logit_mean << ", abs mean: " << logit_abs_mean << std::endl;
+
+    auto test_probs = test_logits->softmax();
+    for (int i = 0; i < 3; i++) {
+        std::vector<std::pair<float, int>> probs;
+        for (int j = 0; j < vocab_size; j++) {
+            probs.push_back({test_probs->getData().getValue(i, j), j});
+        }
+        std::sort(probs.rbegin(), probs.rend());
+        std::cout << "Position " << i << " top-5 probs: ";
+        for (int k = 0; k < 5; k++) {
+            std::cout << tokenizer.decode({probs[k].second}) << "(" << std::fixed << std::setprecision(4) << probs[k].first << ") ";
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "====================" << std::endl;
 
     // After model.save("shakespeare_final.bin");
 

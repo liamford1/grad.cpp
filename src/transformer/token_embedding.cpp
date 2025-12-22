@@ -10,6 +10,7 @@ TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
 {
     Tensor embedding_tensor(vocab_size, d_model);
     embedding_tensor.xavier(vocab_size, d_model);
+
     embedding_table = Variable::create(embedding_tensor, true);
 }
 
