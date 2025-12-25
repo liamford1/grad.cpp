@@ -323,3 +323,35 @@ Tensor Tensor::create_causal_mask(size_t seq_len) {
 
     return mask;
 }
+
+float Tensor::getValue(int b, int r, int c) const {
+    int idx = 0;
+    if (shape.size() == 3) {
+        idx = b * strides[0] + r * strides[1] + c * strides[2];
+    } else {
+        idx = b * (shape[1] * shape[2]) + r * shape[2] + c;
+    }
+
+    float h_val;
+    if (getDevice() == Device::CPU) {
+        return data()[idx];
+    } else {
+        cudaMemcpy(&h_val, data() + idx, sizeof(float), cudaMemcpyDeviceToHost);
+        return h_val;
+    }
+}
+
+void Tensor::setValue(int b, int r, int c, float value) {
+    int idx = 0;
+    if (shape.size() == 3) {
+        idx = b * strides[0] + r * strides[1] + c * strides[2];
+    } else {
+        idx = b * (shape[1] * shape[2]) + r * shape[2] + c;
+    }
+
+    if (getDevice() == Device::CPU) {
+        data()[idx] = value;
+    } else {
+        cudaMemcpy(data() + idx, &value, sizeof(float), cudaMemcpyHostToDevice);
+    }
+}

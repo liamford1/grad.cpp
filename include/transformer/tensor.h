@@ -70,6 +70,9 @@ class Tensor {
         float getValue(int row, int col) const;
         void setValue(int row, int col, float value);
 
+        float getValue(int batch, int row, int col) const;
+        void setValue(int batch, int row, int col, float value);
+
         size_t getRows() const { return shape.size() > 1 ? shape[shape.size()-2] : 1; }
         size_t getCols() const { return shape.empty() ? 0 : shape.back(); }
         size_t getBatchSize() const { return shape.size() > 2 ? shape[0] : 1; }
