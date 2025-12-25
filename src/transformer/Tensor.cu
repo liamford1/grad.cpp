@@ -164,11 +164,6 @@ Tensor Tensor::matmul(const Tensor& other) const {
         return result;
     }
     else {
-        std::cout << "[GPU MATMUL] Shape: [" << this->shape[this->shape.size()-2]
-                  << "x" << this->shape.back() << "] x ["
-                  << other.shape[other.shape.size()-2] << "x" << other.shape.back()
-                  << "] -> using cuBLAS" << std::endl;
-
         int m = this->shape[this->shape.size() - 2];
         int k = this->shape.back();
         int n = other.shape.back();
