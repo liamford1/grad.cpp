@@ -75,10 +75,17 @@ class Tensor {
         size_t getBatchSize() const { return shape.size() > 2 ? shape[0] : 1; }
 
         const std::vector<int>& getShape() const { return shape; }
+        const std::vector<int>& getStrides() const { return strides; }
         Device getDevice() const { return storage->device; }
         size_t numel() const {
             size_t n = 1;
             for(int s : shape) n *= s;
             return n;
+        }
+
+        Tensor add(const Tensor& other) const {
+            Tensor result = this->clone();
+            result.add_inplace(other);
+            return result;
         }
 };
