@@ -275,7 +275,7 @@ __global__ void add_inplace_kernel(float* a, const float* b, size_t size) {
 }
 
 void Tensor::add_inplace(const Tensor& other) {
-    if (numel() == other.numel()) {
+    if (numel() == other.numel() && shape == other.shape) {
         if (getDevice() == Device::CPU) {
             float* a_ptr = data();
             const float* b_ptr = other.data();
@@ -311,8 +311,44 @@ void Tensor::add_inplace(const Tensor& other) {
                 cudaDeviceSynchronize();
             }
         }
+    } else if (!getIs3D() && !other.getIs3D()) {
+        int my_rows = getRows();
+        int my_cols = getCols();
+        int other_rows = other.getRows();
+        int other_cols = other.getCols();
+
+        bool broadcast_rows = (other_rows == 1 && my_rows > 1);
+        bool broadcast_cols = (other_cols == 1 && my_cols > 1);
+
+        if ((broadcast_rows || other_rows == my_rows) &&
+            (broadcast_cols || other_cols == my_cols)) {
+
+            float* dst = data();
+            const float* src = other.data();
+
+            if (getDevice() == Device::CPU) {
+                for(int i = 0; i < my_rows; i++) {
+                    int src_i = broadcast_rows ? 0 : i;
+                    for(int j = 0; j < my_cols; j++) {
+                        int src_j = broadcast_cols ? 0 : j;
+                        dst[i * my_cols + j] += src[src_i * other_cols + src_j];
+                    }
+                }
+            } else {
+                for(int i = 0; i < my_rows; i++) {
+                    int src_i = broadcast_rows ? 0 : i;
+                    for(int j = 0; j < my_cols; j++) {
+                        int src_j = broadcast_cols ? 0 : j;
+                        dst[i * my_cols + j] += src[src_i * other_cols + src_j];
+                    }
+                }
+                cudaDeviceSynchronize();
+            }
+        } else {
+            throw std::invalid_argument("Size mismatch in add_inplace: incompatible shapes for broadcasting");
+        }
     } else {
-        throw std::invalid_argument("Size mismatch in add_inplace");
+        throw std::invalid_argument("Size mismatch in add_inplace: unsupported tensor configuration");
     }
 }
 
