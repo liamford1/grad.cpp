@@ -5,6 +5,7 @@
 #include "data/dataloader.h"
 #include "training/trainer.h"
 #include "utils/metrics.h"
+#include <cuda_runtime.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -96,6 +97,11 @@ void generate_samples(GPTModel& model, BPETokenizer& tokenizer) {
 
 int main() {
     std::cout << "\nTransformer Training\n" << std::endl;
+
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
+    std::cout << "GPU: " << prop.name << " (Compute " << prop.major << "." << prop.minor << ")" << std::endl;
+    std::cout << "VRAM: " << (prop.totalGlobalMem / (1024*1024*1024)) << " GB\n" << std::endl;
 
     try {
         const bool FAST_MODE = false;

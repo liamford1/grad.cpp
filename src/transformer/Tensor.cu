@@ -164,13 +164,14 @@ Tensor Tensor::matmul(const Tensor& other) const {
         return result;
     }
     else {
-        // 4. CUDA Implementation (cuBLAS)
-        // We perform C = A * B
+        std::cout << "[GPU MATMUL] Shape: [" << this->shape[this->shape.size()-2]
+                  << "x" << this->shape.back() << "] x ["
+                  << other.shape[other.shape.size()-2] << "x" << other.shape.back()
+                  << "] -> using cuBLAS" << std::endl;
 
-        // For 2D case: [M, K] x [K, N] -> [M, N]
-        int m = this->shape[this->shape.size() - 2];  // rows of A
-        int k = this->shape.back();                    // cols of A (rows of B)
-        int n = other.shape.back();                    // cols of B
+        int m = this->shape[this->shape.size() - 2];
+        int k = this->shape.back();
+        int n = other.shape.back();
 
         // Handle batch dimensions if present
         int batch_size = 1;

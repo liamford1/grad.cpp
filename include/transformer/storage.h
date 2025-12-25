@@ -20,7 +20,7 @@ class Storage {
                 data_ptr = malloc(size);
                 if (!data_ptr) throw std::runtime_error("CPU OOM");
             } else {
-                cudaError_t err = cudaMallocManaged(&data_ptr, size);
+                cudaError_t err = cudaMalloc(&data_ptr, size);
                 if (err != cudaSuccess) {
                     throw std::runtime_error("CUDA OOM: " + std::string(cudaGetErrorString(err)));
                 }
