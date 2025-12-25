@@ -19,6 +19,16 @@ TokenEmbedding::~TokenEmbedding() {}
 std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> input_ids) const {
     const Tensor& input_tensor = input_ids->getData();
 
+    if (input_tensor.getDevice() == Device::CUDA) {
+        Tensor result = embedding_lookup_gpu(embedding_table->getData(), input_tensor, d_model, embedding_scale);
+        auto output = Variable::create(result, input_ids->requiresGrad());
+        if (input_ids->requiresGrad()) {
+            output->addChild(input_ids);
+            output->addChild(embedding_table);
+        }
+        return output;
+    }
+
     if (input_tensor.getIs3D()) {
         int batch_size = input_tensor.getBatchSize();
         int seq_len = input_tensor.getRows();

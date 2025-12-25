@@ -57,11 +57,23 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
     } else {
         int batch_size = emb_tensor.getBatchSize();
         int seq_len = emb_tensor.getRows();
-        
+
         if (seq_len > max_len) {
             throw std::out_of_range("Sequence length exceeds max_len");
         }
-        
+
+        if (emb_tensor.getDevice() == Device::CUDA) {
+            Tensor pos_broadcast = pos_encoding_broadcast_gpu(position_embeddings->getData(), batch_size, seq_len, d_model);
+            auto pos_var = Variable::create(pos_broadcast, position_embeddings->requiresGrad());
+            auto output = embeddings->add(pos_var);
+
+            if (embeddings->requiresGrad() || position_embeddings->requiresGrad()) {
+                output->addChild(embeddings);
+                output->addChild(position_embeddings);
+            }
+            return output;
+        }
+
         Tensor pos_broadcast(batch_size, seq_len, d_model);
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {

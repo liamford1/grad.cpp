@@ -694,3 +694,77 @@ Tensor layer_norm_gpu(const Tensor& input, const Tensor& gamma, const Tensor& be
 
     return result;
 }
+
+__global__ void embedding_lookup_kernel(const float* embedding_table, const float* token_ids,
+                                        float* output, int batch_size, int seq_len,
+                                        int d_model, float scale) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_tokens = batch_size * seq_len;
+    
+    if (idx < total_tokens) {
+        int token_id = static_cast<int>(token_ids[idx]);
+        const float* emb_row = embedding_table + token_id * d_model;
+        float* out_row = output + idx * d_model;
+        
+        for (int j = 0; j < d_model; ++j) {
+            out_row[j] = emb_row[j] * scale;
+        }
+    }
+}
+
+Tensor embedding_lookup_gpu(const Tensor& embedding_table, const Tensor& token_ids,
+                            int d_model, float scale) {
+    int batch_size = token_ids.getIs3D() ? token_ids.getBatchSize() : 1;
+    int seq_len = token_ids.getIs3D() ? token_ids.getRows() : token_ids.getRows();
+    
+    std::vector<int> output_shape;
+    if (token_ids.getIs3D()) {
+        output_shape = {batch_size, seq_len, d_model};
+    } else {
+        output_shape = {seq_len, d_model};
+    }
+    
+    Tensor result(output_shape, Device::CUDA);
+    
+    int total_tokens = batch_size * seq_len;
+    int threads = 256;
+    int blocks = (total_tokens + threads - 1) / threads;
+    
+    embedding_lookup_kernel<<<blocks, threads>>>(
+        embedding_table.data(), token_ids.data(),
+        result.data(), batch_size, seq_len, d_model, scale
+    );
+    cudaDeviceSynchronize();
+    
+    return result;
+}
+
+__global__ void pos_encoding_broadcast_kernel(const float* pos_emb, float* output,
+                                              int batch_size, int seq_len, int d_model) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = batch_size * seq_len * d_model;
+    
+    if (idx < total) {
+        int b = idx / (seq_len * d_model);
+        int remainder = idx % (seq_len * d_model);
+        int pos = remainder / d_model;
+        int dim = remainder % d_model;
+        
+        output[idx] = pos_emb[pos * d_model + dim];
+    }
+}
+
+Tensor pos_encoding_broadcast_gpu(const Tensor& pos_emb, int batch_size, int seq_len, int d_model) {
+    Tensor result(batch_size, seq_len, d_model, Device::CUDA);
+    
+    int total = batch_size * seq_len * d_model;
+    int threads = 256;
+    int blocks = (total + threads - 1) / threads;
+    
+    pos_encoding_broadcast_kernel<<<blocks, threads>>>(
+        pos_emb.data(), result.data(), batch_size, seq_len, d_model
+    );
+    cudaDeviceSynchronize();
+    
+    return result;
+}

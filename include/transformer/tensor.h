@@ -105,3 +105,5 @@ class Tensor {
 };
 
 Tensor layer_norm_gpu(const Tensor& input, const Tensor& gamma, const Tensor& beta, float epsilon, int d_model);
+Tensor embedding_lookup_gpu(const Tensor& embedding_table, const Tensor& token_ids, int d_model, float scale);
+Tensor pos_encoding_broadcast_gpu(const Tensor& pos_emb, int batch_size, int seq_len, int d_model);
