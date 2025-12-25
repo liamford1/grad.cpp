@@ -56,6 +56,7 @@ class Tensor {
         Tensor matmul(const Tensor& other) const;
         void fill(float value);
         Tensor clone() const;
+        Tensor to(Device device) const;
 
         void add_inplace(const Tensor& other);
         Tensor softmax() const;

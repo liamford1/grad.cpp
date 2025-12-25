@@ -94,7 +94,6 @@ void Tensor::fill(float value) {
 Tensor Tensor::clone() const {
     Tensor copy(this->shape, this->getDevice());
 
-    // We need a copy kernel eventually, but for now let's reuse cudaMemcpy
     size_t bytes = numel() * sizeof(float);
 
     if (getDevice() == Device::CPU) {
@@ -104,6 +103,23 @@ Tensor Tensor::clone() const {
     }
 
     return copy;
+}
+
+Tensor Tensor::to(Device target_device) const {
+    if (getDevice() == target_device) {
+        return this->clone();
+    }
+
+    Tensor result(this->shape, target_device);
+    size_t bytes = numel() * sizeof(float);
+
+    if (getDevice() == Device::CPU && target_device == Device::CUDA) {
+        cudaMemcpy(result.data(), this->data(), bytes, cudaMemcpyHostToDevice);
+    } else if (getDevice() == Device::CUDA && target_device == Device::CPU) {
+        cudaMemcpy(result.data(), this->data(), bytes, cudaMemcpyDeviceToHost);
+    }
+
+    return result;
 }
 
 // ------------------------------------------------------------

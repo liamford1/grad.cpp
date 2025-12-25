@@ -38,16 +38,19 @@ Batch DataLoader::next_batch() {
     int seq_length = first_input.size();
     
     Batch batch(actual_batch_size, seq_length);
-    
+
     for (int b = 0; b < actual_batch_size; b++) {
         size_t idx = indices_[current_index_ + b];
         auto [input, target] = dataset_->get_item(idx);
-        
+
         for (int s = 0; s < seq_length; s++) {
             batch.input.setValue(b, s, 0, static_cast<float>(input[s]));
             batch.target.setValue(b, s, 0, static_cast<float>(target[s]));
         }
     }
+
+    batch.to_device(Device::CUDA);
+
     current_index_ += actual_batch_size;
     return batch;
 }

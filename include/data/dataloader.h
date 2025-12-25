@@ -8,10 +8,15 @@
 struct Batch {
     Tensor input;
     Tensor target;
-    
+
     Batch(int batch_size, int seq_length)
-        : input(batch_size, seq_length, 1),
-          target(batch_size, seq_length, 1) {}
+        : input(batch_size, seq_length, 1, Device::CPU),
+          target(batch_size, seq_length, 1, Device::CPU) {}
+
+    void to_device(Device device) {
+        input = input.to(device);
+        target = target.to(device);
+    }
 };
 
 class DataLoader {
