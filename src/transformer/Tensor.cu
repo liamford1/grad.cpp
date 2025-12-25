@@ -367,39 +367,63 @@ void Tensor::xavier(size_t fan_in, size_t fan_out) {
     }
 }
 
+__global__ void softmax_kernel(const float* input, float* output, int rows, int cols) {
+    int row_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row_idx < rows) {
+        const float* row_in = input + row_idx * cols;
+        float* row_out = output + row_idx * cols;
+
+        float max_val = -1e30f;
+        for (int j = 0; j < cols; ++j) {
+            if (row_in[j] > max_val) max_val = row_in[j];
+        }
+
+        float sum = 0.0f;
+        for (int j = 0; j < cols; ++j) {
+            float val = expf(row_in[j] - max_val);
+            row_out[j] = val;
+            sum += val;
+        }
+
+        for (int j = 0; j < cols; ++j) {
+            row_out[j] /= sum;
+        }
+    }
+}
+
 Tensor Tensor::softmax() const {
     Tensor result(shape, getDevice());
 
-    size_t size = numel();
-    std::vector<float> h_data(size);
-
     if (getDevice() == Device::CPU) {
+        size_t size = numel();
+        std::vector<float> h_data(size);
         std::memcpy(h_data.data(), data(), size * sizeof(float));
-    } else {
-        cudaMemcpy(h_data.data(), data(), size * sizeof(float), cudaMemcpyDeviceToHost);
-    }
 
-    int rows = size / shape.back();
-    int cols = shape.back();
+        int rows = size / shape.back();
+        int cols = shape.back();
 
-    for(int i=0; i<rows; i++) {
-        float max_val = -1e9;
-        for(int j=0; j<cols; j++) max_val = std::max(max_val, h_data[i*cols + j]);
-
-        float sum = 0.0f;
-        for(int j=0; j<cols; j++) {
-            h_data[i*cols + j] = std::exp(h_data[i*cols + j] - max_val);
-            sum += h_data[i*cols + j];
+        for(int i=0; i<rows; i++) {
+            float max_val = -1e9;
+            for(int j=0; j<cols; j++) max_val = std::max(max_val, h_data[i*cols + j]);
+            float sum = 0.0f;
+            for(int j=0; j<cols; j++) {
+                h_data[i*cols + j] = std::exp(h_data[i*cols + j] - max_val);
+                sum += h_data[i*cols + j];
+            }
+            for(int j=0; j<cols; j++) h_data[i*cols + j] /= sum;
         }
-        for(int j=0; j<cols; j++) h_data[i*cols + j] /= sum;
-    }
-
-    if (getDevice() == Device::CPU) {
         std::memcpy(result.data(), h_data.data(), size * sizeof(float));
-    } else {
-        cudaMemcpy(result.data(), h_data.data(), size * sizeof(float), cudaMemcpyHostToDevice);
     }
+    else {
+        size_t cols = shape.back();
+        size_t rows = numel() / cols;
 
+        int threads = 256;
+        int blocks = (rows + threads - 1) / threads;
+
+        softmax_kernel<<<blocks, threads>>>(data(), result.data(), rows, cols);
+        cudaDeviceSynchronize();
+    }
     return result;
 }
 
