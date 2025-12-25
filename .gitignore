@@ -20,9 +20,6 @@ CTestTestfile.cmake
 /test_matmul
 /sanity_tests
 
-# Cache files
-*.cache
-
 # Model checkpoints
 *.bin
 
