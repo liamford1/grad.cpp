@@ -1,11 +1,11 @@
 #include "transformer/positional_encoding.h"
 #include <stdexcept>
 
-PositionalEncoding::PositionalEncoding(int max_len, int d_model) : 
+PositionalEncoding::PositionalEncoding(int max_len, int d_model) :
     max_len(max_len),
     d_model(d_model)
 {
-    Tensor pos_emb(max_len, d_model);
+    Tensor pos_emb(max_len, d_model, Device::CPU);
     pos_emb.xavier(max_len, d_model);
     position_embeddings = Variable::create(pos_emb, true);
 }
@@ -62,7 +62,7 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
             throw std::out_of_range("Sequence length exceeds max_len");
         }
         
-        Tensor pos_broadcast(batch_size, seq_len, d_model);
+        Tensor pos_broadcast(batch_size, seq_len, d_model, Device::CPU);
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {
                 for (int j = 0; j < d_model; j++) {

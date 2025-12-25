@@ -8,7 +8,7 @@ TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
     d_model(d_model),
     embedding_scale(1.0f)
 {
-    Tensor embedding_tensor(vocab_size, d_model);
+    Tensor embedding_tensor(vocab_size, d_model, Device::CPU);
     embedding_tensor.xavier(vocab_size, d_model);
 
     embedding_table = Variable::create(embedding_tensor, true);
@@ -27,7 +27,7 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
             throw std::invalid_argument("3D input_ids must have shape (batch, seq_len, 1)");
         }
         
-        Tensor result(batch_size, seq_len, d_model);
+        Tensor result(batch_size, seq_len, d_model, Device::CPU);
         std::vector<std::vector<int>> token_ids(batch_size, std::vector<int>(seq_len));
         
         for (int b = 0; b < batch_size; b++) {
@@ -79,7 +79,7 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
 
     if (input_tensor.getCols() == 1) {
         int seq_len = input_tensor.getRows();
-        Tensor result(seq_len, d_model);
+        Tensor result(seq_len, d_model, Device::CPU);
 
         std::vector<int> token_ids(seq_len);
         for (int i = 0; i < seq_len; i++) {
@@ -129,7 +129,7 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
         int batch_size = input_tensor.getRows();
         int seq_len = input_tensor.getCols();
 
-        Tensor result(batch_size, seq_len, d_model);
+        Tensor result(batch_size, seq_len, d_model, Device::CPU);
         
         std::vector<std::vector<int>> token_ids(batch_size, std::vector<int>(seq_len));
         
