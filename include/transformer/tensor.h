@@ -26,7 +26,7 @@ class Tensor {
 
     public:
         Tensor() : storage(nullptr), storage_offset(0) {}
-        Tensor(std::vector<int> shape, Device device = Device::CPU);
+        Tensor(std::vector<int> shape, Device device = Device::CUDA);
 
         float* data() {
             return static_cast<float*>(storage->data_ptr) + storage_offset;
@@ -70,10 +70,10 @@ class Tensor {
         Tensor subtract(const Tensor& other) const;
         Tensor elementwise(const Tensor& other) const;
 
-        Tensor(size_t rows, size_t cols, Device device = Device::CPU)
+        Tensor(size_t rows, size_t cols, Device device = Device::CUDA)
             : Tensor(std::vector<int>{(int)rows, (int)cols}, device) {}
 
-        Tensor(size_t batch, size_t rows, size_t cols, Device device = Device::CPU)
+        Tensor(size_t batch, size_t rows, size_t cols, Device device = Device::CUDA)
             : Tensor(std::vector<int>{(int)batch, (int)rows, (int)cols}, device) {}
 
         float getValue(int row, int col) const;
