@@ -355,3 +355,56 @@ void Tensor::setValue(int b, int r, int c, float value) {
         cudaMemcpy(data() + idx, &value, sizeof(float), cudaMemcpyHostToDevice);
     }
 }
+
+__global__ void scale_kernel(float* data, float factor, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        data[idx] *= factor;
+    }
+}
+
+Tensor Tensor::scale(float factor) const {
+    Tensor result = this->clone();
+
+    if (getDevice() == Device::CPU) {
+        float* ptr = result.data();
+        for(size_t i=0; i<numel(); i++) ptr[i] *= factor;
+    } else {
+        int threads = 256;
+        int blocks = (numel() + threads - 1) / threads;
+        scale_kernel<<<blocks, threads>>>(result.data(), factor, numel());
+        cudaDeviceSynchronize();
+    }
+    return result;
+}
+
+Tensor Tensor::slice(size_t r_start, size_t r_end, size_t c_start, size_t c_end) const {
+    size_t new_rows = r_end - r_start;
+    size_t new_cols = c_end - c_start;
+
+    Tensor result(new_rows, new_cols, getDevice());
+
+    size_t src_cols = shape.back();
+    size_t dst_cols = new_cols;
+    size_t width_bytes = new_cols * sizeof(float);
+
+    size_t src_offset_idx = r_start * src_cols + c_start;
+
+    if (getDevice() == Device::CPU) {
+        for(size_t i=0; i<new_rows; i++) {
+            float* dst_row = result.data() + i * dst_cols;
+            const float* src_row = data() + src_offset_idx + i * src_cols;
+            std::memcpy(dst_row, src_row, width_bytes);
+        }
+    } else {
+        const float* src_ptr = data() + src_offset_idx;
+        float* dst_ptr = result.data();
+
+        size_t spitch = src_cols * sizeof(float);
+        size_t dpitch = dst_cols * sizeof(float);
+
+        cudaMemcpy2D(dst_ptr, dpitch, src_ptr, spitch, width_bytes, new_rows, cudaMemcpyDeviceToDevice);
+    }
+
+    return result;
+}

@@ -25,6 +25,7 @@ class Tensor {
         }
 
     public:
+        Tensor() : storage(nullptr), storage_offset(0) {}
         Tensor(std::vector<int> shape, Device device = Device::CPU);
 
         float* data() {
@@ -60,6 +61,9 @@ class Tensor {
         Tensor softmax() const;
         void xavier(size_t fan_in, size_t fan_out);
         static Tensor create_causal_mask(size_t seq_len);
+
+        Tensor slice(size_t r_start, size_t r_end, size_t c_start, size_t c_end) const;
+        Tensor scale(float factor) const;
 
         Tensor(size_t rows, size_t cols, Device device = Device::CPU)
             : Tensor(std::vector<int>{(int)rows, (int)cols}, device) {}
