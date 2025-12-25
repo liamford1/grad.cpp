@@ -65,6 +65,11 @@ class Tensor {
         Tensor slice(size_t r_start, size_t r_end, size_t c_start, size_t c_end) const;
         Tensor scale(float factor) const;
 
+        void assertValid(const std::string& msg = "") const {}
+
+        Tensor subtract(const Tensor& other) const;
+        Tensor elementwise(const Tensor& other) const;
+
         Tensor(size_t rows, size_t cols, Device device = Device::CPU)
             : Tensor(std::vector<int>{(int)rows, (int)cols}, device) {}
 

@@ -408,3 +408,32 @@ Tensor Tensor::slice(size_t r_start, size_t r_end, size_t c_start, size_t c_end)
 
     return result;
 }
+
+__global__ void elementwise_mul_kernel(float* a, const float* b, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        a[idx] *= b[idx];
+    }
+}
+
+Tensor Tensor::elementwise(const Tensor& other) const {
+    Tensor result = this->clone();
+
+    if (getDevice() == Device::CPU) {
+        float* a_ptr = result.data();
+        const float* b_ptr = other.data();
+        for(size_t i=0; i<numel(); i++) a_ptr[i] *= b_ptr[i];
+    } else {
+        int threads = 256;
+        int blocks = (numel() + threads - 1) / threads;
+        elementwise_mul_kernel<<<blocks, threads>>>(result.data(), other.data(), numel());
+        cudaDeviceSynchronize();
+    }
+    return result;
+}
+
+Tensor Tensor::subtract(const Tensor& other) const {
+    Tensor neg_other = other.scale(-1.0f);
+    Tensor result = this->add(neg_other);
+    return result;
+}
