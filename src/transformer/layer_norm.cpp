@@ -21,18 +21,33 @@ LayerNorm::~LayerNorm() {}
 std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) const {
     const Tensor& input_tensor = input->getData();
 
+    Tensor result;
+    std::vector<float> means;
+    std::vector<float> inv_stds;
+
+    if (input_tensor.getDevice() == Device::CUDA) {
+        result = layer_norm_gpu(input_tensor, gamma->getData(), beta->getData(), epsilon, d_model);
+        auto output = Variable::create(result, input->requiresGrad());
+        if (input->requiresGrad()) {
+            output->addChild(input);
+            output->addChild(gamma);
+            output->addChild(beta);
+        }
+        return output;
+    }
+
     if (!input_tensor.getIs3D()) {
         //2D case
         int rows = input_tensor.getRows();
-        Tensor result(rows, d_model);
-        
+        result = Tensor(rows, d_model, Device::CPU);
+
         const float* input_data = input_tensor.raw();
         const float* gamma_data = gamma->getData().raw();
         const float* beta_data = beta->getData().raw();
         float* result_data = result.raw();
-        
-        std::vector<float> means(rows);
-        std::vector<float> inv_stds(rows);
+
+        means.resize(rows);
+        inv_stds.resize(rows);
 
         for (int i = 0; i < rows; i++) {
             const float* row_in = input_data + i * d_model;
@@ -139,17 +154,17 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         // 3D case
         int batch_size = input_tensor.getBatchSize();
         int seq_len = input_tensor.getRows();
-        
-        Tensor result(batch_size, seq_len, d_model);
-        
+
+        result = Tensor(batch_size, seq_len, d_model, Device::CPU);
+
         const float* input_data = input_tensor.raw();
         const float* gamma_data = gamma->getData().raw();
         const float* beta_data = beta->getData().raw();
         float* result_data = result.raw();
-        
+
         int total_rows = batch_size * seq_len;
-        std::vector<float> means(total_rows);
-        std::vector<float> inv_stds(total_rows);
+        means.resize(total_rows);
+        inv_stds.resize(total_rows);
 
         for (int b = 0; b < batch_size; b++) {
             const int batch_offset = b * seq_len * d_model;

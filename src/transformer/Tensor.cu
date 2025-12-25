@@ -645,3 +645,52 @@ Tensor Tensor::gelu() const {
     }
     return result;
 }
+
+__global__ void layer_norm_kernel(const float* input, const float* gamma, const float* beta,
+                                   float* output, int rows, int d_model, float epsilon) {
+    int row_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row_idx < rows) {
+        const float* row_in = input + row_idx * d_model;
+        float* row_out = output + row_idx * d_model;
+
+        float mean = 0.0f;
+        for (int j = 0; j < d_model; ++j) {
+            mean += row_in[j];
+        }
+        mean /= d_model;
+
+        float variance = 0.0f;
+        for (int j = 0; j < d_model; ++j) {
+            float diff = row_in[j] - mean;
+            variance += diff * diff;
+        }
+        variance /= d_model;
+
+        float std_inv = 1.0f / sqrtf(variance + epsilon);
+
+        for (int j = 0; j < d_model; ++j) {
+            float norm = (row_in[j] - mean) * std_inv;
+            row_out[j] = gamma[j] * norm + beta[j];
+        }
+    }
+}
+
+Tensor layer_norm_gpu(const Tensor& input, const Tensor& gamma, const Tensor& beta, float epsilon, int d_model) {
+    size_t total_elements = input.numel();
+    size_t rows = total_elements / d_model;
+
+    Tensor result(input.getShape(), input.getDevice());
+
+    if (input.getDevice() == Device::CUDA) {
+        int threads = 256;
+        int blocks = (rows + threads - 1) / threads;
+
+        layer_norm_kernel<<<blocks, threads>>>(
+            input.data(), gamma.data(), beta.data(),
+            result.data(), rows, d_model, epsilon
+        );
+        cudaDeviceSynchronize();
+    }
+
+    return result;
+}

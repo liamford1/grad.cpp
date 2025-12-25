@@ -103,3 +103,5 @@ class Tensor {
             return result;
         }
 };
+
+Tensor layer_norm_gpu(const Tensor& input, const Tensor& gamma, const Tensor& beta, float epsilon, int d_model);
