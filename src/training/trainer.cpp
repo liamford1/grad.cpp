@@ -76,19 +76,19 @@ void Trainer::training_step(int step) {
     loss->backward();
     loss->release_graph();
 
-    float loss_val = loss->getData().getValue(0, 0);
-    float grad_norm = 0.0f;
-
-    if (step % 100 == 0) {
-        auto params = model_.getAllParameters();
-        grad_norm = utils::compute_grad_norm(params);
-        metrics_->record_step(step, loss_val, grad_norm);
-    }
-
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();
 
-    metrics_->print_progress(step, loss_val);
+    if (step % 10 == 0) {
+        float loss_val = loss->getData().getValue(0, 0);
+        metrics_->print_progress(step, loss_val);
+
+        if (step % 100 == 0) {
+            auto params = model_.getAllParameters();
+            float grad_norm = utils::compute_grad_norm(params);
+            metrics_->record_step(step, loss_val, grad_norm);
+        }
+    }
 }
 
 void Trainer::save_checkpoint(const std::string& path) {
