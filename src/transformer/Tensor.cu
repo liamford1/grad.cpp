@@ -235,3 +235,91 @@ void Tensor::setValue(int r, int c, float value) {
         cudaMemcpy(data() + idx, &value, sizeof(float), cudaMemcpyHostToDevice);
     }
 }
+
+__global__ void add_inplace_kernel(float* a, const float* b, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        a[idx] += b[idx];
+    }
+}
+
+void Tensor::add_inplace(const Tensor& other) {
+    if (numel() != other.numel()) throw std::invalid_argument("Size mismatch in add_inplace");
+
+    if (getDevice() == Device::CPU) {
+        float* a_ptr = data();
+        const float* b_ptr = other.data();
+        for(size_t i=0; i<numel(); i++) a_ptr[i] += b_ptr[i];
+    } else {
+        int threads = 256;
+        int blocks = (numel() + threads - 1) / threads;
+        add_inplace_kernel<<<blocks, threads>>>(data(), other.data(), numel());
+        cudaDeviceSynchronize();
+    }
+}
+
+void Tensor::xavier(size_t fan_in, size_t fan_out) {
+    float scale = std::sqrt(2.0f / (fan_in + fan_out));
+
+    std::vector<float> temp_data(numel());
+    for(size_t i=0; i<numel(); i++) {
+        temp_data[i] = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * scale;
+    }
+
+    if (getDevice() == Device::CPU) {
+        std::memcpy(data(), temp_data.data(), numel() * sizeof(float));
+    } else {
+        cudaMemcpy(data(), temp_data.data(), numel() * sizeof(float), cudaMemcpyHostToDevice);
+    }
+}
+
+Tensor Tensor::softmax() const {
+    Tensor result(shape, getDevice());
+
+    size_t size = numel();
+    std::vector<float> h_data(size);
+
+    if (getDevice() == Device::CPU) {
+        std::memcpy(h_data.data(), data(), size * sizeof(float));
+    } else {
+        cudaMemcpy(h_data.data(), data(), size * sizeof(float), cudaMemcpyDeviceToHost);
+    }
+
+    int rows = size / shape.back();
+    int cols = shape.back();
+
+    for(int i=0; i<rows; i++) {
+        float max_val = -1e9;
+        for(int j=0; j<cols; j++) max_val = std::max(max_val, h_data[i*cols + j]);
+
+        float sum = 0.0f;
+        for(int j=0; j<cols; j++) {
+            h_data[i*cols + j] = std::exp(h_data[i*cols + j] - max_val);
+            sum += h_data[i*cols + j];
+        }
+        for(int j=0; j<cols; j++) h_data[i*cols + j] /= sum;
+    }
+
+    if (getDevice() == Device::CPU) {
+        std::memcpy(result.data(), h_data.data(), size * sizeof(float));
+    } else {
+        cudaMemcpy(result.data(), h_data.data(), size * sizeof(float), cudaMemcpyHostToDevice);
+    }
+
+    return result;
+}
+
+Tensor Tensor::create_causal_mask(size_t seq_len) {
+    std::vector<int> shape = { (int)seq_len, (int)seq_len };
+    Tensor mask(shape, Device::CPU);
+
+    float* ptr = mask.data();
+    for (size_t i = 0; i < seq_len; i++) {
+        for (size_t j = 0; j < seq_len; j++) {
+            if (j > i) ptr[i * seq_len + j] = -1e9f;
+            else ptr[i * seq_len + j] = 0.0f;
+        }
+    }
+
+    return mask;
+}

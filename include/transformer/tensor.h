@@ -5,6 +5,7 @@
 #include <initializer_list>
 #include <algorithm>
 #include <stdexcept>
+#include <cmath>
 
 class Tensor {
     private:
@@ -33,11 +34,21 @@ class Tensor {
         const float* data() const {
             return static_cast<const float*>(storage->data_ptr) + storage_offset;
         }
-        
+
+        float* raw() { return data(); }
+        const float* raw() const { return data(); }
+
+        bool getIs3D() const { return shape.size() == 3; }
+
+        Tensor transpose() const {
+            if (shape.size() < 2) return *this;
+            return transpose(shape.size() - 2, shape.size() - 1);
+        }
+
         Tensor transpose(int dim0, int dim1) const {
-        Tensor result = *this;
-        std::swap(result.shape[dim0], result.shape[dim1]);
-        std::swap(result.strides[dim0], result.strides[dim1]);
+            Tensor result = *this;
+            std::swap(result.shape[dim0], result.shape[dim1]);
+            std::swap(result.strides[dim0], result.strides[dim1]);
             return result;
         }
 
@@ -45,15 +56,10 @@ class Tensor {
         void fill(float value);
         Tensor clone() const;
 
-        const std::vector<int>& getShape() const { return shape; }
-        const std::vector<int>& getStrides() const { return strides; }
-        Device getDevice() const { return storage->device; }
-
-        size_t numel() const {
-            size_t n = 1;
-            for(int s : shape) n *= s;
-            return n;
-        }
+        void add_inplace(const Tensor& other);
+        Tensor softmax() const;
+        void xavier(size_t fan_in, size_t fan_out);
+        static Tensor create_causal_mask(size_t seq_len);
 
         Tensor(size_t rows, size_t cols, Device device = Device::CPU)
             : Tensor(std::vector<int>{(int)rows, (int)cols}, device) {}
@@ -64,8 +70,15 @@ class Tensor {
         float getValue(int row, int col) const;
         void setValue(int row, int col, float value);
 
-        float* raw() { return data(); }
         size_t getRows() const { return shape.size() > 1 ? shape[shape.size()-2] : 1; }
         size_t getCols() const { return shape.empty() ? 0 : shape.back(); }
         size_t getBatchSize() const { return shape.size() > 2 ? shape[0] : 1; }
+
+        const std::vector<int>& getShape() const { return shape; }
+        Device getDevice() const { return storage->device; }
+        size_t numel() const {
+            size_t n = 1;
+            for(int s : shape) n *= s;
+            return n;
+        }
 };
