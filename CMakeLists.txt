@@ -23,24 +23,50 @@ add_executable(transformer
     src/tokenizer/bpe_tokenizer.cpp
     src/data/dataset.cpp
     src/data/dataloader.cpp
+    src/utils/training_utils.cpp
+    src/utils/metrics.cpp
+    src/training/trainer.cpp
+)
+
+add_executable(sanity_tests
+    tests/integration/sanity_tests.cpp
+    src/transformer/tensor.cpp
+    src/transformer/attention.cpp
+    src/transformer/multihead_attention.cpp
+    src/transformer/layer_norm.cpp
+    src/transformer/linear.cpp
+    src/transformer/feedforward.cpp
+    src/transformer/transformer_block.cpp
+    src/transformer/token_embedding.cpp
+    src/transformer/positional_encoding.cpp
+    src/transformer/gpt_model.cpp
+    src/transformer/activations.cpp
+    src/transformer/text_gen.cpp
+    src/transformer/variable.cpp
+    src/transformer/optimizer.cpp
+    src/tokenizer/bpe_tokenizer.cpp
+    src/data/dataset.cpp
+    src/data/dataloader.cpp
+    src/utils/training_utils.cpp
+    src/utils/metrics.cpp
 )
 
 target_include_directories(transformer PRIVATE include)
+target_include_directories(sanity_tests PRIVATE include)
 
 # ============================================================================
 # BLAS INTEGRATION (Use Apple Accelerate on macOS)
 # ============================================================================
 if(APPLE)
-    # Use Apple's Accelerate framework (optimized for M1/M2/M3)
     find_library(ACCELERATE_LIBRARY Accelerate)
     target_link_libraries(transformer ${ACCELERATE_LIBRARY})
-    # Add compiler flags to suppress deprecation warnings and use new BLAS API
+    target_link_libraries(sanity_tests ${ACCELERATE_LIBRARY})
     add_compile_definitions(ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     message(STATUS "Using Apple Accelerate framework for BLAS")
 else()
-    # Use OpenBLAS on Linux/Windows
     find_package(BLAS REQUIRED)
     target_link_libraries(transformer ${BLAS_LIBRARIES})
+    target_link_libraries(sanity_tests ${BLAS_LIBRARIES})
     message(STATUS "Using OpenBLAS for BLAS")
 endif()
 

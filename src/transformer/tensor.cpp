@@ -660,23 +660,25 @@ Tensor Tensor::softmax() const {
         float* output_data = result.raw();
 
         for (size_t i = 0; i < this->rows; i++) {
-            const float* row_in = input_data + i * this->cols;
-            float* row_out = output_data + i * this->cols;
+            const float* __restrict__ row_in = input_data + i * this->cols;
+            float* __restrict__ row_out = output_data + i * this->cols;
 
             float max_val = row_in[0];
+            #pragma clang loop vectorize(enable) interleave(enable)
             for (size_t j = 1; j < this->cols; j++) {
-                max_val = std::max(max_val, row_in[j]);
+                if (row_in[j] > max_val) max_val = row_in[j];
             }
 
             float sum = 0.0f;
+            #pragma clang loop vectorize(enable)
             for (size_t j = 0; j < this->cols; j++) {
-                row_out[j] = std::expf(row_in[j] - max_val);
-                sum += row_out[j];
+                const float val = std::expf(row_in[j] - max_val);
+                row_out[j] = val;
+                sum += val;
             }
 
-            if (sum <= 0.0f) throw std::runtime_error("softmax sum <= 0 (numerical underflow)");
-
             const float inv_sum = 1.0f / sum;
+            #pragma clang loop vectorize(enable)
             for (size_t j = 0; j < this->cols; j++) {
                 row_out[j] *= inv_sum;
             }
@@ -691,23 +693,25 @@ Tensor Tensor::softmax() const {
             size_t batch_offset = b * this->rows * this->cols;
 
             for (size_t i = 0; i < this->rows; i++) {
-                const float* row_in = input_data + batch_offset + i * this->cols;
-                float* row_out = output_data + batch_offset + i * this->cols;
+                const float* __restrict__ row_in = input_data + batch_offset + i * this->cols;
+                float* __restrict__ row_out = output_data + batch_offset + i * this->cols;
 
                 float max_val = row_in[0];
+                #pragma clang loop vectorize(enable) interleave(enable)
                 for (size_t j = 1; j < this->cols; j++) {
-                    max_val = std::max(max_val, row_in[j]);
+                    if (row_in[j] > max_val) max_val = row_in[j];
                 }
 
                 float sum = 0.0f;
+                #pragma clang loop vectorize(enable)
                 for (size_t j = 0; j < this->cols; j++) {
-                    row_out[j] = std::expf(row_in[j] - max_val);
-                    sum += row_out[j];
+                    const float val = std::expf(row_in[j] - max_val);
+                    row_out[j] = val;
+                    sum += val;
                 }
 
-                if (sum <= 0.0f) throw std::runtime_error("softmax sum <= 0 (numerical underflow)");
-
                 const float inv_sum = 1.0f / sum;
+                #pragma clang loop vectorize(enable)
                 for (size_t j = 0; j < this->cols; j++) {
                     row_out[j] *= inv_sum;
                 }

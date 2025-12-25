@@ -1,5 +1,30 @@
+# Build directories
 build/
+build-*/
+CMakeFiles/
+
+# CMake artifacts
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+
+# Compiled objects and libraries
 *.o
 *.a
+
+# Executables
+transformer
+test_gen_quick
+
+# Cache files
+*.cache
+
+# Model checkpoints
+*.bin
+
+# IDE
 .vscode/
+
+# System files
 .DS_Store

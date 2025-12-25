@@ -12,13 +12,13 @@ class TextGen {
         const GPTModel& model;
         const BPETokenizer* tokenizer;
 
-        int sample_from_logits(const Tensor& logits, float temperature = 1.0f);
+        int sample_from_logits(const Tensor& logits, float temperature = 1.0f, int top_k = 0, float top_p = 1.0f);
         std::string tokens_to_string(const std::vector<int>& tokens);
     public:
         TextGen(const GPTModel& model, const BPETokenizer* tok = nullptr);
 
-        std::string generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens = 50);
-        std::string generate_sample(const std::vector<int>& prompt_tokens, float temperature = 1.0f, int max_tokens = 50);
+        std::string generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens = 50, float repetition_penalty = 1.2f);
+        std::string generate_sample(const std::vector<int>& prompt_tokens, float temperature = 1.0f, int max_tokens = 50, float repetition_penalty = 1.2f, int top_k = 0, float top_p = 1.0f);
 };
 
 
