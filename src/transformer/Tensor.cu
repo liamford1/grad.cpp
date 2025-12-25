@@ -203,3 +203,35 @@ Tensor Tensor::matmul(const Tensor& other) const {
 
     return result;
 }
+
+float Tensor::getValue(int r, int c) const {
+    int idx = 0;
+    if (shape.size() == 2) {
+        idx = r * strides[0] + c * strides[1];
+    } else {
+        idx = r * (shape.size() > 1 ? shape[1] : 1) + c;
+    }
+
+    float h_val;
+    if (getDevice() == Device::CPU) {
+        return data()[idx];
+    } else {
+        cudaMemcpy(&h_val, data() + idx, sizeof(float), cudaMemcpyDeviceToHost);
+        return h_val;
+    }
+}
+
+void Tensor::setValue(int r, int c, float value) {
+    int idx = 0;
+    if (shape.size() == 2) {
+        idx = r * strides[0] + c * strides[1];
+    } else {
+        idx = r * (shape.size() > 1 ? shape[1] : 1) + c;
+    }
+
+    if (getDevice() == Device::CPU) {
+        data()[idx] = value;
+    } else {
+        cudaMemcpy(data() + idx, &value, sizeof(float), cudaMemcpyHostToDevice);
+    }
+}

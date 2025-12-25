@@ -4,6 +4,7 @@
 #include <memory>
 #include <initializer_list>
 #include <algorithm>
+#include <stdexcept>
 
 class Tensor {
     private:
@@ -47,10 +48,24 @@ class Tensor {
         const std::vector<int>& getShape() const { return shape; }
         const std::vector<int>& getStrides() const { return strides; }
         Device getDevice() const { return storage->device; }
-        
+
         size_t numel() const {
             size_t n = 1;
             for(int s : shape) n *= s;
             return n;
         }
+
+        Tensor(size_t rows, size_t cols, Device device = Device::CPU)
+            : Tensor(std::vector<int>{(int)rows, (int)cols}, device) {}
+
+        Tensor(size_t batch, size_t rows, size_t cols, Device device = Device::CPU)
+            : Tensor(std::vector<int>{(int)batch, (int)rows, (int)cols}, device) {}
+
+        float getValue(int row, int col) const;
+        void setValue(int row, int col, float value);
+
+        float* raw() { return data(); }
+        size_t getRows() const { return shape.size() > 1 ? shape[shape.size()-2] : 1; }
+        size_t getCols() const { return shape.empty() ? 0 : shape.back(); }
+        size_t getBatchSize() const { return shape.size() > 2 ? shape[0] : 1; }
 };
