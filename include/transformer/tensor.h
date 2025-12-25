@@ -59,6 +59,7 @@ class Tensor {
 
         void add_inplace(const Tensor& other);
         Tensor softmax() const;
+        Tensor log_softmax() const;
         void xavier(size_t fan_in, size_t fan_out);
         static Tensor create_causal_mask(size_t seq_len);
 

@@ -577,60 +577,8 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
 }
 
 std::shared_ptr<Variable> Variable::log_softmax() const {
-    Tensor result = this->data;
-    
-    if (!result.getIs3D()) {
-        const float* input_data = this->data.raw();
-        float* result_data = result.raw();
+    Tensor result = this->data.log_softmax();
 
-        for (size_t i = 0; i < result.getRows(); i++) {
-            const float* row_in = input_data + i * result.getCols();
-            float* row_out = result_data + i * result.getCols();
-
-            float max_val = row_in[0];
-            for (size_t j = 1; j < result.getCols(); j++) {
-                max_val = std::max(max_val, row_in[j]);
-            }
-
-            float sum_exp = 0.0f;
-            for (size_t j = 0; j < result.getCols(); j++) {
-                sum_exp += std::exp(row_in[j] - max_val);
-            }
-            float log_sum = std::log(sum_exp) + max_val;
-
-            for (size_t j = 0; j < result.getCols(); j++) {
-                row_out[j] = row_in[j] - log_sum;
-            }
-        }
-    } else {
-        const float* input_data = this->data.raw();
-        float* result_data = result.raw();
-
-        for (size_t b = 0; b < result.getBatchSize(); b++) {
-            const size_t batch_offset = b * result.getRows() * result.getCols();
-
-            for (size_t i = 0; i < result.getRows(); i++) {
-                const float* row_in = input_data + batch_offset + i * result.getCols();
-                float* row_out = result_data + batch_offset + i * result.getCols();
-
-                float max_val = row_in[0];
-                for (size_t j = 1; j < result.getCols(); j++) {
-                    max_val = std::max(max_val, row_in[j]);
-                }
-
-                float sum_exp = 0.0f;
-                for (size_t j = 0; j < result.getCols(); j++) {
-                    sum_exp += std::exp(row_in[j] - max_val);
-                }
-                float log_sum = std::log(sum_exp) + max_val;
-
-                for (size_t j = 0; j < result.getCols(); j++) {
-                    row_out[j] = row_in[j] - log_sum;
-                }
-            }
-        }
-    }
-    
     auto output = createOutput(result, this->requires_grad);
     
     if (this->requires_grad) {

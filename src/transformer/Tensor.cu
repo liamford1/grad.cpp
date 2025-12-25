@@ -427,6 +427,66 @@ Tensor Tensor::softmax() const {
     return result;
 }
 
+__global__ void log_softmax_kernel(const float* input, float* output, int rows, int cols) {
+    int row_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row_idx < rows) {
+        const float* row_in = input + row_idx * cols;
+        float* row_out = output + row_idx * cols;
+
+        float max_val = -1e30f;
+        for (int j = 0; j < cols; ++j) {
+            if (row_in[j] > max_val) max_val = row_in[j];
+        }
+
+        float sum_exp = 0.0f;
+        for (int j = 0; j < cols; ++j) {
+            sum_exp += expf(row_in[j] - max_val);
+        }
+        float log_sum = logf(sum_exp);
+
+        for (int j = 0; j < cols; ++j) {
+            row_out[j] = (row_in[j] - max_val) - log_sum;
+        }
+    }
+}
+
+Tensor Tensor::log_softmax() const {
+    Tensor result(shape, getDevice());
+
+    if (getDevice() == Device::CPU) {
+        size_t size = numel();
+        size_t cols = shape.back();
+        size_t rows = size / cols;
+
+        const float* in_ptr = data();
+        float* out_ptr = result.data();
+
+        for(int i=0; i<rows; i++) {
+            const float* row_in = in_ptr + i*cols;
+            float* row_out = out_ptr + i*cols;
+
+            float max_val = -1e9;
+            for(int j=0; j<cols; j++) if(row_in[j] > max_val) max_val = row_in[j];
+
+            float sum = 0.0f;
+            for(int j=0; j<cols; j++) sum += std::exp(row_in[j] - max_val);
+            float log_sum = std::log(sum);
+
+            for(int j=0; j<cols; j++) row_out[j] = (row_in[j] - max_val) - log_sum;
+        }
+    }
+    else {
+        size_t cols = shape.back();
+        size_t rows = numel() / cols;
+        int threads = 256;
+        int blocks = (rows + threads - 1) / threads;
+
+        log_softmax_kernel<<<blocks, threads>>>(data(), result.data(), rows, cols);
+        cudaDeviceSynchronize();
+    }
+    return result;
+}
+
 Tensor Tensor::create_causal_mask(size_t seq_len) {
     std::vector<int> shape = { (int)seq_len, (int)seq_len };
     Tensor mask(shape, Device::CPU);
