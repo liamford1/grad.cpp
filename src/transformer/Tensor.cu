@@ -129,8 +129,39 @@ Tensor Tensor::matmul(const Tensor& other) const {
 
     // 3. Dispatch to Device
     if (this->getDevice() == Device::CPU) {
-        // Fallback to CPU implementation (use BLAS or warn)
-        throw std::runtime_error("CPU Matmul not implemented in Tensor.cu yet! Use CUDA tensors.");
+        int m = this->shape[this->shape.size() - 2];
+        int k = this->shape.back();
+        int n = other.shape.back();
+
+        int batch_size = 1;
+        if (shape.size() > 2) {
+            for(size_t i = 0; i < shape.size() - 2; i++) batch_size *= shape[i];
+        }
+
+        float* c_ptr = result.data();
+        const float* a_ptr = data();
+        const float* b_ptr = other.data();
+
+        int strideA = m * k;
+        int strideB = k * n;
+        int strideC = m * n;
+
+        for(int b = 0; b < batch_size; b++) {
+            const float* a_batch = a_ptr + b * strideA;
+            const float* b_batch = b_ptr + b * strideB;
+            float* c_batch = c_ptr + b * strideC;
+
+            for (int i = 0; i < m; ++i) {
+                for (int j = 0; j < n; ++j) {
+                    float sum = 0.0f;
+                    for (int l = 0; l < k; ++l) {
+                        sum += a_batch[i * k + l] * b_batch[l * n + j];
+                    }
+                    c_batch[i * n + j] = sum;
+                }
+            }
+        }
+        return result;
     }
     else {
         // 4. CUDA Implementation (cuBLAS)
