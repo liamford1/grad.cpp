@@ -13,9 +13,12 @@ CTestTestfile.cmake
 *.o
 *.a
 
-# Executables
-transformer
-test_gen_quick
+# Executables (leading / means "only in repository root")
+/transformer
+/test_gen_quick
+/test_cuda_basic
+/test_matmul
+/sanity_tests
 
 # Cache files
 *.cache
