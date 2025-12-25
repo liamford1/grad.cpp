@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cmath>
 #include <cuda_runtime.h>
+#include <cstring>
 
 void print_matrix(const std::string& name, const Tensor& t) {
     auto shape = t.getShape();
