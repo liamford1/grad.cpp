@@ -615,3 +615,33 @@ Tensor Tensor::subtract(const Tensor& other) const {
     Tensor result = this->add(neg_other);
     return result;
 }
+
+__global__ void gelu_kernel(const float* input, float* output, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        float x = input[idx];
+        float cube = x * x * x;
+        output[idx] = 0.5f * x * (1.0f + tanhf(0.79788456f * (x + 0.044715f * cube)));
+    }
+}
+
+Tensor Tensor::gelu() const {
+    Tensor result(shape, getDevice());
+    size_t size = numel();
+
+    if (getDevice() == Device::CPU) {
+        const float* in_ptr = data();
+        float* out_ptr = result.data();
+        for(size_t i = 0; i < size; i++) {
+            float x = in_ptr[i];
+            float cube = x * x * x;
+            out_ptr[i] = 0.5f * x * (1.0f + std::tanh(0.79788456f * (x + 0.044715f * cube)));
+        }
+    } else {
+        int threads = 256;
+        int blocks = (size + threads - 1) / threads;
+        gelu_kernel<<<blocks, threads>>>(data(), result.data(), size);
+        cudaDeviceSynchronize();
+    }
+    return result;
+}

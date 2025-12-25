@@ -70,6 +70,7 @@ class Tensor {
 
         Tensor subtract(const Tensor& other) const;
         Tensor elementwise(const Tensor& other) const;
+        Tensor gelu() const;
 
         Tensor(size_t rows, size_t cols, Device device = Device::CUDA)
             : Tensor(std::vector<int>{(int)rows, (int)cols}, device) {}

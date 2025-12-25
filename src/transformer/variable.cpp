@@ -504,13 +504,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
 std::shared_ptr<Variable> Variable::gelu() const {
     data.assertValid("Variable::gelu(x)");
 
-    Tensor result = this->data;
-    for (size_t i = 0; i < result.numel(); i++) {
-        float x = result.raw()[i];
-        float cube = x * x * x;
-        float gelu_val = 0.5f * x * (1.0f + std::tanh(0.79788456f * (x + 0.044715f * cube)));
-        result.raw()[i] = gelu_val;
-    }
+    Tensor result = this->data.gelu();
     auto output = createOutput(result, this->requires_grad);
 
     if (this->requires_grad) {
