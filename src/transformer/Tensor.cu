@@ -275,17 +275,44 @@ __global__ void add_inplace_kernel(float* a, const float* b, size_t size) {
 }
 
 void Tensor::add_inplace(const Tensor& other) {
-    if (numel() != other.numel()) throw std::invalid_argument("Size mismatch in add_inplace");
+    if (numel() == other.numel()) {
+        if (getDevice() == Device::CPU) {
+            float* a_ptr = data();
+            const float* b_ptr = other.data();
+            for(size_t i=0; i<numel(); i++) a_ptr[i] += b_ptr[i];
+        } else {
+            int threads = 256;
+            int blocks = (numel() + threads - 1) / threads;
+            add_inplace_kernel<<<blocks, threads>>>(data(), other.data(), numel());
+            cudaDeviceSynchronize();
+        }
+    } else if (!getIs3D() && other.getIs3D() &&
+               getRows() == other.getRows() && getCols() == other.getCols()) {
+        int batch_size = other.getBatchSize();
+        int rows = getRows();
+        int cols = getCols();
 
-    if (getDevice() == Device::CPU) {
-        float* a_ptr = data();
-        const float* b_ptr = other.data();
-        for(size_t i=0; i<numel(); i++) a_ptr[i] += b_ptr[i];
+        float* dst = data();
+        const float* src = other.data();
+
+        if (getDevice() == Device::CPU) {
+            for(int b = 0; b < batch_size; b++) {
+                for(int i = 0; i < rows; i++) {
+                    for(int j = 0; j < cols; j++) {
+                        dst[i * cols + j] += src[b * rows * cols + i * cols + j];
+                    }
+                }
+            }
+        } else {
+            for(int b = 0; b < batch_size; b++) {
+                int threads = 256;
+                int blocks = (rows * cols + threads - 1) / threads;
+                add_inplace_kernel<<<blocks, threads>>>(dst, src + b * rows * cols, rows * cols);
+                cudaDeviceSynchronize();
+            }
+        }
     } else {
-        int threads = 256;
-        int blocks = (numel() + threads - 1) / threads;
-        add_inplace_kernel<<<blocks, threads>>>(data(), other.data(), numel());
-        cudaDeviceSynchronize();
+        throw std::invalid_argument("Size mismatch in add_inplace");
     }
 }
 
