@@ -1,6 +1,13 @@
 #include "utils/training_utils.h"
 #include <cmath>
-#include <mach/mach.h>
+
+#ifdef __APPLE__
+    #include <mach/mach.h>
+#elif defined(__linux__)
+    #include <sys/sysinfo.h>
+    #include <fstream>
+    #include <unistd.h>
+#endif
 
 namespace utils {
 
@@ -17,6 +24,7 @@ float compute_grad_norm(const std::vector<std::shared_ptr<Variable>>& params) {
 }
 
 size_t get_memory_mb() {
+#ifdef __APPLE__
     struct task_basic_info info;
     mach_msg_type_number_t size = sizeof(info);
     kern_return_t kerr = task_info(mach_task_self(),
@@ -24,6 +32,16 @@ size_t get_memory_mb() {
                                     (task_info_t)&info,
                                     &size);
     return (kerr == KERN_SUCCESS) ? info.resident_size / (1024 * 1024) : 0;
+#elif defined(__linux__)
+    long rss = 0L;
+    std::ifstream statm("/proc/self/statm");
+    if (statm >> rss >> rss) {
+        return (rss * sysconf(_SC_PAGESIZE)) / (1024 * 1024);
+    }
+    return 0L;
+#else
+    return 0L;
+#endif
 }
 
 void reshape_batch_to_2d(const Tensor& batch_input, const Tensor& batch_target,
