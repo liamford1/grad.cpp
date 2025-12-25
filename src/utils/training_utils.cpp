@@ -1,5 +1,6 @@
 #include "utils/training_utils.h"
 #include <cmath>
+#include <cuda_runtime.h>
 
 #ifdef __APPLE__
     #include <mach/mach.h>
@@ -48,6 +49,13 @@ void reshape_batch_to_2d(const Tensor& batch_input, const Tensor& batch_target,
                          Tensor& input_2d, Tensor& target_2d) {
     int batch_size = batch_input.getBatchSize();
     int seq_len = batch_input.getRows();
+    int total = batch_size * seq_len;
+
+    if (batch_input.getDevice() == Device::CUDA) {
+        cudaMemcpy(input_2d.data(), batch_input.data(), total * sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(target_2d.data(), batch_target.data(), total * sizeof(float), cudaMemcpyDeviceToDevice);
+        return;
+    }
 
     for (int b = 0; b < batch_size; b++) {
         for (int s = 0; s < seq_len; s++) {
