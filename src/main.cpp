@@ -121,7 +121,7 @@ int main() {
         config.seq_length = seq_length;
         config.batch_size = 8;
         config.learning_rate = 3e-4f;
-        config.dropout = 0.1f;
+        config.dropout = 0.0f;
         config.warmup_steps = 500;
         config.num_steps = num_steps;
         config.checkpoint_interval = 2500;
