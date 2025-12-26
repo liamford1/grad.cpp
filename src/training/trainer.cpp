@@ -69,15 +69,25 @@ void Trainer::training_step(int step) {
     auto in = Variable::create(input_2d, false);
     auto tgt = Variable::create(target_2d, false);
 
+    std::cerr << "[DEBUG] Step " << step << ": Starting Forward" << std::endl;
     auto logits = model_.forward(in, true);
     auto loss = logits->log_softmax()->nll_loss(tgt);
+    float loss_val = loss->getData().getValue(0, 0);
+    std::cerr << "[DEBUG] Step " << step << ": Forward Done, Loss = " << loss_val << std::endl;
 
+    std::cerr << "[DEBUG] Step " << step << ": Zeroing Gradients" << std::endl;
     optimizer_->zero_grad();
+
+    std::cerr << "[DEBUG] Step " << step << ": Starting Backward" << std::endl;
     loss->backward();
+    std::cerr << "[DEBUG] Step " << step << ": Backward Done" << std::endl;
+
     loss->release_graph();
 
+    std::cerr << "[DEBUG] Step " << step << ": Starting Optimizer" << std::endl;
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();
+    std::cerr << "[DEBUG] Step " << step << ": Optimizer Done" << std::endl;
 
     if (step % 10 == 0) {
         float loss_val = loss->getData().getValue(0, 0);
