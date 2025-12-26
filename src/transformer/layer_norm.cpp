@@ -26,7 +26,12 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
     std::vector<float> inv_stds;
 
     if (input_tensor.getDevice() == Device::CUDA) {
-        result = layer_norm_gpu(input_tensor, gamma->getData(), beta->getData(), epsilon, d_model);
+        const Tensor& gamma_data = gamma->getData();
+        const Tensor& beta_data = beta->getData();
+        Tensor gamma_gpu = (gamma_data.getDevice() == Device::CUDA) ? gamma_data : gamma_data.to(Device::CUDA);
+        Tensor beta_gpu = (beta_data.getDevice() == Device::CUDA) ? beta_data : beta_data.to(Device::CUDA);
+
+        result = layer_norm_gpu(input_tensor, gamma_gpu, beta_gpu, epsilon, d_model);
         auto output = Variable::create(result, input->requiresGrad());
         if (input->requiresGrad()) {
             output->addChild(input);

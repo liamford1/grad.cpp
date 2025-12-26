@@ -63,7 +63,10 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
         }
 
         if (emb_tensor.getDevice() == Device::CUDA) {
-            Tensor pos_broadcast = pos_encoding_broadcast_gpu(position_embeddings->getData(), batch_size, seq_len, d_model);
+            const Tensor& pos_emb = position_embeddings->getData();
+            Tensor pos_emb_gpu = (pos_emb.getDevice() == Device::CUDA) ? pos_emb : pos_emb.to(Device::CUDA);
+
+            Tensor pos_broadcast = pos_encoding_broadcast_gpu(pos_emb_gpu, batch_size, seq_len, d_model);
             auto pos_var = Variable::create(pos_broadcast, position_embeddings->requiresGrad());
             auto output = embeddings->add(pos_var);
 
