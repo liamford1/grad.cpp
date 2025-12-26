@@ -32,36 +32,21 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
 }
 
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
-    std::cerr << "[DEBUG] Entering GPTModel::forward" << std::endl;
-
-    std::cerr << "[DEBUG] Before token_embedding" << std::endl;
     auto embed_tokens = token_embedding.forward(token_ids);
-    std::cerr << "[DEBUG] After token_embedding" << std::endl;
-
-    std::cerr << "[DEBUG] Before positional_encoding" << std::endl;
     auto encode_positions = pos_encoding.forward(embed_tokens);
-    std::cerr << "[DEBUG] After positional_encoding" << std::endl;
 
     auto transformer_input = encode_positions;
 
     if (training && dropout_rate > 0.0f) {
-        std::cerr << "[DEBUG] Before dropout" << std::endl;
         transformer_input = encode_positions->dropout(dropout_rate, training);
-        std::cerr << "[DEBUG] After dropout" << std::endl;
     }
     auto transformer_output = transformer_input;
 
     for (int i = 0; i < num_layers; i++) {
-        std::cerr << "[DEBUG] Processing transformer block " << i << "/" << num_layers << std::endl;
         transformer_output = transformer_blocks[i]->forward(transformer_output, training);
-        std::cerr << "[DEBUG] Completed transformer block " << i << "/" << num_layers << std::endl;
     }
 
-    std::cerr << "[DEBUG] Before final_norm" << std::endl;
     auto normalized_output = final_norm.forward(transformer_output);
-    std::cerr << "[DEBUG] After final_norm" << std::endl;
-
-    std::cerr << "[DEBUG] Before lm_head (getting embedding table)" << std::endl;
     auto embedding_table = token_embedding.getEmbeddingTable();
     const Tensor& emb_data = embedding_table->getData();
     const Tensor& norm_data = normalized_output->getData();
@@ -72,15 +57,11 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     int d_model_dim = norm_data.getCols();
     int vocab = emb_data.getRows();
 
-    std::cerr << "[DEBUG] Before lm_head transpose" << std::endl;
     Tensor emb_transposed = emb_data.transpose();
-    std::cerr << "[DEBUG] Before lm_head matmul" << std::endl;
     Tensor logits_tensor = norm_data.matmul(emb_transposed);
-    std::cerr << "[DEBUG] After lm_head matmul" << std::endl;
 
     auto logits = Variable::create(logits_tensor,
                                      normalized_output->requiresGrad() || embedding_table->requiresGrad());
-    std::cerr << "[DEBUG] Exiting GPTModel::forward" << std::endl;
 
     if (logits->requiresGrad()) {
         logits->addChild(normalized_output);
