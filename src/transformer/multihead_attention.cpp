@@ -66,17 +66,34 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         Tensor input_cpu = (input_tensor.getDevice() == Device::CUDA) ? input_tensor.to(Device::CPU) : input_tensor;
         auto input_cpu_var = Variable::create(input_cpu, input->requiresGrad());
 
-        std::cerr << "[DEBUG] MHA: Computing Q, K, V projections" << std::endl;
-        auto Q = input_cpu_var->matmul(W_q)->add(b_q);
-        auto K = input_cpu_var->matmul(W_k)->add(b_k);
-        auto V = input_cpu_var->matmul(W_v)->add(b_v);
+        std::cerr << "[DEBUG] MHA: Transferring weights and biases to CPU" << std::endl;
+        Tensor W_q_cpu = (W_q->getData().getDevice() == Device::CUDA) ? W_q->getData().to(Device::CPU) : W_q->getData();
+        Tensor W_k_cpu = (W_k->getData().getDevice() == Device::CUDA) ? W_k->getData().to(Device::CPU) : W_k->getData();
+        Tensor W_v_cpu = (W_v->getData().getDevice() == Device::CUDA) ? W_v->getData().to(Device::CPU) : W_v->getData();
+        Tensor W_o_cpu = (W_o->getData().getDevice() == Device::CUDA) ? W_o->getData().to(Device::CPU) : W_o->getData();
+        Tensor b_q_cpu = (b_q->getData().getDevice() == Device::CUDA) ? b_q->getData().to(Device::CPU) : b_q->getData();
+        Tensor b_k_cpu = (b_k->getData().getDevice() == Device::CUDA) ? b_k->getData().to(Device::CPU) : b_k->getData();
+        Tensor b_v_cpu = (b_v->getData().getDevice() == Device::CUDA) ? b_v->getData().to(Device::CPU) : b_v->getData();
+        Tensor b_o_cpu = (b_o->getData().getDevice() == Device::CUDA) ? b_o->getData().to(Device::CPU) : b_o->getData();
 
-        std::cerr << "[DEBUG] MHA: Q device=" << (Q->getData().getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
-        std::cerr << "[DEBUG] MHA: Transferring Q, K, V to CPU" << std::endl;
-        Tensor Q_cpu = (Q->getData().getDevice() == Device::CUDA) ? Q->getData().to(Device::CPU) : Q->getData();
-        Tensor K_cpu = (K->getData().getDevice() == Device::CUDA) ? K->getData().to(Device::CPU) : K->getData();
-        Tensor V_cpu = (V->getData().getDevice() == Device::CUDA) ? V->getData().to(Device::CPU) : V->getData();
-        std::cerr << "[DEBUG] MHA: Transfer complete, Q_cpu device=" << (Q_cpu.getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
+        auto W_q_cpu_var = Variable::create(W_q_cpu, false);
+        auto W_k_cpu_var = Variable::create(W_k_cpu, false);
+        auto W_v_cpu_var = Variable::create(W_v_cpu, false);
+        auto W_o_cpu_var = Variable::create(W_o_cpu, false);
+        auto b_q_cpu_var = Variable::create(b_q_cpu, false);
+        auto b_k_cpu_var = Variable::create(b_k_cpu, false);
+        auto b_v_cpu_var = Variable::create(b_v_cpu, false);
+        auto b_o_cpu_var = Variable::create(b_o_cpu, false);
+
+        std::cerr << "[DEBUG] MHA: Computing Q, K, V projections" << std::endl;
+        auto Q = input_cpu_var->matmul(W_q_cpu_var)->add(b_q_cpu_var);
+        auto K = input_cpu_var->matmul(W_k_cpu_var)->add(b_k_cpu_var);
+        auto V = input_cpu_var->matmul(W_v_cpu_var)->add(b_v_cpu_var);
+
+        std::cerr << "[DEBUG] MHA: Q, K, V are on CPU" << std::endl;
+        const Tensor& Q_cpu = Q->getData();
+        const Tensor& K_cpu = K->getData();
+        const Tensor& V_cpu = V->getData();
 
         Tensor result(seq_len, d_model, Device::CPU);
         result.fill(0.0f);
@@ -157,13 +174,17 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         }
 
         std::cerr << "[DEBUG] MHA: Attention computation complete" << std::endl;
-        std::cerr << "[DEBUG] MHA: Transferring result back to " << (input_tensor.getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
-        Tensor result_device = (input_tensor.getDevice() == Device::CUDA) ? result.to(Device::CUDA) : result;
-        std::cerr << "[DEBUG] MHA: Creating output variable" << std::endl;
-        auto concat_var = Variable::create(result_device, input->requiresGrad());
+        std::cerr << "[DEBUG] MHA: Creating output variable on CPU" << std::endl;
+        auto concat_var = Variable::create(result, input->requiresGrad());
         auto self_concat = concat_var;
-        std::cerr << "[DEBUG] MHA: Computing final linear projection" << std::endl;
-        auto output = concat_var->matmul(W_o)->add(b_o);
+        std::cerr << "[DEBUG] MHA: Computing final linear projection with CPU weights" << std::endl;
+        auto output = concat_var->matmul(W_o_cpu_var)->add(b_o_cpu_var);
+
+        std::cerr << "[DEBUG] MHA: Transferring output back to " << (input_tensor.getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
+        if (input_tensor.getDevice() == Device::CUDA) {
+            Tensor output_cuda = output->getData().to(Device::CUDA);
+            output = Variable::create(output_cuda, input->requiresGrad());
+        }
 
         if (training && dropout_rate > 0.0f) {
             std::cerr << "[DEBUG] MHA: Applying dropout" << std::endl;
