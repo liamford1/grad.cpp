@@ -184,13 +184,19 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             auto self_bk = b_k;
             auto self_bv = b_v;
             auto self_bo = b_o;
+            Device original_device = input_tensor.getDevice();
 
             output->setBackwardFn([self_input, self_input_cpu, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo,
                                    self_bq, self_bk, self_bv, self_bo,
                                    self_concat, output, self_num_heads,
-                                   self_d_model, seq_len, head_size, causal_mask, scale_factor]() {
+                                   self_d_model, seq_len, head_size, causal_mask, scale_factor, original_device]() {
 
-                self_Wo->getGrad().add_inplace(self_concat->getData().transpose().matmul(output->getGrad()));
+                Tensor dW_o = self_concat->getData().transpose().matmul(output->getGrad());
+                if (original_device == Device::CUDA) {
+                    self_Wo->getGrad().add_inplace(dW_o.to(Device::CUDA));
+                } else {
+                    self_Wo->getGrad().add_inplace(dW_o);
+                }
 
                 Tensor db_o(1, self_d_model, Device::CPU);
                 db_o.fill(0.0f);
@@ -202,7 +208,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         db_o_data[j] += output_grad_data[i * self_d_model + j];
                     }
                 }
-                self_bo->getGrad().add_inplace(db_o);
+                if (original_device == Device::CUDA) {
+                    self_bo->getGrad().add_inplace(db_o.to(Device::CUDA));
+                } else {
+                    self_bo->getGrad().add_inplace(db_o);
+                }
 
                 Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
 
@@ -295,9 +305,18 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     }
                 }
 
-                self_Wq->getGrad().add_inplace(self_input_cpu->getData().transpose().matmul(dQ));
-                self_Wk->getGrad().add_inplace(self_input_cpu->getData().transpose().matmul(dK));
-                self_Wv->getGrad().add_inplace(self_input_cpu->getData().transpose().matmul(dV));
+                Tensor dW_q = self_input_cpu->getData().transpose().matmul(dQ);
+                Tensor dW_k = self_input_cpu->getData().transpose().matmul(dK);
+                Tensor dW_v = self_input_cpu->getData().transpose().matmul(dV);
+                if (original_device == Device::CUDA) {
+                    self_Wq->getGrad().add_inplace(dW_q.to(Device::CUDA));
+                    self_Wk->getGrad().add_inplace(dW_k.to(Device::CUDA));
+                    self_Wv->getGrad().add_inplace(dW_v.to(Device::CUDA));
+                } else {
+                    self_Wq->getGrad().add_inplace(dW_q);
+                    self_Wk->getGrad().add_inplace(dW_k);
+                    self_Wv->getGrad().add_inplace(dW_v);
+                }
 
                 Tensor db_q(1, self_d_model, Device::CPU);
                 Tensor db_k(1, self_d_model, Device::CPU);
@@ -318,14 +337,24 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     }
                 }
 
-                self_bq->getGrad().add_inplace(db_q);
-                self_bk->getGrad().add_inplace(db_k);
-                self_bv->getGrad().add_inplace(db_v);
+                if (original_device == Device::CUDA) {
+                    self_bq->getGrad().add_inplace(db_q.to(Device::CUDA));
+                    self_bk->getGrad().add_inplace(db_k.to(Device::CUDA));
+                    self_bv->getGrad().add_inplace(db_v.to(Device::CUDA));
+                } else {
+                    self_bq->getGrad().add_inplace(db_q);
+                    self_bk->getGrad().add_inplace(db_k);
+                    self_bv->getGrad().add_inplace(db_v);
+                }
 
                 Tensor dInput = dQ.matmul(self_Wq->getData().transpose())
                                .add(dK.matmul(self_Wk->getData().transpose()))
                                .add(dV.matmul(self_Wv->getData().transpose()));
-                self_input->getGrad().add_inplace(dInput);
+                if (original_device == Device::CUDA) {
+                    self_input->getGrad().add_inplace(dInput.to(Device::CUDA));
+                } else {
+                    self_input->getGrad().add_inplace(dInput);
+                }
             });
         }
 
