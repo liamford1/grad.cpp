@@ -62,10 +62,14 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         int seq_len = input_tensor.getRows();
         int head_size = d_model / num_heads;
 
+        std::cerr << "[DEBUG] MHA: Transferring input to CPU before Q, K, V projections" << std::endl;
+        Tensor input_cpu = (input_tensor.getDevice() == Device::CUDA) ? input_tensor.to(Device::CPU) : input_tensor;
+        auto input_cpu_var = Variable::create(input_cpu, input->requiresGrad());
+
         std::cerr << "[DEBUG] MHA: Computing Q, K, V projections" << std::endl;
-        auto Q = input->matmul(W_q)->add(b_q);
-        auto K = input->matmul(W_k)->add(b_k);
-        auto V = input->matmul(W_v)->add(b_v);
+        auto Q = input_cpu_var->matmul(W_q)->add(b_q);
+        auto K = input_cpu_var->matmul(W_k)->add(b_k);
+        auto V = input_cpu_var->matmul(W_v)->add(b_v);
 
         std::cerr << "[DEBUG] MHA: Q device=" << (Q->getData().getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
         std::cerr << "[DEBUG] MHA: Transferring Q, K, V to CPU" << std::endl;
@@ -78,6 +82,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         result.fill(0.0f);
 
         auto self_input = input;
+        auto self_input_cpu = input_cpu_var;
         auto self_Q = Q;
         auto self_K = K;
         auto self_V = V;
@@ -178,7 +183,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             auto self_bv = b_v;
             auto self_bo = b_o;
 
-            output->setBackwardFn([self_input, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo,
+            output->setBackwardFn([self_input, self_input_cpu, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo,
                                    self_bq, self_bk, self_bv, self_bo,
                                    self_concat, output, self_num_heads,
                                    self_d_model, seq_len, head_size, causal_mask, scale_factor]() {
@@ -288,9 +293,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     }
                 }
 
-                self_Wq->getGrad().add_inplace(self_input->getData().transpose().matmul(dQ));
-                self_Wk->getGrad().add_inplace(self_input->getData().transpose().matmul(dK));
-                self_Wv->getGrad().add_inplace(self_input->getData().transpose().matmul(dV));
+                self_Wq->getGrad().add_inplace(self_input_cpu->getData().transpose().matmul(dQ));
+                self_Wk->getGrad().add_inplace(self_input_cpu->getData().transpose().matmul(dK));
+                self_Wv->getGrad().add_inplace(self_input_cpu->getData().transpose().matmul(dV));
 
                 Tensor db_q(1, self_d_model, Device::CPU);
                 Tensor db_k(1, self_d_model, Device::CPU);
