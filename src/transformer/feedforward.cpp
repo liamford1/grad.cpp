@@ -54,7 +54,9 @@ std::shared_ptr<Variable> FeedForward::forward(std::shared_ptr<Variable> input, 
             result->setBackwardFn([input, layer1_weights, layer1_bias, layer2_weights, layer2_bias,
                                    w1_cpu_var, b1_cpu_var, w2_cpu_var, b2_cpu_var,
                                    input_cpu_var, output_cpu, result]() {
-                output_cpu->backward(result->getGrad().to(Device::CPU));
+                Tensor grad_cpu = result->getGrad().to(Device::CPU);
+                output_cpu->getGrad().add_inplace(grad_cpu);
+                output_cpu->backward();
 
                 Tensor dW1 = w1_cpu_var->getGrad();
                 Tensor db1 = b1_cpu_var->getGrad();
