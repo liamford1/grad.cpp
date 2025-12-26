@@ -45,10 +45,14 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             output->addChild(beta);
 
             output->setBackwardFn([self_input, self_gamma, self_beta, output_weak = std::weak_ptr<Variable>(output), self_d_model, self_epsilon]() {
+                std::cerr << "[DEBUG] LayerNorm BW: Starting" << std::endl;
                 auto output = output_weak.lock();
                 if (!output) return;
+                std::cerr << "[DEBUG] LayerNorm BW: Output locked" << std::endl;
 
+                std::cerr << "[DEBUG] LayerNorm BW: Moving grad to CPU" << std::endl;
                 Tensor output_grad_cpu = output->getGrad().to(Device::CPU);
+                std::cerr << "[DEBUG] LayerNorm BW: Moving input to CPU" << std::endl;
                 Tensor input_cpu = self_input->getData().to(Device::CPU);
                 Tensor gamma_cpu = self_gamma->getData().to(Device::CPU);
 
@@ -62,6 +66,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
 
                 const float* input_data = input_cpu.raw();
 
+                std::cerr << "[DEBUG] LayerNorm BW: Computing stats" << std::endl;
                 if (is_3d) {
                     for (int b = 0; b < batch_size; b++) {
                         const int batch_offset = b * rows * self_d_model;
@@ -118,6 +123,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                 float* dBeta_data = dBeta.raw();
                 float* dInput_data = dInput.raw();
 
+                std::cerr << "[DEBUG] LayerNorm BW: Computing gradients" << std::endl;
                 if (is_3d) {
                     for (int b = 0; b < batch_size; b++) {
                         const int batch_offset = b * rows * self_d_model;
@@ -188,6 +194,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                     }
                 }
 
+                std::cerr << "[DEBUG] LayerNorm BW: Accumulating gradients" << std::endl;
                 if (self_gamma->getData().getDevice() == Device::CUDA) {
                     self_gamma->getGrad().add_inplace(dGamma.to(Device::CUDA));
                 } else {
@@ -205,6 +212,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                 } else {
                     self_input->getGrad().add_inplace(dInput);
                 }
+                std::cerr << "[DEBUG] LayerNorm BW: Done" << std::endl;
             });
         }
         return output;
