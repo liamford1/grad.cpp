@@ -140,14 +140,20 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             }
         }
 
+        std::cerr << "[DEBUG] MHA: Attention computation complete" << std::endl;
+        std::cerr << "[DEBUG] MHA: Transferring result back to " << (input_tensor.getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
         Tensor result_device = (input_tensor.getDevice() == Device::CUDA) ? result.to(Device::CUDA) : result;
+        std::cerr << "[DEBUG] MHA: Creating output variable" << std::endl;
         auto concat_var = Variable::create(result_device, input->requiresGrad());
         auto self_concat = concat_var;
+        std::cerr << "[DEBUG] MHA: Computing final linear projection" << std::endl;
         auto output = concat_var->matmul(W_o)->add(b_o);
 
         if (training && dropout_rate > 0.0f) {
+            std::cerr << "[DEBUG] MHA: Applying dropout" << std::endl;
             output = output->dropout(dropout_rate, training);
         }
+        std::cerr << "[DEBUG] MHA: Forward pass complete" << std::endl;
 
         if (input->requiresGrad()) {
             output->addChild(input);
@@ -309,17 +315,22 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
     } else {
         // 3D case
+        std::cerr << "[DEBUG] MHA: Entering 3D case" << std::endl;
         int batch_size = input_tensor.getBatchSize();
         int seq_len = input_tensor.getRows();
         int head_size = d_model / num_heads;
 
+        std::cerr << "[DEBUG] MHA: Computing Q, K, V projections" << std::endl;
         auto Q = input->matmul(W_q)->add(b_q);
         auto K = input->matmul(W_k)->add(b_k);
         auto V = input->matmul(W_v)->add(b_v);
 
+        std::cerr << "[DEBUG] MHA: Q device=" << (Q->getData().getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
+        std::cerr << "[DEBUG] MHA: Transferring Q, K, V to CPU" << std::endl;
         Tensor Q_cpu = (Q->getData().getDevice() == Device::CUDA) ? Q->getData().to(Device::CPU) : Q->getData();
         Tensor K_cpu = (K->getData().getDevice() == Device::CUDA) ? K->getData().to(Device::CPU) : K->getData();
         Tensor V_cpu = (V->getData().getDevice() == Device::CUDA) ? V->getData().to(Device::CPU) : V->getData();
+        std::cerr << "[DEBUG] MHA: Transfer complete, Q_cpu device=" << (Q_cpu.getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
 
         Tensor result(batch_size, seq_len, d_model, Device::CPU);
         result.fill(0.0f);
@@ -349,11 +360,13 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         Tensor V_head(seq_len, head_size, Device::CPU);
         Tensor scores(seq_len, seq_len, Device::CPU);
 
+        std::cerr << "[DEBUG] MHA: Getting raw pointers" << std::endl;
         float* Q_head_data = Q_head.raw();
         float* K_head_data = K_head.raw();
         float* V_head_data = V_head.raw();
         float* scores_data = scores.raw();
 
+        std::cerr << "[DEBUG] MHA: Starting attention computation for " << batch_size << " batches, " << num_heads << " heads" << std::endl;
         for (int b = 0; b < batch_size; b++) {
             const int batch_offset = b * seq_len * d_model;
 
@@ -400,14 +413,20 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             }
         }
 
+        std::cerr << "[DEBUG] MHA: Attention computation complete" << std::endl;
+        std::cerr << "[DEBUG] MHA: Transferring result back to " << (input_tensor.getDevice() == Device::CUDA ? "CUDA" : "CPU") << std::endl;
         Tensor result_device = (input_tensor.getDevice() == Device::CUDA) ? result.to(Device::CUDA) : result;
+        std::cerr << "[DEBUG] MHA: Creating output variable" << std::endl;
         auto concat_var = Variable::create(result_device, input->requiresGrad());
         auto self_concat = concat_var;
+        std::cerr << "[DEBUG] MHA: Computing final linear projection" << std::endl;
         auto output = concat_var->matmul(W_o)->add(b_o);
 
         if (training && dropout_rate > 0.0f) {
+            std::cerr << "[DEBUG] MHA: Applying dropout" << std::endl;
             output = output->dropout(dropout_rate, training);
         }
+        std::cerr << "[DEBUG] MHA: Forward pass complete" << std::endl;
 
         if (input->requiresGrad()) {
             output->addChild(input);
