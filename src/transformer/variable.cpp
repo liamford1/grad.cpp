@@ -603,7 +603,11 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                         row_grad[j] = row_grad_out[j] - softmax_val * sum;
                     }
                 }
-                self_ptr->grad.add_inplace(grad);
+                if (self_ptr->getData().getDevice() == Device::CUDA) {
+                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
+                } else {
+                    self_ptr->grad.add_inplace(grad);
+                }
             } else {
                 Tensor grad(result.getBatchSize(), result.getRows(), result.getCols());
                 const float* result_data = result.raw();
@@ -629,7 +633,11 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                         }
                     }
                 }
-                self_ptr->grad.add_inplace(grad);
+                if (self_ptr->getData().getDevice() == Device::CUDA) {
+                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
+                } else {
+                    self_ptr->grad.add_inplace(grad);
+                }
             }
         });
     }
@@ -680,7 +688,11 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                         grad_ptr[i * self_ptr->data.getCols() + target_idx] = scale;
                     }
                 }
-                self_ptr->grad.add_inplace(grad);
+                if (self_ptr->getData().getDevice() == Device::CUDA) {
+                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
+                } else {
+                    self_ptr->grad.add_inplace(grad);
+                }
             });
         }
         return output;
@@ -741,13 +753,17 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                         } else {
                             target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
                         }
-                        
+
                         if (target_idx >= 0 && target_idx < vocab_size) {
                             grad_ptr[b * seq_len * vocab_size + i * vocab_size + target_idx] = scale;
                         }
                     }
                 }
-                self_ptr->grad.add_inplace(grad);
+                if (self_ptr->getData().getDevice() == Device::CUDA) {
+                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
+                } else {
+                    self_ptr->grad.add_inplace(grad);
+                }
             });
         }
         return output;
