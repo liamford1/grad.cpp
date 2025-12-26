@@ -701,7 +701,16 @@ Tensor layer_norm_gpu(const Tensor& input, const Tensor& gamma, const Tensor& be
             input.data(), gamma.data(), beta.data(),
             result.data(), rows, d_model, epsilon
         );
-        cudaDeviceSynchronize();
+
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            throw std::runtime_error("layer_norm_kernel launch failed: " + std::string(cudaGetErrorString(err)));
+        }
+
+        err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) {
+            throw std::runtime_error("layer_norm_kernel execution failed: " + std::string(cudaGetErrorString(err)));
+        }
     }
 
     return result;
@@ -746,8 +755,17 @@ Tensor embedding_lookup_gpu(const Tensor& embedding_table, const Tensor& token_i
         embedding_table.data(), token_ids.data(),
         result.data(), batch_size, seq_len, d_model, scale
     );
-    cudaDeviceSynchronize();
-    
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        throw std::runtime_error("embedding_lookup_kernel launch failed: " + std::string(cudaGetErrorString(err)));
+    }
+
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        throw std::runtime_error("embedding_lookup_kernel execution failed: " + std::string(cudaGetErrorString(err)));
+    }
+
     return result;
 }
 
@@ -776,7 +794,16 @@ Tensor pos_encoding_broadcast_gpu(const Tensor& pos_emb, int batch_size, int seq
     pos_encoding_broadcast_kernel<<<blocks, threads>>>(
         pos_emb.data(), result.data(), batch_size, seq_len, d_model
     );
-    cudaDeviceSynchronize();
-    
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        throw std::runtime_error("pos_encoding_broadcast_kernel launch failed: " + std::string(cudaGetErrorString(err)));
+    }
+
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        throw std::runtime_error("pos_encoding_broadcast_kernel execution failed: " + std::string(cudaGetErrorString(err)));
+    }
+
     return result;
 }

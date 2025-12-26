@@ -20,7 +20,10 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
     const Tensor& input_tensor = input_ids->getData();
 
     if (input_tensor.getDevice() == Device::CUDA) {
-        Tensor result = embedding_lookup_gpu(embedding_table->getData(), input_tensor, d_model, embedding_scale);
+        const Tensor& emb_table = embedding_table->getData();
+        Tensor emb_table_gpu = (emb_table.getDevice() == Device::CUDA) ? emb_table : emb_table.to(Device::CUDA);
+
+        Tensor result = embedding_lookup_gpu(emb_table_gpu, input_tensor, d_model, embedding_scale);
         auto output = Variable::create(result, input_ids->requiresGrad());
         if (input_ids->requiresGrad()) {
             output->addChild(input_ids);
