@@ -61,7 +61,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         auto K = input->matmul(W_k)->add(b_k);
         auto V = input->matmul(W_v)->add(b_v);
 
-        Tensor result(seq_len, d_model);
+        Tensor Q_cpu = (Q->getData().getDevice() == Device::CUDA) ? Q->getData().to(Device::CPU) : Q->getData();
+        Tensor K_cpu = (K->getData().getDevice() == Device::CUDA) ? K->getData().to(Device::CPU) : K->getData();
+        Tensor V_cpu = (V->getData().getDevice() == Device::CUDA) ? V->getData().to(Device::CPU) : V->getData();
+
+        Tensor result(seq_len, d_model, Device::CPU);
         result.fill(0.0f);
 
         auto self_input = input;
@@ -75,9 +79,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         int self_num_heads = num_heads;
         int self_d_model = d_model;
 
-        const float* Q_data = Q->getData().raw();
-        const float* K_data = K->getData().raw();
-        const float* V_data = V->getData().raw();
+        const float* Q_data = Q_cpu.raw();
+        const float* K_data = K_cpu.raw();
+        const float* V_data = V_cpu.raw();
         float* result_data = result.raw();
 
         Tensor causal_mask = Tensor::create_causal_mask(seq_len);
@@ -136,7 +140,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             }
         }
 
-        auto concat_var = Variable::create(result, input->requiresGrad());
+        Tensor result_device = (input_tensor.getDevice() == Device::CUDA) ? result.to(Device::CUDA) : result;
+        auto concat_var = Variable::create(result_device, input->requiresGrad());
         auto self_concat = concat_var;
         auto output = concat_var->matmul(W_o)->add(b_o);
 
@@ -312,7 +317,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         auto K = input->matmul(W_k)->add(b_k);
         auto V = input->matmul(W_v)->add(b_v);
 
-        Tensor result(batch_size, seq_len, d_model);
+        Tensor Q_cpu = (Q->getData().getDevice() == Device::CUDA) ? Q->getData().to(Device::CPU) : Q->getData();
+        Tensor K_cpu = (K->getData().getDevice() == Device::CUDA) ? K->getData().to(Device::CPU) : K->getData();
+        Tensor V_cpu = (V->getData().getDevice() == Device::CUDA) ? V->getData().to(Device::CPU) : V->getData();
+
+        Tensor result(batch_size, seq_len, d_model, Device::CPU);
         result.fill(0.0f);
 
         auto self_input = input;
@@ -326,9 +335,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         int self_num_heads = num_heads;
         int self_d_model = d_model;
 
-        const float* Q_data = Q->getData().raw();
-        const float* K_data = K->getData().raw();
-        const float* V_data = V->getData().raw();
+        const float* Q_data = Q_cpu.raw();
+        const float* K_data = K_cpu.raw();
+        const float* V_data = V_cpu.raw();
         float* result_data = result.raw();
 
         Tensor causal_mask = Tensor::create_causal_mask(seq_len);
@@ -391,7 +400,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             }
         }
 
-        auto concat_var = Variable::create(result, input->requiresGrad());
+        Tensor result_device = (input_tensor.getDevice() == Device::CUDA) ? result.to(Device::CUDA) : result;
+        auto concat_var = Variable::create(result_device, input->requiresGrad());
         auto self_concat = concat_var;
         auto output = concat_var->matmul(W_o)->add(b_o);
 
