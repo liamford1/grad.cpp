@@ -88,10 +88,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
         const float* mask_data = causal_mask.raw();
 
-        Tensor Q_head(seq_len, head_size);
-        Tensor K_head(seq_len, head_size);
-        Tensor V_head(seq_len, head_size);
-        Tensor scores(seq_len, seq_len);
+        Tensor Q_head(seq_len, head_size, Device::CPU);
+        Tensor K_head(seq_len, head_size, Device::CPU);
+        Tensor V_head(seq_len, head_size, Device::CPU);
+        Tensor scores(seq_len, seq_len, Device::CPU);
 
         float* Q_head_data = Q_head.raw();
         float* K_head_data = K_head.raw();
@@ -128,7 +128,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 attention_weights = dropout(attention_weights, dropout_rate, training);
             }
 
-            Tensor attended(seq_len, head_size);
+            Tensor attended(seq_len, head_size, Device::CPU);
             blas_sgemm(attention_weights.raw(), V_head_data, attended.raw(),
                       seq_len, head_size, seq_len, false, false);
 
@@ -168,7 +168,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
                 self_Wo->getGrad().add_inplace(self_concat->getData().transpose().matmul(output->getGrad()));
 
-                Tensor db_o(1, self_d_model);
+                Tensor db_o(1, self_d_model, Device::CPU);
                 db_o.fill(0.0f);
                 float* db_o_data = db_o.raw();
                 const float* output_grad_data = output->getGrad().raw();
@@ -182,9 +182,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
                 Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
 
-                Tensor dQ(seq_len, self_d_model);
-                Tensor dK(seq_len, self_d_model);
-                Tensor dV(seq_len, self_d_model);
+                Tensor dQ(seq_len, self_d_model, Device::CPU);
+                Tensor dK(seq_len, self_d_model, Device::CPU);
+                Tensor dV(seq_len, self_d_model, Device::CPU);
                 dQ.fill(0.0f);
                 dK.fill(0.0f);
                 dV.fill(0.0f);
@@ -201,9 +201,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 Tensor Q_head(seq_len, head_size);
                 Tensor K_head(seq_len, head_size);
                 Tensor V_head(seq_len, head_size);
-                Tensor dAttended(seq_len, head_size);
+                Tensor dAttended(seq_len, head_size, Device::CPU);
                 Tensor scores(seq_len, seq_len);
-                Tensor dScores(seq_len, seq_len);
+                Tensor dScores(seq_len, seq_len, Device::CPU);
 
                 float* Q_head_data = Q_head.raw();
                 float* K_head_data = K_head.raw();
@@ -275,9 +275,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 self_Wk->getGrad().add_inplace(self_input->getData().transpose().matmul(dK));
                 self_Wv->getGrad().add_inplace(self_input->getData().transpose().matmul(dV));
 
-                Tensor db_q(1, self_d_model);
-                Tensor db_k(1, self_d_model);
-                Tensor db_v(1, self_d_model);
+                Tensor db_q(1, self_d_model, Device::CPU);
+                Tensor db_k(1, self_d_model, Device::CPU);
+                Tensor db_v(1, self_d_model, Device::CPU);
                 db_q.fill(0.0f);
                 db_k.fill(0.0f);
                 db_v.fill(0.0f);
@@ -344,10 +344,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
         const float* mask_data = causal_mask.raw();
 
-        Tensor Q_head(seq_len, head_size);
-        Tensor K_head(seq_len, head_size);
-        Tensor V_head(seq_len, head_size);
-        Tensor scores(seq_len, seq_len);
+        Tensor Q_head(seq_len, head_size, Device::CPU);
+        Tensor K_head(seq_len, head_size, Device::CPU);
+        Tensor V_head(seq_len, head_size, Device::CPU);
+        Tensor scores(seq_len, seq_len, Device::CPU);
 
         float* Q_head_data = Q_head.raw();
         float* K_head_data = K_head.raw();
@@ -387,7 +387,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     attention_weights = dropout(attention_weights, dropout_rate, training);
                 }
 
-                Tensor attended(seq_len, head_size);
+                Tensor attended(seq_len, head_size, Device::CPU);
                 blas_sgemm(attention_weights.raw(), V_head_data, attended.raw(),
                           seq_len, head_size, seq_len, false, false);
 
@@ -431,8 +431,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 const float* output_grad_data = output->getGrad().raw();
                 const int slice_size = seq_len * self_d_model;
 
-                Tensor concat_slice(seq_len, self_d_model);
-                Tensor output_grad_slice(seq_len, self_d_model);
+                Tensor concat_slice(seq_len, self_d_model, Device::CPU);
+                Tensor output_grad_slice(seq_len, self_d_model, Device::CPU);
 
                 for (size_t b = 0; b < self_batch_size; b++) {
                     std::memcpy(concat_slice.raw(), concat_data + b * slice_size, slice_size * sizeof(float));
@@ -440,7 +440,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     self_Wo->getGrad().add_inplace(concat_slice.transpose().matmul(output_grad_slice));
                 }
 
-                Tensor db_o(1, self_d_model);
+                Tensor db_o(1, self_d_model, Device::CPU);
                 db_o.fill(0.0f);
                 float* db_o_data = db_o.raw();
 
@@ -455,9 +455,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
                 Tensor dConcat = output->getGrad().matmul(self_Wo->getData().transpose());
 
-                Tensor dQ(self_batch_size, seq_len, self_d_model);
-                Tensor dK(self_batch_size, seq_len, self_d_model);
-                Tensor dV(self_batch_size, seq_len, self_d_model);
+                Tensor dQ(self_batch_size, seq_len, self_d_model, Device::CPU);
+                Tensor dK(self_batch_size, seq_len, self_d_model, Device::CPU);
+                Tensor dV(self_batch_size, seq_len, self_d_model, Device::CPU);
                 dQ.fill(0.0f);
                 dK.fill(0.0f);
                 dV.fill(0.0f);
@@ -474,9 +474,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 Tensor Q_head(seq_len, head_size);
                 Tensor K_head(seq_len, head_size);
                 Tensor V_head(seq_len, head_size);
-                Tensor dAttended(seq_len, head_size);
+                Tensor dAttended(seq_len, head_size, Device::CPU);
                 Tensor scores(seq_len, seq_len);
-                Tensor dScores(seq_len, seq_len);
+                Tensor dScores(seq_len, seq_len, Device::CPU);
 
                 float* Q_head_data = Q_head.raw();
                 float* K_head_data = K_head.raw();
@@ -549,10 +549,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 }
 
                 const float* input_data = self_input->getData().raw();
-                Tensor input_slice(seq_len, self_d_model);
-                Tensor dQ_slice(seq_len, self_d_model);
-                Tensor dK_slice(seq_len, self_d_model);
-                Tensor dV_slice(seq_len, self_d_model);
+                Tensor input_slice(seq_len, self_d_model, Device::CPU);
+                Tensor dQ_slice(seq_len, self_d_model, Device::CPU);
+                Tensor dK_slice(seq_len, self_d_model, Device::CPU);
+                Tensor dV_slice(seq_len, self_d_model, Device::CPU);
 
                 for (size_t b = 0; b < self_batch_size; b++) {
                     std::memcpy(input_slice.raw(), input_data + b * slice_size, slice_size * sizeof(float));
@@ -566,9 +566,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     self_Wv->getGrad().add_inplace(input_T.matmul(dV_slice));
                 }
 
-                Tensor db_q(1, self_d_model);
-                Tensor db_k(1, self_d_model);
-                Tensor db_v(1, self_d_model);
+                Tensor db_q(1, self_d_model, Device::CPU);
+                Tensor db_k(1, self_d_model, Device::CPU);
+                Tensor db_v(1, self_d_model, Device::CPU);
                 db_q.fill(0.0f);
                 db_k.fill(0.0f);
                 db_v.fill(0.0f);
@@ -591,7 +591,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 self_bq->getGrad().add_inplace(db_q);
                 self_bk->getGrad().add_inplace(db_k);
                 self_bv->getGrad().add_inplace(db_v);
-                Tensor dInput(self_batch_size, seq_len, self_d_model);
+                Tensor dInput(self_batch_size, seq_len, self_d_model, Device::CPU);
                 float* dInput_data = dInput.raw();
 
                 for (size_t b = 0; b < self_batch_size; b++) {
