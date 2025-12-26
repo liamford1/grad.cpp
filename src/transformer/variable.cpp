@@ -637,17 +637,20 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
 }
 
 std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) const {
-    if (!this->data.getIs3D()) {
-        float total_loss = 0.0f;
-        int n = this->data.getRows();
+    Tensor data_cpu = (this->data.getDevice() == Device::CUDA) ? this->data.to(Device::CPU) : this->data;
+    Tensor targets_cpu = (targets->data.getDevice() == Device::CUDA) ? targets->data.to(Device::CPU) : targets->data;
 
-        const float* data_ptr = this->data.raw();
-        const float* targets_ptr = targets->data.raw();
+    if (!data_cpu.getIs3D()) {
+        float total_loss = 0.0f;
+        int n = data_cpu.getRows();
+
+        const float* data_ptr = data_cpu.raw();
+        const float* targets_ptr = targets_cpu.raw();
         
         for (int i = 0; i < n; i++) {
             int target_idx = static_cast<int>(targets_ptr[i]);
-            if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
-                total_loss -= data_ptr[i * this->data.getCols() + target_idx];
+            if (target_idx >= 0 && static_cast<size_t>(target_idx) < data_cpu.getCols()) {
+                total_loss -= data_ptr[i * data_cpu.getCols() + target_idx];
             }
         }
         total_loss /= n;
@@ -660,8 +663,8 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
             output->addChild(self_ptr);
             output->addChild(targets);
-            
-            output->setBackwardFn([self_ptr, targets, n, output_weak = std::weak_ptr<Variable>(output)]() {
+
+            output->setBackwardFn([self_ptr, targets, targets_cpu, n, output_weak = std::weak_ptr<Variable>(output)]() {
                 auto output = output_weak.lock();
                 if (!output) return;
                 Tensor grad(self_ptr->data.getRows(), self_ptr->data.getCols());
@@ -669,7 +672,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                 float scale = -1.0f / n;
 
                 float* grad_ptr = grad.raw();
-                const float* targets_ptr = targets->data.raw();
+                const float* targets_ptr = targets_cpu.raw();
                 
                 for (int i = 0; i < n; i++) {
                     int target_idx = static_cast<int>(targets_ptr[i]);
@@ -682,22 +685,22 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
         }
         return output;
     } else {
-        int batch_size = this->data.getBatchSize();
-        int seq_len = this->data.getRows();
-        int vocab_size = this->data.getCols();
+        int batch_size = data_cpu.getBatchSize();
+        int seq_len = data_cpu.getRows();
+        int vocab_size = data_cpu.getCols();
         int total = batch_size * seq_len;
         float total_loss = 0.0f;
-        
-        const float* data_ptr = this->data.raw();
-        const float* targets_ptr = targets->data.raw();
+
+        const float* data_ptr = data_cpu.raw();
+        const float* targets_ptr = targets_cpu.raw();
         
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {
                 int flat_idx = b * seq_len + i;
-                int target_idx = static_cast<int>(targets_ptr[flat_idx * (targets->data.getIs3D() ? 1 : 1) + 
-                                                             (targets->data.getIs3D() ? 0 : 0)]);
-                
-                if (targets->data.getIs3D()) {
+                int target_idx = static_cast<int>(targets_ptr[flat_idx * (targets_cpu.getIs3D() ? 1 : 1) +
+                                                             (targets_cpu.getIs3D() ? 0 : 0)]);
+
+                if (targets_cpu.getIs3D()) {
                     target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
                 } else {
                     target_idx = static_cast<int>(targets_ptr[flat_idx]);
@@ -718,22 +721,22 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
             output->addChild(self_ptr);
             output->addChild(targets);
-            
-            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total, output_weak = std::weak_ptr<Variable>(output)]() {
+
+            output->setBackwardFn([self_ptr, targets, targets_cpu, batch_size, seq_len, total, output_weak = std::weak_ptr<Variable>(output)]() {
                 auto output = output_weak.lock();
                 if (!output) return;
                 int vocab_size = self_ptr->data.getCols();
                 Tensor grad(batch_size, seq_len, vocab_size);
                 grad.fill(0.0f);
                 float scale = -1.0f / total;
-                
+
                 float* grad_ptr = grad.raw();
-                const float* targets_ptr = targets->data.raw();
-                
+                const float* targets_ptr = targets_cpu.raw();
+
                 for (int b = 0; b < batch_size; b++) {
                     for (int i = 0; i < seq_len; i++) {
                         int target_idx;
-                        if (targets->data.getIs3D()) {
+                        if (targets_cpu.getIs3D()) {
                             target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
                         } else {
                             target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
