@@ -594,9 +594,9 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
 
             float sum_exp = 0.0f;
             for (size_t j = 0; j < result.getCols(); j++) {
-                sum_exp += std::expf(row_in[j] - max_val);
+                sum_exp += std::exp(row_in[j] - max_val);
             }
-            float log_sum = std::logf(sum_exp) + max_val;
+            float log_sum = std::log(sum_exp) + max_val;
 
             for (size_t j = 0; j < result.getCols(); j++) {
                 row_out[j] = row_in[j] - log_sum;
@@ -620,9 +620,9 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
 
                 float sum_exp = 0.0f;
                 for (size_t j = 0; j < result.getCols(); j++) {
-                    sum_exp += std::expf(row_in[j] - max_val);
+                    sum_exp += std::exp(row_in[j] - max_val);
                 }
-                float log_sum = std::logf(sum_exp) + max_val;
+                float log_sum = std::log(sum_exp) + max_val;
 
                 for (size_t j = 0; j < result.getCols(); j++) {
                     row_out[j] = row_in[j] - log_sum;
@@ -657,7 +657,7 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                     }
 
                     for (size_t j = 0; j < result.getCols(); j++) {
-                        float softmax_val = std::expf(row_result[j]);
+                        float softmax_val = std::exp(row_result[j]);
                         row_grad[j] = row_grad_out[j] - softmax_val * sum;
                     }
                 }
@@ -682,7 +682,7 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                         }
 
                         for (size_t j = 0; j < result.getCols(); j++) {
-                            float softmax_val = std::expf(row_result[j]);
+                            float softmax_val = std::exp(row_result[j]);
                             row_grad[j] = row_grad_out[j] - softmax_val * sum;
                         }
                     }

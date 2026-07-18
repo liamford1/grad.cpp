@@ -672,7 +672,7 @@ Tensor Tensor::softmax() const {
             float sum = 0.0f;
             #pragma clang loop vectorize(enable)
             for (size_t j = 0; j < this->cols; j++) {
-                const float val = std::expf(row_in[j] - max_val);
+                const float val = std::exp(row_in[j] - max_val);
                 row_out[j] = val;
                 sum += val;
             }
@@ -705,7 +705,7 @@ Tensor Tensor::softmax() const {
                 float sum = 0.0f;
                 #pragma clang loop vectorize(enable)
                 for (size_t j = 0; j < this->cols; j++) {
-                    const float val = std::expf(row_in[j] - max_val);
+                    const float val = std::exp(row_in[j] - max_val);
                     row_out[j] = val;
                     sum += val;
                 }
