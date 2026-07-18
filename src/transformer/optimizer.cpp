@@ -26,34 +26,30 @@ void AdamOptimizer::step() {
     
     for (auto& param : parameters_) {
         if (!param->requiresGrad()) continue;
-
+        
         Tensor& data = param->getData();
         Tensor& grad = param->getGrad();
         Variable* param_ptr = param.get();
-
-        Device original_device = data.getDevice();
-        Tensor data_cpu = (original_device == Device::CUDA) ? data.to(Device::CPU) : data;
-        Tensor grad_cpu = (grad.getDevice() == Device::CUDA) ? grad.to(Device::CPU) : grad;
-
+        
         if (m_.find(param_ptr) == m_.end()) {
-            if (data_cpu.getIs3D()) {
-                m_[param_ptr] = Tensor(data_cpu.getBatchSize(), data_cpu.getRows(), data_cpu.getCols(), Device::CPU);
-                v_[param_ptr] = Tensor(data_cpu.getBatchSize(), data_cpu.getRows(), data_cpu.getCols(), Device::CPU);
+            if (data.getIs3D()) {
+                m_[param_ptr] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
+                v_[param_ptr] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
             } else {
-                m_[param_ptr] = Tensor(data_cpu.getRows(), data_cpu.getCols(), Device::CPU);
-                v_[param_ptr] = Tensor(data_cpu.getRows(), data_cpu.getCols(), Device::CPU);
+                m_[param_ptr] = Tensor(data.getRows(), data.getCols());
+                v_[param_ptr] = Tensor(data.getRows(), data.getCols());
             }
-
+            
             m_[param_ptr].fill(0.0f);
             v_[param_ptr].fill(0.0f);
         }
-
+        
         Tensor& m = m_[param_ptr];
         Tensor& v = v_[param_ptr];
-
-        int n = data_cpu.numel();
-        float* dptr = data_cpu.raw();
-        float* gptr = grad_cpu.raw();
+        
+        int n = data.numel();
+        float* dptr = data.raw();
+        float* gptr = grad.raw();
         float* mptr = m.raw();
         float* vptr = v.raw();
 
@@ -71,20 +67,17 @@ void AdamOptimizer::step() {
 
             dptr[i] -= lr * m_hat / (std::sqrt(v_hat) + eps);
         }
-
-        if (original_device == Device::CUDA) {
-            Tensor data_cuda = data_cpu.to(Device::CUDA);
-            data = data_cuda;
-        } else {
-            data = data_cpu;
-        }
     }
 }
 
 void AdamOptimizer::zero_grad() {
     for (auto& param : parameters_) {
         Tensor& grad = param->getGrad();
-        grad.fill(0.0f);
+        int n = grad.numel();
+        float* gptr = grad.raw();
+        for (int i = 0; i < n; i++) {
+            gptr[i] = 0.0f;
+        }
     }
 }
 
@@ -92,41 +85,29 @@ void AdamOptimizer::clip_grad_norm(float max_norm) {
     float total_norm = 0.0f;
     for (auto& param : parameters_) {
         if (!param->requiresGrad()) continue;
-
+        
         Tensor& grad = param->getGrad();
-        Tensor grad_cpu = (grad.getDevice() == Device::CUDA) ? grad.to(Device::CPU) : grad;
-
-        int n = grad_cpu.numel();
-        const float* gptr = grad_cpu.raw();
-
+        int n = grad.numel();
+        float* gptr = grad.raw();
+        
         for (int i = 0; i < n; i++) {
             total_norm += gptr[i] * gptr[i];
         }
     }
     total_norm = std::sqrt(total_norm);
-
+    
     if (total_norm > max_norm) {
         float clip_coef = max_norm / (total_norm + 1e-6f);
-
+        
         for (auto& param : parameters_) {
             if (!param->requiresGrad()) continue;
-
+            
             Tensor& grad = param->getGrad();
-            Device original_device = grad.getDevice();
-            Tensor grad_cpu = (original_device == Device::CUDA) ? grad.to(Device::CPU) : grad;
-
-            int n = grad_cpu.numel();
-            float* gptr = grad_cpu.raw();
-
+            int n = grad.numel();
+            float* gptr = grad.raw();
+            
             for (int i = 0; i < n; i++) {
                 gptr[i] *= clip_coef;
-            }
-
-            if (original_device == Device::CUDA) {
-                Tensor grad_cuda = grad_cpu.to(Device::CUDA);
-                grad = grad_cuda;
-            } else {
-                grad = grad_cpu;
             }
         }
     }

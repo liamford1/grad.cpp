@@ -34,7 +34,6 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
     auto encode_positions = pos_encoding.forward(embed_tokens);
-
     auto transformer_input = encode_positions;
 
     if (training && dropout_rate > 0.0f) {
@@ -47,6 +46,7 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     }
 
     auto normalized_output = final_norm.forward(transformer_output);
+
     auto embedding_table = token_embedding.getEmbeddingTable();
     const Tensor& emb_data = embedding_table->getData();
     const Tensor& norm_data = normalized_output->getData();

@@ -1,26 +1,12 @@
-cmake_minimum_required(VERSION 3.18)
-project(transformer-from-scratch LANGUAGES CXX CUDA)
+cmake_minimum_required(VERSION 3.16)
+project(transformer-from-scratch)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-
-# CUDA Architecture - adjust for your GPU
-# Common values:
-#   75 = RTX 20xx (Turing)
-#   80 = A100 (Ampere)
-#   86 = RTX 30xx (Ampere)
-#   89 = RTX 40xx (Ada Lovelace)
-#   90 = H100 (Hopper)
-set(CMAKE_CUDA_ARCHITECTURES 75 86 89)  # Multi-arch build
-
-# Enable separable compilation for CUDA (needed for device code in multiple files)
-set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
 add_executable(transformer
     src/main.cpp
-    src/transformer/Tensor.cu
+    src/transformer/tensor.cpp
     src/transformer/attention.cpp
     src/transformer/multihead_attention.cpp
     src/transformer/layer_norm.cpp
@@ -44,7 +30,7 @@ add_executable(transformer
 
 add_executable(sanity_tests
     tests/integration/sanity_tests.cpp
-    src/transformer/Tensor.cu
+    src/transformer/tensor.cpp
     src/transformer/attention.cpp
     src/transformer/multihead_attention.cpp
     src/transformer/layer_norm.cpp
@@ -65,48 +51,23 @@ add_executable(sanity_tests
     src/utils/metrics.cpp
 )
 
-# CUDA infrastructure test
-add_executable(test_cuda_basic
-    test_cuda_basic.cpp
-    src/transformer/Tensor.cu
-)
-
-# cuBLAS matmul test
-add_executable(test_matmul
-    test_matmul.cpp
-    src/transformer/Tensor.cu
-)
-
 target_include_directories(transformer PRIVATE include)
 target_include_directories(sanity_tests PRIVATE include)
-target_include_directories(test_cuda_basic PRIVATE include)
-target_include_directories(test_matmul PRIVATE include)
 
 # ============================================================================
-# CUDA LIBRARIES
-# ============================================================================
-find_package(CUDAToolkit REQUIRED)
-target_link_libraries(transformer CUDA::cudart CUDA::cublas)
-target_link_libraries(sanity_tests CUDA::cudart CUDA::cublas)
-target_link_libraries(test_cuda_basic CUDA::cudart CUDA::cublas)
-target_link_libraries(test_matmul CUDA::cudart CUDA::cublas)
-message(STATUS "CUDA Version: ${CUDAToolkit_VERSION}")
-message(STATUS "CUDA Include: ${CUDAToolkit_INCLUDE_DIRS}")
-
-# ============================================================================
-# BLAS INTEGRATION (Use Apple Accelerate on macOS, fallback for CPU ops)
+# BLAS INTEGRATION (Use Apple Accelerate on macOS)
 # ============================================================================
 if(APPLE)
     find_library(ACCELERATE_LIBRARY Accelerate)
     target_link_libraries(transformer ${ACCELERATE_LIBRARY})
     target_link_libraries(sanity_tests ${ACCELERATE_LIBRARY})
     add_compile_definitions(ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
-    message(STATUS "Using Apple Accelerate framework for CPU BLAS")
+    message(STATUS "Using Apple Accelerate framework for BLAS")
 else()
     find_package(BLAS REQUIRED)
     target_link_libraries(transformer ${BLAS_LIBRARIES})
     target_link_libraries(sanity_tests ${BLAS_LIBRARIES})
-    message(STATUS "Using OpenBLAS for CPU BLAS")
+    message(STATUS "Using OpenBLAS for BLAS")
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -115,39 +76,24 @@ endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -DDEBUG")
 
-# Release flags - MAXIMUM PERFORMANCE (CPU)
+# Release flags - MAXIMUM PERFORMANCE
 if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
     # Apple Clang / Clang (for Mac M1/M2/Intel)
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno")
     message(STATUS "Using Clang optimizations for Mac")
-
+    
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # GCC (for Linux)
-    set(CMAKE_CXX_FLAGS_RELEASE
+    set(CMAKE_CXX_FLAGS_RELEASE 
         "-O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno -flto"
     )
     message(STATUS "Using GCC optimizations")
-
+    
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # MSVC (for Windows)
     set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Oi /Ot /GL /DNDEBUG")
     message(STATUS "Using MSVC optimizations")
 endif()
-
-# ============================================================================
-# CUDA COMPILATION FLAGS
-# ============================================================================
-# Debug
-set(CMAKE_CUDA_FLAGS_DEBUG "-g -G -O0")  # -G enables device debugging
-
-# Release - MAXIMUM PERFORMANCE
-set(CMAKE_CUDA_FLAGS_RELEASE "-O3 --use_fast_math -lineinfo")
-
-# Always enable these for better performance
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --extended-lambda")  # For lambdas in kernels
-
-message(STATUS "CUDA Flags: ${CMAKE_CUDA_FLAGS}")
 
 # ============================================================================
 # PLATFORM-SPECIFIC OPTIMIZATIONS
@@ -221,7 +167,7 @@ if(BUILD_TESTS)
     add_executable(test_gradients
         tests/unit/test_gradients.cpp
         # Reuse all the implementation files (no main.cpp!)
-        src/transformer/Tensor.cu
+        src/transformer/tensor.cpp
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/linear.cpp
@@ -242,14 +188,14 @@ if(BUILD_TESTS)
 
     add_executable(test_dropout
         tests/unit/test_dropout.cpp
-        src/transformer/Tensor.cu
+        src/transformer/tensor.cpp
         src/transformer/variable.cpp
         src/transformer/activations.cpp
     )
 
     add_executable(test_attention_bias
         tests/unit/test_attention_bias.cpp
-        src/transformer/Tensor.cu
+        src/transformer/tensor.cpp
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/multihead_attention.cpp
@@ -257,7 +203,7 @@ if(BUILD_TESTS)
 
     add_executable(test_weight_tying
         tests/unit/test_weight_tying.cpp
-        src/transformer/Tensor.cu
+        src/transformer/tensor.cpp
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/token_embedding.cpp
@@ -272,7 +218,7 @@ if(BUILD_TESTS)
 
     add_executable(test_attention_gradients
         tests/unit/test_attention_gradients.cpp
-        src/transformer/Tensor.cu
+        src/transformer/tensor.cpp
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/linear.cpp
@@ -281,7 +227,6 @@ if(BUILD_TESTS)
     )
 
     target_include_directories(test_gradients PRIVATE include)
-    target_link_libraries(test_gradients CUDA::cudart CUDA::cublas)
     if(APPLE)
         target_link_libraries(test_gradients ${ACCELERATE_LIBRARY})
         target_compile_definitions(test_gradients PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
@@ -291,7 +236,6 @@ if(BUILD_TESTS)
     add_test(NAME GradientChecking COMMAND test_gradients)
 
     target_include_directories(test_dropout PRIVATE include)
-    target_link_libraries(test_dropout CUDA::cudart CUDA::cublas)
     if(APPLE)
         target_link_libraries(test_dropout ${ACCELERATE_LIBRARY})
         target_compile_definitions(test_dropout PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
@@ -301,7 +245,6 @@ if(BUILD_TESTS)
     add_test(NAME DropoutVerification COMMAND test_dropout)
 
     target_include_directories(test_attention_bias PRIVATE include)
-    target_link_libraries(test_attention_bias CUDA::cudart CUDA::cublas)
     if(APPLE)
         target_link_libraries(test_attention_bias ${ACCELERATE_LIBRARY})
         target_compile_definitions(test_attention_bias PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
@@ -311,7 +254,6 @@ if(BUILD_TESTS)
     add_test(NAME AttentionBiasVerification COMMAND test_attention_bias)
 
     target_include_directories(test_weight_tying PRIVATE include)
-    target_link_libraries(test_weight_tying CUDA::cudart CUDA::cublas)
     if(APPLE)
         target_link_libraries(test_weight_tying ${ACCELERATE_LIBRARY})
         target_compile_definitions(test_weight_tying PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
@@ -321,7 +263,6 @@ if(BUILD_TESTS)
     add_test(NAME WeightTyingVerification COMMAND test_weight_tying)
 
     target_include_directories(test_attention_gradients PRIVATE include)
-    target_link_libraries(test_attention_gradients CUDA::cudart CUDA::cublas)
     if(APPLE)
         target_link_libraries(test_attention_gradients ${ACCELERATE_LIBRARY})
         target_compile_definitions(test_attention_gradients PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)

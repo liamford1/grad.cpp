@@ -69,36 +69,26 @@ void Trainer::training_step(int step) {
     auto in = Variable::create(input_2d, false);
     auto tgt = Variable::create(target_2d, false);
 
-    std::cerr << "[DEBUG] Step " << step << ": Starting Forward" << std::endl;
     auto logits = model_.forward(in, true);
     auto loss = logits->log_softmax()->nll_loss(tgt);
-    float loss_val = loss->getData().getValue(0, 0);
-    std::cerr << "[DEBUG] Step " << step << ": Forward Done, Loss = " << loss_val << std::endl;
 
-    std::cerr << "[DEBUG] Step " << step << ": Zeroing Gradients" << std::endl;
     optimizer_->zero_grad();
-
-    std::cerr << "[DEBUG] Step " << step << ": Starting Backward" << std::endl;
     loss->backward();
-    std::cerr << "[DEBUG] Step " << step << ": Backward Done" << std::endl;
-
     loss->release_graph();
 
-    std::cerr << "[DEBUG] Step " << step << ": Starting Optimizer" << std::endl;
+    float loss_val = loss->getData().getValue(0, 0);
+    float grad_norm = 0.0f;
+
+    if (step % 100 == 0) {
+        auto params = model_.getAllParameters();
+        grad_norm = utils::compute_grad_norm(params);
+        metrics_->record_step(step, loss_val, grad_norm);
+    }
+
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();
-    std::cerr << "[DEBUG] Step " << step << ": Optimizer Done" << std::endl;
 
-    if (step % 10 == 0) {
-        float loss_val = loss->getData().getValue(0, 0);
-        metrics_->print_progress(step, loss_val);
-
-        if (step % 100 == 0) {
-            auto params = model_.getAllParameters();
-            float grad_norm = utils::compute_grad_norm(params);
-            metrics_->record_step(step, loss_val, grad_norm);
-        }
-    }
+    metrics_->print_progress(step, loss_val);
 }
 
 void Trainer::save_checkpoint(const std::string& path) {

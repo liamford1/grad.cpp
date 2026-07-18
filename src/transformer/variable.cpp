@@ -504,7 +504,13 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
 std::shared_ptr<Variable> Variable::gelu() const {
     data.assertValid("Variable::gelu(x)");
 
-    Tensor result = this->data.gelu();
+    Tensor result = this->data;
+    for (size_t i = 0; i < result.numel(); i++) {
+        float x = result.raw()[i];
+        float cube = x * x * x;
+        float gelu_val = 0.5f * x * (1.0f + std::tanh(0.79788456f * (x + 0.044715f * cube)));
+        result.raw()[i] = gelu_val;
+    }
     auto output = createOutput(result, this->requires_grad);
 
     if (this->requires_grad) {
@@ -571,8 +577,60 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
 }
 
 std::shared_ptr<Variable> Variable::log_softmax() const {
-    Tensor result = this->data.log_softmax();
+    Tensor result = this->data;
+    
+    if (!result.getIs3D()) {
+        const float* input_data = this->data.raw();
+        float* result_data = result.raw();
 
+        for (size_t i = 0; i < result.getRows(); i++) {
+            const float* row_in = input_data + i * result.getCols();
+            float* row_out = result_data + i * result.getCols();
+
+            float max_val = row_in[0];
+            for (size_t j = 1; j < result.getCols(); j++) {
+                max_val = std::max(max_val, row_in[j]);
+            }
+
+            float sum_exp = 0.0f;
+            for (size_t j = 0; j < result.getCols(); j++) {
+                sum_exp += std::expf(row_in[j] - max_val);
+            }
+            float log_sum = std::logf(sum_exp) + max_val;
+
+            for (size_t j = 0; j < result.getCols(); j++) {
+                row_out[j] = row_in[j] - log_sum;
+            }
+        }
+    } else {
+        const float* input_data = this->data.raw();
+        float* result_data = result.raw();
+
+        for (size_t b = 0; b < result.getBatchSize(); b++) {
+            const size_t batch_offset = b * result.getRows() * result.getCols();
+
+            for (size_t i = 0; i < result.getRows(); i++) {
+                const float* row_in = input_data + batch_offset + i * result.getCols();
+                float* row_out = result_data + batch_offset + i * result.getCols();
+
+                float max_val = row_in[0];
+                for (size_t j = 1; j < result.getCols(); j++) {
+                    max_val = std::max(max_val, row_in[j]);
+                }
+
+                float sum_exp = 0.0f;
+                for (size_t j = 0; j < result.getCols(); j++) {
+                    sum_exp += std::expf(row_in[j] - max_val);
+                }
+                float log_sum = std::logf(sum_exp) + max_val;
+
+                for (size_t j = 0; j < result.getCols(); j++) {
+                    row_out[j] = row_in[j] - log_sum;
+                }
+            }
+        }
+    }
+    
     auto output = createOutput(result, this->requires_grad);
     
     if (this->requires_grad) {
@@ -599,15 +657,11 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                     }
 
                     for (size_t j = 0; j < result.getCols(); j++) {
-                        float softmax_val = std::exp(row_result[j]);
+                        float softmax_val = std::expf(row_result[j]);
                         row_grad[j] = row_grad_out[j] - softmax_val * sum;
                     }
                 }
-                if (self_ptr->getData().getDevice() == Device::CUDA) {
-                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
-                } else {
-                    self_ptr->grad.add_inplace(grad);
-                }
+                self_ptr->grad.add_inplace(grad);
             } else {
                 Tensor grad(result.getBatchSize(), result.getRows(), result.getCols());
                 const float* result_data = result.raw();
@@ -628,16 +682,12 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
                         }
 
                         for (size_t j = 0; j < result.getCols(); j++) {
-                            float softmax_val = std::exp(row_result[j]);
+                            float softmax_val = std::expf(row_result[j]);
                             row_grad[j] = row_grad_out[j] - softmax_val * sum;
                         }
                     }
                 }
-                if (self_ptr->getData().getDevice() == Device::CUDA) {
-                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
-                } else {
-                    self_ptr->grad.add_inplace(grad);
-                }
+                self_ptr->grad.add_inplace(grad);
             }
         });
     }
@@ -645,20 +695,17 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
 }
 
 std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) const {
-    Tensor data_cpu = (this->data.getDevice() == Device::CUDA) ? this->data.to(Device::CPU) : this->data;
-    Tensor targets_cpu = (targets->data.getDevice() == Device::CUDA) ? targets->data.to(Device::CPU) : targets->data;
-
-    if (!data_cpu.getIs3D()) {
+    if (!this->data.getIs3D()) {
         float total_loss = 0.0f;
-        int n = data_cpu.getRows();
+        int n = this->data.getRows();
 
-        const float* data_ptr = data_cpu.raw();
-        const float* targets_ptr = targets_cpu.raw();
+        const float* data_ptr = this->data.raw();
+        const float* targets_ptr = targets->data.raw();
         
         for (int i = 0; i < n; i++) {
             int target_idx = static_cast<int>(targets_ptr[i]);
-            if (target_idx >= 0 && static_cast<size_t>(target_idx) < data_cpu.getCols()) {
-                total_loss -= data_ptr[i * data_cpu.getCols() + target_idx];
+            if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
+                total_loss -= data_ptr[i * this->data.getCols() + target_idx];
             }
         }
         total_loss /= n;
@@ -671,8 +718,8 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
             output->addChild(self_ptr);
             output->addChild(targets);
-
-            output->setBackwardFn([self_ptr, targets, targets_cpu, n, output_weak = std::weak_ptr<Variable>(output)]() {
+            
+            output->setBackwardFn([self_ptr, targets, n, output_weak = std::weak_ptr<Variable>(output)]() {
                 auto output = output_weak.lock();
                 if (!output) return;
                 Tensor grad(self_ptr->data.getRows(), self_ptr->data.getCols());
@@ -680,7 +727,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                 float scale = -1.0f / n;
 
                 float* grad_ptr = grad.raw();
-                const float* targets_ptr = targets_cpu.raw();
+                const float* targets_ptr = targets->data.raw();
                 
                 for (int i = 0; i < n; i++) {
                     int target_idx = static_cast<int>(targets_ptr[i]);
@@ -688,31 +735,27 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
                         grad_ptr[i * self_ptr->data.getCols() + target_idx] = scale;
                     }
                 }
-                if (self_ptr->getData().getDevice() == Device::CUDA) {
-                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
-                } else {
-                    self_ptr->grad.add_inplace(grad);
-                }
+                self_ptr->grad.add_inplace(grad);
             });
         }
         return output;
     } else {
-        int batch_size = data_cpu.getBatchSize();
-        int seq_len = data_cpu.getRows();
-        int vocab_size = data_cpu.getCols();
+        int batch_size = this->data.getBatchSize();
+        int seq_len = this->data.getRows();
+        int vocab_size = this->data.getCols();
         int total = batch_size * seq_len;
         float total_loss = 0.0f;
-
-        const float* data_ptr = data_cpu.raw();
-        const float* targets_ptr = targets_cpu.raw();
+        
+        const float* data_ptr = this->data.raw();
+        const float* targets_ptr = targets->data.raw();
         
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {
                 int flat_idx = b * seq_len + i;
-                int target_idx = static_cast<int>(targets_ptr[flat_idx * (targets_cpu.getIs3D() ? 1 : 1) +
-                                                             (targets_cpu.getIs3D() ? 0 : 0)]);
-
-                if (targets_cpu.getIs3D()) {
+                int target_idx = static_cast<int>(targets_ptr[flat_idx * (targets->data.getIs3D() ? 1 : 1) + 
+                                                             (targets->data.getIs3D() ? 0 : 0)]);
+                
+                if (targets->data.getIs3D()) {
                     target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
                 } else {
                     target_idx = static_cast<int>(targets_ptr[flat_idx]);
@@ -733,37 +776,33 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
             output->addChild(self_ptr);
             output->addChild(targets);
-
-            output->setBackwardFn([self_ptr, targets, targets_cpu, batch_size, seq_len, total, output_weak = std::weak_ptr<Variable>(output)]() {
+            
+            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total, output_weak = std::weak_ptr<Variable>(output)]() {
                 auto output = output_weak.lock();
                 if (!output) return;
                 int vocab_size = self_ptr->data.getCols();
                 Tensor grad(batch_size, seq_len, vocab_size);
                 grad.fill(0.0f);
                 float scale = -1.0f / total;
-
+                
                 float* grad_ptr = grad.raw();
-                const float* targets_ptr = targets_cpu.raw();
-
+                const float* targets_ptr = targets->data.raw();
+                
                 for (int b = 0; b < batch_size; b++) {
                     for (int i = 0; i < seq_len; i++) {
                         int target_idx;
-                        if (targets_cpu.getIs3D()) {
+                        if (targets->data.getIs3D()) {
                             target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
                         } else {
                             target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
                         }
-
+                        
                         if (target_idx >= 0 && target_idx < vocab_size) {
                             grad_ptr[b * seq_len * vocab_size + i * vocab_size + target_idx] = scale;
                         }
                     }
                 }
-                if (self_ptr->getData().getDevice() == Device::CUDA) {
-                    self_ptr->grad.add_inplace(grad.to(Device::CUDA));
-                } else {
-                    self_ptr->grad.add_inplace(grad);
-                }
+                self_ptr->grad.add_inplace(grad);
             });
         }
         return output;

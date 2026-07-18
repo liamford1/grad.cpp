@@ -5,7 +5,6 @@
 #include "data/dataloader.h"
 #include "training/trainer.h"
 #include "utils/metrics.h"
-#include <cuda_runtime.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -98,11 +97,6 @@ void generate_samples(GPTModel& model, BPETokenizer& tokenizer) {
 int main() {
     std::cout << "\nTransformer Training\n" << std::endl;
 
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0);
-    std::cout << "GPU: " << prop.name << " (Compute " << prop.major << "." << prop.minor << ")" << std::endl;
-    std::cout << "VRAM: " << (prop.totalGlobalMem / (1024*1024*1024)) << " GB\n" << std::endl;
-
     try {
         const bool FAST_MODE = false;
         const int vocab_size = FAST_MODE ? 500 : 5000;
@@ -127,7 +121,7 @@ int main() {
         config.seq_length = seq_length;
         config.batch_size = 8;
         config.learning_rate = 3e-4f;
-        config.dropout = 0.0f;
+        config.dropout = 0.1f;
         config.warmup_steps = 500;
         config.num_steps = num_steps;
         config.checkpoint_interval = 2500;

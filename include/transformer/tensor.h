@@ -1,110 +1,61 @@
 #pragma once
-#include "storage.h"
-#include <vector>
-#include <memory>
-#include <initializer_list>
-#include <algorithm>
-#include <stdexcept>
-#include <cmath>
+#include <string>
+#include <cstddef>
+
+constexpr size_t MAX_TENSOR_ELEMENTS = 1ULL << 30;
 
 class Tensor {
     private:
-        std::shared_ptr<Storage> storage;
-        size_t storage_offset;
-        std::vector<int> shape;
-        std::vector<int> strides;
-
-        static std::vector<int> calculate_contiguous_strides(const std::vector<int>& shape) {
-            std::vector<int> strides(shape.size());
-            int stride = 1;
-            for (int i = shape.size() - 1; i >= 0; --i) {
-                strides[i] = stride;
-                stride *= shape[i];
-            }
-            return strides;
-        }
-
+        float* data;
+        size_t rows, cols, batch_size;
+        bool is_3d;
     public:
-        Tensor() : storage(nullptr), storage_offset(0) {}
-        Tensor(std::vector<int> shape, Device device = Device::CUDA);
+        Tensor();
+        Tensor(size_t rows, size_t cols);
+        Tensor(size_t batch_size, size_t rows, size_t cols);
+        Tensor(const Tensor& other);
+        Tensor& operator=(const Tensor& other);
+        Tensor(Tensor&& other) noexcept;
+        Tensor& operator=(Tensor&& other) noexcept;
+        ~Tensor();
 
-        float* data() {
-            return static_cast<float*>(storage->data_ptr) + storage_offset;
-        }
-
-        const float* data() const {
-            return static_cast<const float*>(storage->data_ptr) + storage_offset;
-        }
-
-        float* raw() { return data(); }
-        const float* raw() const { return data(); }
-
-        bool getIs3D() const { return shape.size() == 3; }
-
-        Tensor transpose() const {
-            if (shape.size() < 2) return *this;
-            return transpose(shape.size() - 2, shape.size() - 1);
-        }
-
-        Tensor transpose(int dim0, int dim1) const {
-            Tensor result = *this;
-            std::swap(result.shape[dim0], result.shape[dim1]);
-            std::swap(result.strides[dim0], result.strides[dim1]);
-            return result;
-        }
+        float getValue(size_t row, size_t col) const;
+        float getValue(size_t batch, size_t row, size_t col) const;
+        void setValue(size_t row, size_t col, float value);
+        void setValue(size_t batch, size_t row, size_t col, float value);
+        void display() const;
 
         Tensor matmul(const Tensor& other) const;
-        void fill(float value);
-        Tensor clone() const;
-        Tensor to(Device device) const;
-
-        void add_inplace(const Tensor& other);
-        Tensor softmax() const;
-        Tensor log_softmax() const;
-        void xavier(size_t fan_in, size_t fan_out);
-        static Tensor create_causal_mask(size_t seq_len);
-
-        Tensor slice(size_t r_start, size_t r_end, size_t c_start, size_t c_end) const;
-        Tensor scale(float factor) const;
-
-        void assertValid(const std::string& msg = "") const {}
-
+        Tensor add(const Tensor& other) const;
         Tensor subtract(const Tensor& other) const;
         Tensor elementwise(const Tensor& other) const;
-        Tensor gelu() const;
 
-        Tensor(size_t rows, size_t cols, Device device = Device::CUDA)
-            : Tensor(std::vector<int>{(int)rows, (int)cols}, device) {}
+        void scale_inplace(float scalar);
+        void add_inplace(const Tensor& other);
+        void multiply_inplace(const Tensor& other);
+        void zero();
 
-        Tensor(size_t batch, size_t rows, size_t cols, Device device = Device::CUDA)
-            : Tensor(std::vector<int>{(int)batch, (int)rows, (int)cols}, device) {}
+        Tensor transpose() const;
+        Tensor softmax() const;
+        void fill(float value);
+        Tensor scale(float scaler) const;
 
-        float getValue(int row, int col) const;
-        void setValue(int row, int col, float value);
+        Tensor reshape(size_t new_rows, size_t new_cols) const;
+        Tensor slice(size_t start_row, size_t num_rows, size_t start_col, size_t num_cols) const;
+        Tensor concatenate(const Tensor& other, int axis) const;
 
-        float getValue(int batch, int row, int col) const;
-        void setValue(int batch, int row, int col, float value);
+        void xavier(size_t fan_in, size_t fan_out);
+        static Tensor create_causal_mask(size_t seq_len);
+        static Tensor create_causal_mask_batch(size_t batch_size, size_t seq_len);
 
-        size_t getRows() const { return shape.size() > 1 ? shape[shape.size()-2] : 1; }
-        size_t getCols() const { return shape.empty() ? 0 : shape.back(); }
-        size_t getBatchSize() const { return shape.size() > 2 ? shape[0] : 1; }
+        size_t getRows() const { return rows; }
+        size_t getCols() const { return cols; }
+        size_t getBatchSize() const { return batch_size; }
+        bool getIs3D() const { return is_3d; }
+        size_t numel() const { return is_3d ? batch_size * rows * cols : rows * cols;}
 
-        const std::vector<int>& getShape() const { return shape; }
-        const std::vector<int>& getStrides() const { return strides; }
-        Device getDevice() const { return storage->device; }
-        size_t numel() const {
-            size_t n = 1;
-            for(int s : shape) n *= s;
-            return n;
-        }
+        void assertValid(const std::string& context = "") const;
 
-        Tensor add(const Tensor& other) const {
-            Tensor result = this->clone();
-            result.add_inplace(other);
-            return result;
-        }
+        float* raw() { return data; }
+        const float* raw() const { return data; }
 };
-
-Tensor layer_norm_gpu(const Tensor& input, const Tensor& gamma, const Tensor& beta, float epsilon, int d_model);
-Tensor embedding_lookup_gpu(const Tensor& embedding_table, const Tensor& token_ids, int d_model, float scale);
-Tensor pos_encoding_broadcast_gpu(const Tensor& pos_emb, int batch_size, int seq_len, int d_model);

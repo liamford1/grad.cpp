@@ -21,215 +21,18 @@ LayerNorm::~LayerNorm() {}
 std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) const {
     const Tensor& input_tensor = input->getData();
 
-    Tensor result;
-    std::vector<float> means;
-    std::vector<float> inv_stds;
-
-    if (input_tensor.getDevice() == Device::CUDA) {
-        const Tensor& gamma_data = gamma->getData();
-        const Tensor& beta_data = beta->getData();
-        Tensor gamma_gpu = (gamma_data.getDevice() == Device::CUDA) ? gamma_data : gamma_data.to(Device::CUDA);
-        Tensor beta_gpu = (beta_data.getDevice() == Device::CUDA) ? beta_data : beta_data.to(Device::CUDA);
-
-        result = layer_norm_gpu(input_tensor, gamma_gpu, beta_gpu, epsilon, d_model);
-        auto output = Variable::create(result, input->requiresGrad());
-        if (input->requiresGrad()) {
-            auto self_input = input;
-            auto self_gamma = gamma;
-            auto self_beta = beta;
-            int self_d_model = d_model;
-            float self_epsilon = epsilon;
-
-            output->addChild(input);
-            output->addChild(gamma);
-            output->addChild(beta);
-
-            output->setBackwardFn([self_input, self_gamma, self_beta, output_weak = std::weak_ptr<Variable>(output), self_d_model, self_epsilon]() {
-                std::cerr << "[DEBUG] LayerNorm BW: Starting" << std::endl;
-                auto output = output_weak.lock();
-                if (!output) return;
-                std::cerr << "[DEBUG] LayerNorm BW: Output locked" << std::endl;
-
-                std::cerr << "[DEBUG] LayerNorm BW: Moving grad to CPU" << std::endl;
-                Tensor output_grad_cpu = output->getGrad().to(Device::CPU);
-                std::cerr << "[DEBUG] LayerNorm BW: Moving input to CPU" << std::endl;
-                Tensor input_cpu = self_input->getData().to(Device::CPU);
-                Tensor gamma_cpu = self_gamma->getData().to(Device::CPU);
-
-                bool is_3d = input_cpu.getIs3D();
-                int batch_size = is_3d ? input_cpu.getBatchSize() : 1;
-                int rows = is_3d ? input_cpu.getRows() : input_cpu.getRows();
-                int total_rows = is_3d ? batch_size * rows : rows;
-
-                std::vector<float> means(total_rows);
-                std::vector<float> inv_stds(total_rows);
-
-                const float* input_data = input_cpu.raw();
-
-                std::cerr << "[DEBUG] LayerNorm BW: Computing stats" << std::endl;
-                if (is_3d) {
-                    for (int b = 0; b < batch_size; b++) {
-                        const int batch_offset = b * rows * self_d_model;
-                        for (int i = 0; i < rows; i++) {
-                            const int row_idx = b * rows + i;
-                            const float* row_in = input_data + batch_offset + i * self_d_model;
-                            float mean = 0.0f;
-                            for (int j = 0; j < self_d_model; j++) {
-                                mean += row_in[j];
-                            }
-                            mean /= self_d_model;
-                            means[row_idx] = mean;
-
-                            float variance = 0.0f;
-                            for (int j = 0; j < self_d_model; j++) {
-                                float diff = row_in[j] - mean;
-                                variance += diff * diff;
-                            }
-                            variance /= self_d_model;
-                            inv_stds[row_idx] = 1.0f / std::sqrt(variance + self_epsilon);
-                        }
-                    }
-                } else {
-                    for (int i = 0; i < rows; i++) {
-                        const float* row_in = input_data + i * self_d_model;
-                        float mean = 0.0f;
-                        for (int j = 0; j < self_d_model; j++) {
-                            mean += row_in[j];
-                        }
-                        mean /= self_d_model;
-                        means[i] = mean;
-
-                        float variance = 0.0f;
-                        for (int j = 0; j < self_d_model; j++) {
-                            float diff = row_in[j] - mean;
-                            variance += diff * diff;
-                        }
-                        variance /= self_d_model;
-                        inv_stds[i] = 1.0f / std::sqrt(variance + self_epsilon);
-                    }
-                }
-
-                Tensor dGamma(1, self_d_model);
-                Tensor dBeta(1, self_d_model);
-                dGamma.fill(0.0f);
-                dBeta.fill(0.0f);
-
-                Tensor dInput = is_3d ? Tensor(batch_size, rows, self_d_model) : Tensor(rows, self_d_model);
-                dInput.fill(0.0f);
-
-                const float* output_grad_data = output_grad_cpu.raw();
-                const float* gamma_data = gamma_cpu.raw();
-                float* dGamma_data = dGamma.raw();
-                float* dBeta_data = dBeta.raw();
-                float* dInput_data = dInput.raw();
-
-                std::cerr << "[DEBUG] LayerNorm BW: Computing gradients" << std::endl;
-                if (is_3d) {
-                    for (int b = 0; b < batch_size; b++) {
-                        const int batch_offset = b * rows * self_d_model;
-                        for (int i = 0; i < rows; i++) {
-                            const int row_idx = b * rows + i;
-                            const float std_inv = inv_stds[row_idx];
-                            const float variance = (1.0f / (std_inv * std_inv)) - self_epsilon;
-                            const float mean = means[row_idx];
-                            const float* dout_row = output_grad_data + batch_offset + i * self_d_model;
-                            const float* input_row = input_data + batch_offset + i * self_d_model;
-
-                            float dvar = 0.0f;
-                            for (int j = 0; j < self_d_model; j++) {
-                                const float x_minus_mean = input_row[j] - mean;
-                                const float normalized_ij = x_minus_mean * std_inv;
-                                dGamma_data[j] += dout_row[j] * normalized_ij;
-                                dBeta_data[j] += dout_row[j];
-                                const float dnorm = dout_row[j] * gamma_data[j];
-                                dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
-                            }
-
-                            float dmean = 0.0f;
-                            for (int j = 0; j < self_d_model; j++) {
-                                const float dnorm = dout_row[j] * gamma_data[j];
-                                const float x_minus_mean = input_row[j] - mean;
-                                dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d_model;
-                            }
-
-                            float* dInput_row = dInput_data + batch_offset + i * self_d_model;
-                            for (int j = 0; j < self_d_model; j++) {
-                                const float dnorm = dout_row[j] * gamma_data[j];
-                                const float x_minus_mean = input_row[j] - mean;
-                                dInput_row[j] = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
-                            }
-                        }
-                    }
-                } else {
-                    for (int i = 0; i < rows; i++) {
-                        const float std_inv = inv_stds[i];
-                        const float variance = (1.0f / (std_inv * std_inv)) - self_epsilon;
-                        const float mean = means[i];
-                        const float* dout_row = output_grad_data + i * self_d_model;
-                        const float* input_row = input_data + i * self_d_model;
-
-                        float dvar = 0.0f;
-                        for (int j = 0; j < self_d_model; j++) {
-                            const float x_minus_mean = input_row[j] - mean;
-                            const float normalized_ij = x_minus_mean * std_inv;
-                            dGamma_data[j] += dout_row[j] * normalized_ij;
-                            dBeta_data[j] += dout_row[j];
-                            const float dnorm = dout_row[j] * gamma_data[j];
-                            dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
-                        }
-
-                        float dmean = 0.0f;
-                        for (int j = 0; j < self_d_model; j++) {
-                            const float dnorm = dout_row[j] * gamma_data[j];
-                            const float x_minus_mean = input_row[j] - mean;
-                            dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d_model;
-                        }
-
-                        float* dInput_row = dInput_data + i * self_d_model;
-                        for (int j = 0; j < self_d_model; j++) {
-                            const float dnorm = dout_row[j] * gamma_data[j];
-                            const float x_minus_mean = input_row[j] - mean;
-                            dInput_row[j] = dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d_model + dmean / self_d_model;
-                        }
-                    }
-                }
-
-                std::cerr << "[DEBUG] LayerNorm BW: Accumulating gradients" << std::endl;
-                if (self_gamma->getData().getDevice() == Device::CUDA) {
-                    self_gamma->getGrad().add_inplace(dGamma.to(Device::CUDA));
-                } else {
-                    self_gamma->getGrad().add_inplace(dGamma);
-                }
-
-                if (self_beta->getData().getDevice() == Device::CUDA) {
-                    self_beta->getGrad().add_inplace(dBeta.to(Device::CUDA));
-                } else {
-                    self_beta->getGrad().add_inplace(dBeta);
-                }
-
-                if (self_input->getData().getDevice() == Device::CUDA) {
-                    self_input->getGrad().add_inplace(dInput.to(Device::CUDA));
-                } else {
-                    self_input->getGrad().add_inplace(dInput);
-                }
-                std::cerr << "[DEBUG] LayerNorm BW: Done" << std::endl;
-            });
-        }
-        return output;
-    }
-
     if (!input_tensor.getIs3D()) {
         //2D case
         int rows = input_tensor.getRows();
-        result = Tensor(rows, d_model, Device::CPU);
-
+        Tensor result(rows, d_model);
+        
         const float* input_data = input_tensor.raw();
         const float* gamma_data = gamma->getData().raw();
         const float* beta_data = beta->getData().raw();
         float* result_data = result.raw();
-
-        means.resize(rows);
-        inv_stds.resize(rows);
+        
+        std::vector<float> means(rows);
+        std::vector<float> inv_stds(rows);
 
         for (int i = 0; i < rows; i++) {
             const float* row_in = input_data + i * d_model;
@@ -324,23 +127,9 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                     }
                 }
 
-                if (self_gamma->getData().getDevice() == Device::CUDA) {
-                    self_gamma->getGrad().add_inplace(dGamma.to(Device::CUDA));
-                } else {
-                    self_gamma->getGrad().add_inplace(dGamma);
-                }
-
-                if (self_beta->getData().getDevice() == Device::CUDA) {
-                    self_beta->getGrad().add_inplace(dBeta.to(Device::CUDA));
-                } else {
-                    self_beta->getGrad().add_inplace(dBeta);
-                }
-
-                if (self_input->getData().getDevice() == Device::CUDA) {
-                    self_input->getGrad().add_inplace(dInput.to(Device::CUDA));
-                } else {
-                    self_input->getGrad().add_inplace(dInput);
-                }
+                self_gamma->getGrad().add_inplace(dGamma);
+                self_beta->getGrad().add_inplace(dBeta);
+                self_input->getGrad().add_inplace(dInput);
             });
         }
 
@@ -350,17 +139,17 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         // 3D case
         int batch_size = input_tensor.getBatchSize();
         int seq_len = input_tensor.getRows();
-
-        result = Tensor(batch_size, seq_len, d_model, Device::CPU);
-
+        
+        Tensor result(batch_size, seq_len, d_model);
+        
         const float* input_data = input_tensor.raw();
         const float* gamma_data = gamma->getData().raw();
         const float* beta_data = beta->getData().raw();
         float* result_data = result.raw();
-
+        
         int total_rows = batch_size * seq_len;
-        means.resize(total_rows);
-        inv_stds.resize(total_rows);
+        std::vector<float> means(total_rows);
+        std::vector<float> inv_stds(total_rows);
 
         for (int b = 0; b < batch_size; b++) {
             const int batch_offset = b * seq_len * d_model;
@@ -466,23 +255,9 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                     }
                 }
 
-                if (self_gamma->getData().getDevice() == Device::CUDA) {
-                    self_gamma->getGrad().add_inplace(dGamma.to(Device::CUDA));
-                } else {
-                    self_gamma->getGrad().add_inplace(dGamma);
-                }
-
-                if (self_beta->getData().getDevice() == Device::CUDA) {
-                    self_beta->getGrad().add_inplace(dBeta.to(Device::CUDA));
-                } else {
-                    self_beta->getGrad().add_inplace(dBeta);
-                }
-
-                if (self_input->getData().getDevice() == Device::CUDA) {
-                    self_input->getGrad().add_inplace(dInput.to(Device::CUDA));
-                } else {
-                    self_input->getGrad().add_inplace(dInput);
-                }
+                self_gamma->getGrad().add_inplace(dGamma);
+                self_beta->getGrad().add_inplace(dBeta);
+                self_input->getGrad().add_inplace(dInput);
             });
         }
         return output;

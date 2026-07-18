@@ -16,8 +16,8 @@ std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> in
     auto normed1 = norm1.forward(input);
     auto attention_output = attention.forward(normed1, training);
     auto residual1 = input->add(attention_output);
+
     auto normed2 = norm2.forward(residual1);
     auto ffn_output = ffn.forward(normed2, training);
-    auto result = residual1->add(ffn_output);
-    return result;
+    return residual1->add(ffn_output);
 }
