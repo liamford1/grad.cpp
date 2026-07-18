@@ -11,6 +11,51 @@
 #include <string>
 #include <chrono>
 
+std::string read_text_file(const std::string& data_path) {
+    std::cout << "Reading " << data_path << "..." << std::flush;
+    auto start = std::chrono::high_resolution_clock::now();
+    std::ifstream file(data_path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open " + data_path);
+    }
+    std::string text((std::istreambuf_iterator<char>(file)),
+                     std::istreambuf_iterator<char>());
+    file.close();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    std::cout << " " << (text.size() / 1024) << "KB (" << ms << "ms)" << std::endl;
+    return text;
+}
+
+void load_tokenizer(const std::string& text,
+                    const std::string& cache_prefix,
+                    int vocab_size,
+                    BPETokenizer& tokenizer) {
+    std::string cache_file = cache_prefix + "_" + std::to_string(vocab_size) + ".cache";
+    std::ifstream cache_check(cache_file);
+
+    if (cache_check.good()) {
+        cache_check.close();
+        std::cout << "Loading tokenizer from cache..." << std::flush;
+        auto start = std::chrono::high_resolution_clock::now();
+        tokenizer.load(cache_file);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cout << " done (" << ms << "ms)" << std::endl;
+    } else {
+        std::cout << "Training new tokenizer..." << std::flush;
+        auto start = std::chrono::high_resolution_clock::now();
+        tokenizer.train(text);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cout << " done (" << ms << "ms)" << std::endl;
+        tokenizer.save(cache_file);
+        std::cout << "Cached to " << cache_file << std::endl;
+    }
+
+    std::cout << "Vocab size: " << tokenizer.getCurrentVocabSize() << std::endl;
+}
+
 void load_data_and_tokenizer(const std::string& data_path,
                               const std::string& cache_prefix,
                               int vocab_size,
@@ -19,48 +64,14 @@ void load_data_and_tokenizer(const std::string& data_path,
                               std::vector<int>& tokens) {
     utils::print_section("Loading Data");
 
-    std::cout << "Reading " << data_path << "..." << std::flush;
-    auto start = std::chrono::high_resolution_clock::now();
-    std::ifstream file(data_path);
-    if (!file.is_open()) {
-        throw std::runtime_error("Cannot open " + data_path);
-    }
-    text = std::string((std::istreambuf_iterator<char>(file)),
-                       std::istreambuf_iterator<char>());
-    file.close();
-    auto end = std::chrono::high_resolution_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << " " << (text.size() / 1024) << "KB (" << ms << "ms)" << std::endl;
-
-    std::string cache_file = cache_prefix + "_" + std::to_string(vocab_size) + ".cache";
-    std::ifstream cache_check(cache_file);
-
-    if (cache_check.good()) {
-        cache_check.close();
-        std::cout << "Loading tokenizer from cache..." << std::flush;
-        start = std::chrono::high_resolution_clock::now();
-        tokenizer.load(cache_file);
-        end = std::chrono::high_resolution_clock::now();
-        ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-        std::cout << " done (" << ms << "ms)" << std::endl;
-    } else {
-        std::cout << "Training new tokenizer..." << std::flush;
-        start = std::chrono::high_resolution_clock::now();
-        tokenizer.train(text);
-        end = std::chrono::high_resolution_clock::now();
-        ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-        std::cout << " done (" << ms << "ms)" << std::endl;
-        tokenizer.save(cache_file);
-        std::cout << "Cached to " << cache_file << std::endl;
-    }
-
-    std::cout << "Vocab size: " << tokenizer.getCurrentVocabSize() << std::endl;
+    text = read_text_file(data_path);
+    load_tokenizer(text, cache_prefix, vocab_size, tokenizer);
 
     std::cout << "Encoding text..." << std::flush;
-    start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
     tokens = tokenizer.encode(text);
-    end = std::chrono::high_resolution_clock::now();
-    ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::cout << " " << tokens.size() << " tokens (" << ms << "ms)" << std::endl;
 }
 
@@ -94,14 +105,44 @@ void generate_samples(GPTModel& model, BPETokenizer& tokenizer) {
     }
 }
 
-int main() {
+int run_generation(const std::string& checkpoint_path, const std::string& prompt) {
+    std::cout << "\nTransformer Generation\n" << std::endl;
+
+    try {
+        const int vocab_size = 5000;
+
+        BPETokenizer tokenizer(vocab_size);
+        std::string text = read_text_file("data/shakespeare.txt");
+        load_tokenizer(text, "tokenizer", vocab_size, tokenizer);
+
+        utils::print_section("Loading Model");
+        GPTModel model = GPTModel::load(checkpoint_path);
+
+        TextGen generator(model, &tokenizer);
+        auto prompt_tokens = tokenizer.encode(prompt);
+
+        std::cout << "\n--- Greedy Decoding ---\n" << std::endl;
+        std::cout << "Prompt: \"" << prompt << "\"" << std::endl;
+        std::cout << generator.generate_greedy(prompt_tokens, 150) << std::endl;
+
+        std::cout << "\n--- Sampling (temp=0.8) ---\n" << std::endl;
+        std::cout << "Prompt: \"" << prompt << "\"" << std::endl;
+        std::cout << generator.generate_sample(prompt_tokens, 0.8f, 150) << std::endl;
+
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "\nError: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+int run_training(bool fast_mode) {
     std::cout << "\nTransformer Training\n" << std::endl;
 
     try {
-        const bool FAST_MODE = false;
-        const int vocab_size = FAST_MODE ? 500 : 5000;
-        const int num_steps = FAST_MODE ? 50 : 50000;
-        const int seq_length = FAST_MODE ? 64 : 96;
+        const int vocab_size = fast_mode ? 500 : 5000;
+        const int num_steps = fast_mode ? 50 : 50000;
+        const int seq_length = fast_mode ? 64 : 96;
 
         std::string text;
         BPETokenizer tokenizer(vocab_size);
@@ -125,7 +166,7 @@ int main() {
         config.warmup_steps = 500;
         config.num_steps = num_steps;
         config.checkpoint_interval = 2500;
-        config.checkpoint_prefix = "shakespeare";
+        config.checkpoint_prefix = fast_mode ? "shakespeare_fast" : "shakespeare";
 
         auto start = std::chrono::high_resolution_clock::now();
         GPTModel model(config.vocab_size, config.d_model, config.num_layers,
@@ -156,4 +197,26 @@ int main() {
         std::cerr << "\nError: " << e.what() << std::endl;
         return 1;
     }
+}
+
+int main(int argc, char* argv[]) {
+    std::string mode = (argc > 1) ? argv[1] : "";
+
+    if (mode == "train") {
+        return run_training(false);
+    }
+    if (mode == "train-fast") {
+        return run_training(true);
+    }
+    if (mode == "generate") {
+        std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
+        std::string prompt = (argc > 3) ? argv[3] : "ROMEO:\n";
+        return run_generation(checkpoint, prompt);
+    }
+
+    std::cerr << "Usage: " << argv[0] << " <mode>\n"
+              << "  train                            full training run on data/shakespeare.txt\n"
+              << "  train-fast                       small config for a quick smoke test\n"
+              << "  generate [checkpoint] [prompt]   sample from a saved checkpoint\n";
+    return 1;
 }

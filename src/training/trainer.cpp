@@ -88,7 +88,9 @@ void Trainer::training_step(int step) {
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();
 
-    metrics_->print_progress(step, loss_val);
+    if (step % 10 == 0) {
+        metrics_->print_progress(step, loss_val);
+    }
 }
 
 void Trainer::save_checkpoint(const std::string& path) {
