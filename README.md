@@ -1,134 +1,114 @@
-# Transformer From Scratch (C++17)
+# transformer-from-scratch
 
-A minimal yet complete Transformer/GPT-style model implemented entirely from scratch in modern C++ (C++17). No deep learning frameworks or external numerical libraries—just raw tensors, autograd, attention, optimizer, and a tiny tokenizer to demonstrate end-to-end training and inference mechanics.
+[![CI](https://github.com/liamford1/transformer-from-scratch/actions/workflows/ci.yml/badge.svg)](https://github.com/liamford1/transformer-from-scratch/actions/workflows/ci.yml)
 
-This project is designed to highlight systems-level understanding: memory layout, numerics, backprop, and training loops, all in clean, readable C++.
+A GPT-style language model implemented from scratch in C++17 — tensors, reverse-mode autograd, multi-head attention, Adam, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
 
+A ~22M-parameter model trained with this code on the Tiny Shakespeare corpus produces text like this (sampled at temperature 0.8; line breaks added at speaker changes for readability, text otherwise unedited):
 
-## Highlights
-- **From-scratch tensors and autograd**: `Tensor`, `Variable`, and reverse-mode autodiff with gradient clipping.
-- **Transformer components**: `MultiHeadAttention`, `FeedForward`, `LayerNorm`, `TokenEmbedding`, `PositionalEncoding`, and `TransformerBlock` assembled into a `GPTModel`.
-- **Training utilities**: Simple `Dataset` and `DataLoader` for batching synthetic sequences.
-- **Tokenizer**: A small `BPE` tokenizer implementation (header and source) to illustrate tokenization infrastructure.
-- **Zero third‑party dependencies**: Pure C++17, portable, and easy to read.
+> **JULIET:** me, will find in my heart my friends, And I say it is be a rap o' not the gravly up the sacance show it be lot, But thou wastenes.
+> **ISABELLA:** Not him all women With common.
+> **CORIOLANUS:** Thou didst: Then say forth to helps; but I know and honour of's lave you; whether sir!
+> **LUCIO:** She that hath made buriedion.
+> **QUEEN ELIZABETH:** Falive a cup in A matchly wash'd by his soul!
 
+Not going to win a Pulitzer, but every gradient that trained it was derived and implemented by hand.
 
-## Repository Structure
-```
-include/
-  data/
-    dataloader.h
-    dataset.h
-  tokenizer/
-    bpe_tokenizer.h
-  transformer/
-    activations.h
-    attention.h
-    feedforward.h
-    gpt_model.h
-    layer_norm.h
-    linear.h
-    module.h
-    multihead_attention.h
-    optimizer.h
-    positional_encoding.h
-    tensor.h
-    text_gen.h
-    token_embedding.h
-    transformer_block.h
-    variable.h
-src/
-  data/
-    dataloader.cpp
-    dataset.cpp
-  tokenizer/
-    bpe_tokenizer.cpp
-  transformer/
-    activations.cpp
-    attention.cpp
-    feedforward.cpp
-    gpt_model.cpp
-    layer_norm.cpp
-    linear.cpp
-    multihead_attention.cpp
-    optimizer.cpp
-    positional_encoding.cpp
-    tensor.cpp
-    text_gen.cpp
-    token_embedding.cpp
-    transformer_block.cpp
-    variable.cpp
-  main.cpp
-CMakeLists.txt
-```
+## What's inside
 
+- **Tensor library** (`tensor.h/cpp`) — 2D/3D float tensors with BLAS-backed matmul, broadcasting, and numerically stable softmax/log-softmax
+- **Reverse-mode autograd** (`variable.h/cpp`) — dynamic computation graph with hand-derived backward passes for every op, validated against numerical gradients
+- **Transformer components** — multi-head self-attention with causal masking, pre-LayerNorm residual blocks, GELU feed-forward, learned positional embeddings, and weight tying between the token embedding and the output projection
+- **BPE tokenizer** — byte-pair encoding trained on the corpus, with caching so repeat runs start instantly
+- **Training stack** — Adam with linear warmup, gradient clipping, dropout, a shuffling DataLoader, checkpoint save/load, and live loss/grad-norm metrics
+- **Text generation** — greedy decoding and sampling with temperature, top-k, top-p, and a repetition penalty
 
-## What the Demo Does
-The entry point `src/main.cpp` runs two self-contained trainings to verify correctness:
+About 5,400 lines of implementation and 1,200 lines of tests.
 
-- **Overfitting test** (`train_overfitting_test()`):
-  - Teaches a tiny GPT model to memorize a short sequence `[1,2,3,4,5]`.
-  - Prints loss and gradient norms to validate gradient flow and learning.
-  - Reports final token predictions and accuracy.
+## Model architecture
 
-- **Mini-batch training with DataLoader** (`train_with_dataloader()`):
-  - Trains on a synthetic token stream with batching via `DataLoader`.
-  - Logs per-batch loss and average epoch loss, demonstrating stable multi-batch training.
+The trained checkpoint uses a standard GPT-style decoder-only configuration:
 
-Hyperparameters in these demos are set directly inside `src/main.cpp` for clarity and easy experimentation.
+| | |
+|---|---|
+| Parameters | ~22M |
+| Layers | 6 (pre-LN residual blocks) |
+| Model width | 512 |
+| Attention heads | 8 |
+| FFN width | 2048 (GELU) |
+| Vocabulary | 5,000 BPE tokens |
+| Context length | 96 tokens at training time (1,024 max) |
+| Optimizer | Adam, lr 3e-4, 500 warmup steps, grad clip 5.0 |
 
+## Build and run
 
-## Build and Run
-Prerequisites: **CMake ≥ 3.16** and a **C++17** compiler (e.g., clang or gcc). Tested on macOS.
+Requires CMake ≥ 3.16 and a C++17 compiler. On Linux, install OpenBLAS first (`sudo apt-get install libopenblas-dev`); macOS uses the built-in Accelerate framework.
 
 ```bash
-# Configure and build
-cmake -S . -B build
+cmake -S . -B build -DBUILD_TESTS=ON
 cmake --build build -j
-
-# Run (single-config generators typically place the binary directly in build/)
-./build/transformer
-
-# If you are using a multi-config generator (Xcode, MSVC), the binary may be under a config dir, e.g.:
-# ./build/Debug/transformer
 ```
 
-Expected console output includes clear progress for both training phases, example losses, gradient norms, and a final success/partial/failure message for the overfitting test.
+Three modes:
 
+```bash
+# Quick end-to-end smoke test: trains a tiny model for 50 steps (~1 min)
+./build/transformer train-fast
 
-## Key Files to Explore
-- **`src/main.cpp`**: Training loops and demonstration harness.
-- **`include/transformer/gpt_model.h`**: Model composition of blocks/attention/embeddings.
-- **`include/transformer/multihead_attention.h`**: Scaled dot-product attention across heads.
-- **`include/transformer/variable.h` / `include/transformer/tensor.h`**: Autograd and tensor core.
-- **`include/transformer/optimizer.h`**: Adam with gradient clipping.
-- **`include/data/*`**: Minimal dataset/dataloader abstractions.
-- **`include/tokenizer/bpe_tokenizer.h`**: Tiny BPE tokenizer (not required for the demos but illustrates extensibility).
+# Full training run on Tiny Shakespeare (produces shakespeare_final.bin)
+./build/transformer train
 
+# Sample from a trained checkpoint
+./build/transformer generate shakespeare_final.bin "ROMEO:"
+```
 
-## Design Notes
-- **Simplicity first**: The code favors readability and pedagogy over micro-optimizations.
-- **Deterministic flow**: No external randomness beyond basic initialization; easy to trace.
-- **No hidden magic**: Every operation—forward, backward, parameter update—is explicit and inspectable.
+The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.
 
+## Tests
 
-## Possible Extensions
-- Hook up the BPE tokenizer and train on real text.
-- Add dropout, weight decay, and learning rate schedulers.
-- Introduce mixed precision or vectorized kernels for speed.
-- Save/load checkpoints and export weights.
+```bash
+ctest --test-dir build --output-on-failure
+```
 
+The test suite checks the parts that are easiest to get silently wrong:
 
-## Limitations
-- CPU-only, educational scale; not optimized for large datasets or long contexts.
-- Demos use synthetic data with hyperparameters in code for clarity.
+- **Gradient checking** — analytical gradients from the autograd engine compared against central-difference numerical gradients, for individual ops through full attention blocks
+- **Attention bias, weight tying, dropout** — verification of specific architectural behaviors
+- `tests/integration/sanity_tests.cpp` — end-to-end training runs that must show decreasing loss
 
+CI runs the full suite plus a training smoke test on macOS and Linux.
 
-## How This Project Demonstrates Skill
-- Systems-level ML engineering in C++: building tensors/autograd/optimizers from first principles.
-- Clear software structure with modular headers and source files.
-- Reproducible training demos that validate correctness without external dependencies.
+## Design notes
 
+- **Explicitness over abstraction.** Every forward and backward pass is readable C++ — no expression templates, no code generation. The autograd graph is a DAG of `Variable` nodes holding closures for their backward functions; `backward()` topologically sorts and walks it.
+- **Numerics matter.** Softmax and log-softmax use the max-subtraction trick; the loss path computes log-softmax + NLL rather than softmax + log; gradient checks catch regressions.
+- **Performance where it counts.** Profiling showed matmul dominating, so it delegates to BLAS (`blas_wrapper.h`); everything else stays simple. The BPE tokenizer caches merges to make encoding runs fast.
+- **The training loop is honest.** Loss decreases because the math is right, not because a framework fixed it — a full training run on an M2 Pro takes hours, and produced the sample above.
+
+## Repository layout
+
+```
+include/, src/
+  transformer/   tensor, variable (autograd), attention, layer_norm,
+                 feedforward, embeddings, transformer_block, gpt_model,
+                 optimizer, text_gen
+  tokenizer/     BPE tokenizer
+  data/          dataset + batching dataloader
+  training/      trainer (loop, checkpointing)
+  utils/         metrics, training helpers
+tests/
+  unit/          gradient checks and component tests
+  integration/   end-to-end sanity tests
+data/            Tiny Shakespeare corpus (~1.1MB)
+```
+
+## Limitations and roadmap
+
+- CPU-only. A CUDA port was attempted and rolled back (see git history) — a GPU backend done properly, likely Metal on Apple Silicon, is the most interesting next step.
+- No KV cache during generation, so sampling recomputes the full prefix each token.
+- Single-threaded outside of BLAS.
+- Educational scale: don't expect it to replace your favorite inference engine.
 
 ## License
-No license specified. If you intend to use this code beyond evaluation, please add an appropriate license file.
+
+MIT
