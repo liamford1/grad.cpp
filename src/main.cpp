@@ -155,15 +155,15 @@ int run_training(bool fast_mode) {
 
         training::TrainingConfig config;
         config.vocab_size = tokenizer.getCurrentVocabSize();
-        config.d_model = 512;
-        config.num_layers = 6;
-        config.num_heads = 8;
+        config.d_model = fast_mode ? 128 : 512;
+        config.num_layers = fast_mode ? 2 : 6;
+        config.num_heads = fast_mode ? 4 : 8;
         config.max_len = 1024;
         config.seq_length = seq_length;
-        config.batch_size = 8;
+        config.batch_size = fast_mode ? 4 : 8;
         config.learning_rate = 3e-4f;
         config.dropout = 0.1f;
-        config.warmup_steps = 500;
+        config.warmup_steps = fast_mode ? 10 : 500;
         config.num_steps = num_steps;
         config.checkpoint_interval = 2500;
         config.checkpoint_prefix = fast_mode ? "shakespeare_fast" : "shakespeare";

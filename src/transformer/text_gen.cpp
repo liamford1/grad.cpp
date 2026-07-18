@@ -17,6 +17,9 @@ std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int 
         auto input = Variable::create(input_tensor, false);
         auto logits_var = model.forward(input, false);
         Tensor logits = logits_var->getData();
+        // Backward closures capture shared_ptrs to their own nodes, so the
+        // graph only frees once its cycles are broken - same as the trainer.
+        logits_var->release_graph();
 
         int last_token = tokens.size() - 1;
         Tensor last_token_logits(1, logits.getCols());
@@ -64,6 +67,7 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
         auto input = Variable::create(input_tensor, false);
         auto logits_var = model.forward(input, false);
         Tensor logits = logits_var->getData();
+        logits_var->release_graph();
 
         int last_token = tokens.size() - 1;
         Tensor last_token_logits(1, logits.getCols());
