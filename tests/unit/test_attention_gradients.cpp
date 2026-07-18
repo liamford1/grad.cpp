@@ -18,8 +18,10 @@ float numerical_gradient_2d(
     input->getData().setValue(input_idx_i, input_idx_j, original + epsilon);
     auto output_plus = attention.forward(input, false);
 
-    // Compute scalar loss (sum of all outputs)
-    float loss_plus = 0.0f;
+    // Compute scalar loss (sum of all outputs).
+    // Accumulate in double: summing ~1000 floats in float loses enough
+    // precision to swamp small gradients in the central difference.
+    double loss_plus = 0.0;
     int seq_len = output_plus->getData().getRows();
     int d_model = output_plus->getData().getCols();
     for (int i = 0; i < seq_len; i++) {
@@ -33,7 +35,7 @@ float numerical_gradient_2d(
     auto output_minus = attention.forward(input, false);
 
     // Compute scalar loss
-    float loss_minus = 0.0f;
+    double loss_minus = 0.0;
     for (int i = 0; i < seq_len; i++) {
         for (int j = 0; j < d_model; j++) {
             loss_minus += output_minus->getData().getValue(i, j);
@@ -44,7 +46,7 @@ float numerical_gradient_2d(
     input->getData().setValue(input_idx_i, input_idx_j, original);
 
     // Numerical gradient
-    return (loss_plus - loss_minus) / (2.0f * epsilon);
+    return static_cast<float>((loss_plus - loss_minus) / (2.0 * epsilon));
 }
 
 // Numerical gradient computation for 3D tensors
@@ -61,8 +63,9 @@ float numerical_gradient_3d(
         input->getData().setValue(input_idx_i, input_idx_j, input_idx_k, original + epsilon);
         auto output_plus = attention.forward(input, false);
 
-        // Compute scalar loss (sum of all outputs)
-        float loss_plus = 0.0f;
+        // Compute scalar loss (sum of all outputs) in double, see
+        // numerical_gradient_2d for why
+        double loss_plus = 0.0;
         int batch_size = output_plus->getData().getBatchSize();
         int seq_len = output_plus->getData().getRows();
         int d_model = output_plus->getData().getCols();
@@ -79,7 +82,7 @@ float numerical_gradient_3d(
         auto output_minus = attention.forward(input, false);
 
         // Compute scalar loss
-        float loss_minus = 0.0f;
+        double loss_minus = 0.0;
         for (int b = 0; b < batch_size; b++) {
             for (int i = 0; i < seq_len; i++) {
                 for (int j = 0; j < d_model; j++) {
@@ -92,7 +95,7 @@ float numerical_gradient_3d(
         input->getData().setValue(input_idx_i, input_idx_j, input_idx_k, original);
 
         // Numerical gradient
-        return (loss_plus - loss_minus) / (2.0f * epsilon);
+        return static_cast<float>((loss_plus - loss_minus) / (2.0 * epsilon));
 
     } catch (const std::exception& e) {
         std::cerr << "\n!!! ERROR in numerical gradient computation !!!" << std::endl;

@@ -79,13 +79,13 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -DDEBUG")
 # Release flags - MAXIMUM PERFORMANCE
 if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
     # Apple Clang / Clang (for Mac M1/M2/Intel)
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops -fno-math-errno")
     message(STATUS "Using Clang optimizations for Mac")
     
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # GCC (for Linux)
     set(CMAKE_CXX_FLAGS_RELEASE 
-        "-O3 -DNDEBUG -march=native -ffast-math -funroll-loops -fno-math-errno -flto"
+        "-O3 -DNDEBUG -march=native -funroll-loops -fno-math-errno -flto"
     )
     message(STATUS "Using GCC optimizations")
     

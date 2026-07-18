@@ -3,13 +3,14 @@
 // Cross-platform BLAS + vDSP Wrapper
 #if defined(__APPLE__)
     #include <Accelerate/Accelerate.h>
+#else
+    #include <cblas.h>
 #endif
 
 inline void blas_sgemm(const float* A, const float* B, float* C,
                        int M, int N, int K,
                        bool transA = false, bool transB = false)
 {
-#if defined(__APPLE__)
     int lda = transA ? M : K;
     int ldb = transB ? K : N;
     int ldc = N;
@@ -23,16 +24,6 @@ inline void blas_sgemm(const float* A, const float* B, float* C,
                 B, ldb,
                 0.0f,
                 C, ldc);
-#else
-    for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < N; ++j) {
-            float sum = 0.0f;
-            for (int k = 0; k < K; ++k)
-                sum += A[i*K + k] * B[k*N + j];
-            C[i*N + j] = sum;
-        }
-    }
-#endif
 }
 
 // vDSP-style Vector Operations
