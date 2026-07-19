@@ -246,6 +246,7 @@ int run_training(bool fast_mode) {
         config.num_steps = num_steps;
         config.checkpoint_interval = 2500;
         config.checkpoint_prefix = fast_mode ? "shakespeare_fast" : "shakespeare";
+        config.eval_interval = fast_mode ? 25 : 250;
 
         auto start = std::chrono::high_resolution_clock::now();
         GPTModel model(config.vocab_size, config.d_model, config.num_layers,
@@ -260,11 +261,26 @@ int run_training(bool fast_mode) {
         std::cout << "Model initialized (" << ms << "ms)" << std::endl;
         std::cout << "Parameters: " << (total_params / 1e6f) << "M" << std::endl;
 
-        auto dataset = std::make_shared<TextDataset>(tokens, config.seq_length);
-        DataLoader loader(dataset, config.batch_size, true);
-        std::cout << "Dataset: " << dataset->size() << " sequences\n" << std::endl;
+        // Hold out the last 5% of the corpus for validation. The split is
+        // contiguous, so no training window ever overlaps validation text -
+        // val perplexity measures generalization, not memorization.
+        size_t split = tokens.size() * 95 / 100;
+        std::vector<int> train_tokens(tokens.begin(), tokens.begin() + split);
+        std::vector<int> val_tokens(tokens.begin() + split, tokens.end());
 
-        training::Trainer trainer(config, model, loader, tokenizer);
+        auto dataset = std::make_shared<TextDataset>(train_tokens, config.seq_length);
+        DataLoader loader(dataset, config.batch_size, true);
+
+        // Non-overlapping windows: evaluation covers the whole held-out
+        // slice once, deterministically.
+        auto val_dataset = std::make_shared<TextDataset>(val_tokens, config.seq_length,
+                                                         config.seq_length);
+        DataLoader val_loader(val_dataset, config.batch_size, false);
+
+        std::cout << "Dataset: " << dataset->size() << " train / "
+                  << val_dataset->size() << " val sequences\n" << std::endl;
+
+        training::Trainer trainer(config, model, loader, tokenizer, &val_loader);
         trainer.train();
 
         generate_samples(model, tokenizer);

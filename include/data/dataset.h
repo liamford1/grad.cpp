@@ -14,8 +14,12 @@ class TextDataset : public Dataset {
     private:
         std::vector<int> token_ids_;
         int seq_length_;
+        int stride_;
     public:
-        TextDataset(const std::vector<int>& tokens, int seq_length_);
+        // stride = 1 gives every sliding window (training); stride =
+        // seq_length gives non-overlapping windows (deterministic full
+        // coverage for evaluation).
+        TextDataset(const std::vector<int>& tokens, int seq_length, int stride = 1);
 
         size_t size() const override;
 

@@ -24,6 +24,7 @@ struct TrainingConfig {
     int num_steps;
     int checkpoint_interval;
     std::string checkpoint_prefix;
+    int eval_interval = 250;  // steps between validation runs (0 = never)
 };
 
 class Trainer {
@@ -31,16 +32,22 @@ public:
     Trainer(const TrainingConfig& config,
             GPTModel& model,
             DataLoader& loader,
-            BPETokenizer& tokenizer);
+            BPETokenizer& tokenizer,
+            DataLoader* val_loader = nullptr);
 
     void train();
     void save_checkpoint(const std::string& path);
+
+    // Mean loss over the whole validation set (forward-only, no dropout).
+    // Perplexity is exp of this. Returns -1 if there is no val loader.
+    float evaluate();
 
 private:
     TrainingConfig config_;
     GPTModel& model_;
     DataLoader& loader_;
     BPETokenizer& tokenizer_;
+    DataLoader* val_loader_;
     std::unique_ptr<AdamOptimizer> optimizer_;
     std::unique_ptr<utils::TrainingMetrics> metrics_;
 

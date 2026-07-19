@@ -1,6 +1,7 @@
 #include "training/trainer.h"
 #include "utils/training_utils.h"
 #include "transformer/variable.h"
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <chrono>
@@ -10,8 +11,10 @@ namespace training {
 Trainer::Trainer(const TrainingConfig& config,
                  GPTModel& model,
                  DataLoader& loader,
-                 BPETokenizer& tokenizer)
-    : config_(config), model_(model), loader_(loader), tokenizer_(tokenizer) {
+                 BPETokenizer& tokenizer,
+                 DataLoader* val_loader)
+    : config_(config), model_(model), loader_(loader), tokenizer_(tokenizer),
+      val_loader_(val_loader) {
 
     auto params = model_.getAllParameters();
     optimizer_ = std::make_unique<AdamOptimizer>(params, config_.learning_rate,
@@ -44,6 +47,15 @@ void Trainer::train() {
     for (int step = 0; step < config_.num_steps; step++) {
         training_step(step);
 
+        if (val_loader_ && config_.eval_interval > 0
+            && step > 0 && step % config_.eval_interval == 0) {
+            float val_loss = evaluate();
+            std::cout << "  [step " << step
+                      << " | val loss " << std::fixed << std::setprecision(4) << val_loss
+                      << " | perplexity " << std::setprecision(1) << std::exp(val_loss)
+                      << "]" << std::defaultfloat << std::endl;
+        }
+
         if (step > 0 && step % config_.checkpoint_interval == 0) {
             std::string checkpoint_path = config_.checkpoint_prefix + "_step_" + std::to_string(step) + ".bin";
             save_checkpoint(checkpoint_path);
@@ -52,7 +64,35 @@ void Trainer::train() {
     }
 
     metrics_->print_summary();
+    if (val_loader_) {
+        float val_loss = evaluate();
+        std::cout << "Final val loss: " << val_loss
+                  << " | perplexity: " << std::exp(val_loss) << std::endl;
+    }
     save_checkpoint(config_.checkpoint_prefix + "_final.bin");
+}
+
+float Trainer::evaluate() {
+    if (!val_loader_) return -1.0f;
+
+    val_loader_->reset();
+    double total_loss = 0.0;
+    int batches = 0;
+
+    while (val_loader_->has_next()) {
+        auto batch = val_loader_->next_batch();
+        auto in = Variable::create(batch.input, false);
+        auto tgt = Variable::create(batch.target, false);
+
+        // Forward-only: training=false disables dropout. The graph is still
+        // built (parameters require grad), so release it.
+        auto logits = model_.forward(in, false);
+        auto loss = logits->log_softmax()->nll_loss(tgt);
+        total_loss += loss->getData().getValue(0, 0);
+        loss->release_graph();
+        batches++;
+    }
+    return batches > 0 ? static_cast<float>(total_loss / batches) : -1.0f;
 }
 
 void Trainer::training_step(int step) {
