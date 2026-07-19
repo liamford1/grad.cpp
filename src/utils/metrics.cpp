@@ -1,29 +1,43 @@
 #include "utils/metrics.h"
 #include "utils/training_utils.h"
+#include <cstdio>
 #include <iostream>
 #include <iomanip>
 
 namespace utils {
 
+namespace {
+std::string fixed_wall(double s) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.1f", s);
+    return buf;
+}
+}  // namespace
+
 MetricsLog::MetricsLog(const std::string& path, bool append,
-                       int total_steps, long tokens_per_step)
-    : out_(path, append ? std::ios::app : std::ios::trunc) {
+                       int total_steps, long tokens_per_step,
+                       long param_count, const std::string& model_desc)
+    : out_(path, append ? std::ios::app : std::ios::trunc),
+      start_(std::chrono::steady_clock::now()) {
     // The meta row repeats on resume; readers take the last one.
-    out_ << "m," << total_steps << "," << tokens_per_step << "\n";
+    out_ << "m," << total_steps << "," << tokens_per_step << ","
+         << param_count << "," << model_desc << "\n";
     maybe_flush(true);
 }
 
-void MetricsLog::log_step(int step, float loss, float lr,
-                          float grad_norm, bool has_grad_norm,
+double MetricsLog::wall_s() const {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - start_).count();
+}
+
+void MetricsLog::log_step(int step, float loss, float lr, float grad_norm,
                           long step_ms, long mem_mb) {
-    out_ << "t," << step << "," << loss << "," << lr << ",";
-    if (has_grad_norm) out_ << grad_norm;
-    out_ << "," << step_ms << "," << mem_mb << "\n";
+    out_ << "t," << step << "," << loss << "," << lr << "," << grad_norm
+         << "," << step_ms << "," << mem_mb << "," << fixed_wall(wall_s()) << "\n";
     maybe_flush();
 }
 
 void MetricsLog::log_eval(int step, float val_loss) {
-    out_ << "e," << step << "," << val_loss << "\n";
+    out_ << "e," << step << "," << val_loss << "," << fixed_wall(wall_s()) << "\n";
     maybe_flush(true);
 }
 

@@ -28,13 +28,17 @@ constexpr const char* DIM = "\033[38;5;240m";   // borders, axes
 constexpr const char* FAINT = "\033[38;5;238m"; // raw loss dots
 constexpr const char* CYAN = "\033[38;5;44m";   // loss EMA
 constexpr const char* MAG = "\033[38;5;177m";   // validation
-constexpr const char* YEL = "\033[38;5;221m";   // recent zoom
-constexpr const char* GRN = "\033[38;5;77m";    // good numbers
+constexpr const char* YEL = "\033[38;5;221m";   // recent zoom / grad norm
+constexpr const char* GRN = "\033[38;5;77m";    // throughput, progress
+constexpr const char* ORN = "\033[38;5;209m";   // learning rate
+constexpr const char* RED = "\033[38;5;203m";   // clip threshold
 constexpr const char* WHT = "\033[1;38;5;255m"; // key values
 constexpr const char* LBL = "\033[38;5;246m";   // labels
 
+constexpr float kClipNorm = 5.0f;  // optimizer's clip_grad_norm threshold
+
 // ------------------------------------------------------------------ data
-struct TrainRow { int step; float loss, lr, grad_norm, step_ms, mem_mb; bool has_gn; };
+struct TrainRow { int step; float loss, lr, grad_norm, step_ms, mem_mb, wall_s; };
 struct EvalRow { int step; float val_loss; };
 
 struct RunData {
@@ -42,48 +46,60 @@ struct RunData {
     std::vector<EvalRow> evals;
     int total_steps = 0;
     long tokens_per_step = 0;
+    long params = 0;
+    std::string desc;
+    double elapsed_s = 0;  // summed across resume segments
 };
 
 RunData parse_csv(const std::string& path) {
     RunData d;
     std::ifstream in(path);
     std::string line;
+    double seg_base = 0, prev_wall = 0;
     while (std::getline(in, line)) {
         if (line.size() < 3) continue;
         std::stringstream ss(line.substr(2));
-        std::string f[6];
-        for (int i = 0; i < 6 && std::getline(ss, f[i], ','); i++) {}
+        std::string f[8];
+        int n = 0;
+        while (n < 8 && std::getline(ss, f[n], ',')) n++;
         try {
-            if (line[0] == 'm') {
+            if (line[0] == 'm' && n >= 2) {
                 d.total_steps = std::stoi(f[0]);
                 d.tokens_per_step = std::stol(f[1]);
-            } else if (line[0] == 't') {
-                TrainRow r;
+                if (n >= 3) d.params = std::stol(f[2]);
+                if (n >= 4) d.desc = f[3];
+            } else if (line[0] == 't' && n >= 6) {
+                TrainRow r{};
                 r.step = std::stoi(f[0]);
                 r.loss = std::stof(f[1]);
                 r.lr = std::stof(f[2]);
-                r.has_gn = !f[3].empty();
-                r.grad_norm = r.has_gn ? std::stof(f[3]) : 0.0f;
+                r.grad_norm = f[3].empty() ? 0.0f : std::stof(f[3]);
                 r.step_ms = std::stof(f[4]);
                 r.mem_mb = std::stof(f[5]);
+                r.wall_s = (n >= 7) ? std::stof(f[6]) : 0.0f;
+                // wall_s restarts on resume; fold segments into one clock.
+                if (r.wall_s < prev_wall) seg_base += prev_wall;
+                prev_wall = r.wall_s;
                 d.train.push_back(r);
-            } else if (line[0] == 'e') {
+            } else if (line[0] == 'e' && n >= 2) {
                 d.evals.push_back({std::stoi(f[0]), std::stof(f[1])});
             }
         } catch (...) {
             // Partial last line while the trainer is mid-write; skip.
         }
     }
+    d.elapsed_s = seg_base + prev_wall;
     return d;
 }
 
 // -------------------------------------------------------- braille canvas
 // Each terminal cell holds a 2x4 grid of braille dots, so a WxH cell
-// canvas plots at 2W x 4H pixel resolution - the "technical" look.
+// canvas plots at 2W x 4H pixel resolution.
 struct Canvas {
     int W, H;
     std::vector<uint8_t> cells;
-    Canvas(int w, int h) : W(w), H(h), cells(static_cast<size_t>(w) * h, 0) {}
+    Canvas(int w, int h) : W(std::max(1, w)), H(std::max(1, h)),
+                           cells(static_cast<size_t>(W) * H, 0) {}
 
     void set(int px, int py) {
         if (px < 0 || py < 0 || px >= W * 2 || py >= H * 4) return;
@@ -91,71 +107,107 @@ struct Canvas {
         cells[static_cast<size_t>(py / 4) * W + px / 2] |= bit[py % 4][px % 2];
     }
 
-    // Vertical segment so steep polylines stay connected.
     void vline(int px, int py0, int py1) {
         if (py0 > py1) std::swap(py0, py1);
         for (int y = py0; y <= py1; y++) set(px, y);
     }
-
-    std::string row(int r) const {
-        std::string s;
-        for (int c = 0; c < W; c++) {
-            uint8_t v = cells[static_cast<size_t>(r) * W + c];
-            // UTF-8 encode U+2800+v
-            unsigned cp = 0x2800 + v;
-            s += static_cast<char>(0xE0 | (cp >> 12));
-            s += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-            s += static_cast<char>(0x80 | (cp & 0x3F));
-        }
-        return s;
-    }
 };
 
-// Map a (step, value) series onto canvas pixels and draw a connected line.
-void plot_line(Canvas& cv, const std::vector<std::pair<float, float>>& pts,
-               float x0, float x1, float y0, float y1) {
-    if (pts.empty() || x1 <= x0 || y1 <= y0) return;
-    const int PW = cv.W * 2, PH = cv.H * 4;
-    int prev_px = -1, prev_py = -1;
-    for (const auto& p : pts) {
-        int px = static_cast<int>((p.first - x0) / (x1 - x0) * (PW - 1) + 0.5f);
-        int py = static_cast<int>((1.0f - (p.second - y0) / (y1 - y0)) * (PH - 1) + 0.5f);
-        px = std::clamp(px, 0, PW - 1);
-        py = std::clamp(py, 0, PH - 1);
-        if (prev_px >= 0 && px == prev_px) {
-            cv.vline(px, std::min(prev_py, py), std::max(prev_py, py));
-        } else if (prev_px >= 0) {
-            for (int x = prev_px; x <= px; x++) {
-                float t = (px == prev_px) ? 0.0f : float(x - prev_px) / (px - prev_px);
-                int y = static_cast<int>(prev_py + t * (py - prev_py) + 0.5f);
-                cv.set(x, y);
-            }
-        } else {
-            cv.set(px, py);
+std::string braille_utf8(uint8_t v) {
+    unsigned cp = 0x2800 + v;
+    std::string s;
+    s += static_cast<char>(0xE0 | (cp >> 12));
+    s += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+    s += static_cast<char>(0x80 | (cp & 0x3F));
+    return s;
+}
+
+struct Series {
+    std::vector<std::pair<float, float>> pts;  // (x, y)
+    const char* color;
+    bool scatter = false;  // dots only, no connecting line
+};
+
+struct Range { float x0, x1, y0, y1; };
+
+Range fit_range(const std::vector<Series>& layers, float ypad_frac) {
+    Range r{1e30f, -1e30f, 1e30f, -1e30f};
+    for (const auto& s : layers) {
+        for (const auto& p : s.pts) {
+            r.x0 = std::min(r.x0, p.first);
+            r.x1 = std::max(r.x1, p.first);
+            r.y0 = std::min(r.y0, p.second);
+            r.y1 = std::max(r.y1, p.second);
         }
-        prev_px = px;
-        prev_py = py;
+    }
+    if (r.x1 <= r.x0) r.x1 = r.x0 + 1;
+    float pad = ypad_frac * (r.y1 - r.y0 + 1e-6f);
+    r.y0 -= pad;
+    r.y1 += pad;
+    return r;
+}
+
+void draw_series(Canvas& cv, const Series& s, const Range& r) {
+    const int PW = cv.W * 2, PH = cv.H * 4;
+    int ppx = -1, ppy = -1;
+    for (const auto& p : s.pts) {
+        int px = std::clamp(static_cast<int>((p.first - r.x0) / (r.x1 - r.x0) * (PW - 1) + 0.5f), 0, PW - 1);
+        int py = std::clamp(static_cast<int>((1.0f - (p.second - r.y0) / (r.y1 - r.y0)) * (PH - 1) + 0.5f), 0, PH - 1);
+        if (s.scatter || ppx < 0) {
+            cv.set(px, py);
+        } else if (px == ppx) {
+            cv.vline(px, std::min(ppy, py), std::max(ppy, py));
+        } else {
+            for (int x = ppx; x <= px; x++) {
+                float t = float(x - ppx) / (px - ppx);
+                cv.set(x, static_cast<int>(ppy + t * (py - ppy) + 0.5f));
+            }
+        }
+        ppx = px;
+        ppy = py;
     }
 }
 
-std::string sparkline(const std::vector<float>& v, int width) {
-    static const char* blocks[8] = {"▁", "▂", "▃", "▄",
-                                    "▅", "▆", "▇", "█"};
-    if (v.empty()) return std::string(width, ' ');
-    // Bucket the series into `width` columns.
-    float lo = *std::min_element(v.begin(), v.end());
-    float hi = *std::max_element(v.begin(), v.end());
-    std::string s;
-    for (int i = 0; i < width; i++) {
-        size_t a = static_cast<size_t>(i) * v.size() / width;
-        size_t b = std::max(a + 1, static_cast<size_t>(i + 1) * v.size() / width);
-        float m = 0;
-        for (size_t j = a; j < b && j < v.size(); j++) m += v[j];
-        m /= (b - a);
-        int lvl = (hi > lo) ? static_cast<int>((m - lo) / (hi - lo) * 7.99f) : 3;
-        s += blocks[std::clamp(lvl, 0, 7)];
+// Renders layered series into colored text rows (earlier layers win).
+std::vector<std::string> chart_rows(int w, int h, const std::vector<Series>& layers,
+                                    const Range& r, float hline = -1,
+                                    const char* hline_color = RED) {
+    std::vector<Canvas> cvs;
+    for (const auto& s : layers) {
+        cvs.emplace_back(w, h);
+        draw_series(cvs.back(), s, r);
     }
-    return s;
+    Canvas hcv(w, h);
+    if (hline > r.y0 && hline < r.y1) {
+        int py = static_cast<int>((1.0f - (hline - r.y0) / (r.y1 - r.y0)) * (h * 4 - 1) + 0.5f);
+        for (int px = 0; px < w * 2; px += 3) hcv.set(px, py);  // dashed
+    }
+
+    std::vector<std::string> rows(h);
+    for (int rr = 0; rr < h; rr++) {
+        std::string line;
+        for (int c = 0; c < w; c++) {
+            uint8_t v = 0;
+            const char* color = nullptr;
+            for (size_t l = 0; l < layers.size(); l++) {
+                uint8_t cell = cvs[l].cells[static_cast<size_t>(rr) * w + c];
+                if (cell) { v = cell; color = layers[l].color; break; }
+            }
+            if (!v) {
+                uint8_t hc = hcv.cells[static_cast<size_t>(rr) * w + c];
+                if (hc) { v = hc; color = hline_color; }
+            }
+            if (v) {
+                line += color;
+                line += braille_utf8(v);
+                line += RST;
+            } else {
+                line += " ";
+            }
+        }
+        rows[rr] = line;
+    }
+    return rows;
 }
 
 std::string fmt(float v, int prec = 3) {
@@ -164,16 +216,32 @@ std::string fmt(float v, int prec = 3) {
     return buf;
 }
 
-std::string fmt_eta(double seconds) {
+std::string fmt_sci(float v) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.2e", v);
+    return buf;
+}
+
+std::string fmt_count(double v) {
+    char buf[32];
+    if (v >= 1e9) std::snprintf(buf, sizeof(buf), "%.2fB", v / 1e9);
+    else if (v >= 1e6) std::snprintf(buf, sizeof(buf), "%.1fM", v / 1e6);
+    else if (v >= 1e3) std::snprintf(buf, sizeof(buf), "%.1fk", v / 1e3);
+    else std::snprintf(buf, sizeof(buf), "%.0f", v);
+    return buf;
+}
+
+std::string fmt_dur(double seconds) {
     if (seconds < 0) return "--";
     long h = static_cast<long>(seconds) / 3600;
     long m = (static_cast<long>(seconds) % 3600) / 60;
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "%ldh%02ldm", h, m);
+    if (h > 0) std::snprintf(buf, sizeof(buf), "%ldh%02ldm", h, m);
+    else std::snprintf(buf, sizeof(buf), "%ldm%02lds", m, static_cast<long>(seconds) % 60);
     return buf;
 }
 
-// Visible width of a string that mixes ANSI codes and UTF-8.
+// Visible width of a string mixing ANSI codes and UTF-8.
 size_t visible_width(const std::string& s) {
     size_t w = 0;
     for (size_t i = 0; i < s.size();) {
@@ -189,9 +257,8 @@ size_t visible_width(const std::string& s) {
     return w;
 }
 
-// A panel: title bar, boxed border, colored body lines.
-void emit_panel(std::string& out, const std::string& title, int width,
-                const std::vector<std::string>& body) {
+std::string panel(const std::string& title, int width, const std::vector<std::string>& body) {
+    std::string out;
     out += DIM;
     out += "┌─ ";
     out += RST;
@@ -223,228 +290,241 @@ void emit_panel(std::string& out, const std::string& title, int width,
     out += "┘";
     out += RST;
     out += "\r\n";
+    return out;
+}
+
+// Join multiple panels side by side, line by line.
+std::string beside(const std::vector<std::string>& panels) {
+    std::vector<std::vector<std::string>> lines(panels.size());
+    size_t rows = 0;
+    for (size_t i = 0; i < panels.size(); i++) {
+        std::istringstream ss(panels[i]);
+        std::string l;
+        while (std::getline(ss, l)) {
+            if (!l.empty() && l.back() == '\r') l.pop_back();
+            lines[i].push_back(l);
+        }
+        rows = std::max(rows, lines[i].size());
+    }
+    std::string out;
+    for (size_t r = 0; r < rows; r++) {
+        for (size_t i = 0; i < panels.size(); i++) {
+            if (r < lines[i].size()) out += lines[i][r];
+        }
+        out += "\r\n";
+    }
+    return out;
+}
+
+std::string kv(const char* k, const std::string& v, const char* vc = WHT) {
+    return std::string(DIM) + k + " " + RST + vc + v + RST;
 }
 
 // ------------------------------------------------------------- the frame
 std::string render(const RunData& d, const std::string& name, int tw, int th) {
-    std::string out;
     if (d.train.empty()) {
-        out += LBL;
-        out += "waiting for metrics";
-        out += RST;
-        out += "\r\n";
-        return out;
+        return std::string(LBL) + "waiting for metrics..." + RST + "\r\n";
     }
 
     const TrainRow& last = d.train.back();
     const int total = d.total_steps > 0 ? d.total_steps : last.step + 1;
+    const size_t N = d.train.size();
 
-    // EMA of loss; alpha tuned so the line is smooth at 40K steps but
-    // still tracks turns within a few hundred.
-    std::vector<std::pair<float, float>> ema_pts, raw_pts;
+    // Smoothed series.
+    std::vector<std::pair<float, float>> ema_pts, raw_pts, lr_pts, gn_pts, tok_pts;
     float ema = d.train.front().loss;
+    float tok_ema = 0;
+    int clipped = 0;
     for (const auto& r : d.train) {
         ema = 0.98f * ema + 0.02f * r.loss;
-        ema_pts.push_back({static_cast<float>(r.step), ema});
-        raw_pts.push_back({static_cast<float>(r.step), r.loss});
+        float x = static_cast<float>(r.step);
+        ema_pts.push_back({x, ema});
+        raw_pts.push_back({x, r.loss});
+        lr_pts.push_back({x, r.lr});
+        if (r.grad_norm > 0) gn_pts.push_back({x, r.grad_norm});
+        if (r.grad_norm > kClipNorm) clipped++;
+        if (r.step_ms > 0) {
+            float ts = d.tokens_per_step / (r.step_ms / 1000.0f);
+            tok_ema = tok_ema == 0 ? ts : 0.95f * tok_ema + 0.05f * ts;
+            tok_pts.push_back({x, tok_ema});
+        }
     }
+    float clip_pct = gn_pts.empty() ? 0 : 100.0f * clipped / gn_pts.size();
 
-    // Recent throughput: median step_ms over the last 50 steps.
+    // Throughput and ETA from the median of recent step times.
     std::vector<float> recent_ms;
-    for (size_t i = d.train.size() > 50 ? d.train.size() - 50 : 0; i < d.train.size(); i++)
-        recent_ms.push_back(d.train[i].step_ms);
-    std::vector<float> ms_sorted = recent_ms;
-    std::sort(ms_sorted.begin(), ms_sorted.end());
-    float med_ms = ms_sorted.empty() ? 0 : ms_sorted[ms_sorted.size() / 2];
+    for (size_t i = N > 50 ? N - 50 : 0; i < N; i++) recent_ms.push_back(d.train[i].step_ms);
+    std::sort(recent_ms.begin(), recent_ms.end());
+    float med_ms = recent_ms.empty() ? 0 : recent_ms[recent_ms.size() / 2];
     float tok_s = (med_ms > 0) ? d.tokens_per_step / (med_ms / 1000.0f) : 0;
     double eta_s = (med_ms > 0) ? (total - last.step - 1) * (med_ms / 1000.0) : -1;
+    double tflops = 6.0 * d.params * tok_s / 1e12;  // fwd+bwd ~ 6*N per token
 
-    // ------------------------------------------------------ status block
+    const EvalRow* best = nullptr;
+    for (const auto& e : d.evals) {
+        if (!best || e.val_loss < best->val_loss) best = &e;
+    }
+
+    // ------------------------------------------------------------ header
+    std::string out;
     double done = 100.0 * (last.step + 1) / total;
-    int barw = std::max(10, tw - 64);
-    int fillw = static_cast<int>(barw * done / 100.0 + 0.5);
-    std::string bar;
-    for (int i = 0; i < barw; i++) bar += (i < fillw) ? "█" : "░";
-
-    out += WHT;
-    out += " TRANSFORMER ";
-    out += RST;
-    out += LBL;
-    out += name;
-    out += RST;
-    out += "   ";
-    out += DIM;
-    out += "step ";
-    out += RST;
-    out += WHT;
-    out += std::to_string(last.step + 1);
-    out += RST;
-    out += DIM;
-    out += "/" + std::to_string(total);
-    out += RST;
-    out += "  ";
-    out += GRN;
-    out += bar;
-    out += RST;
-    out += " ";
-    out += WHT;
-    out += fmt(done, 1) + "%";
-    out += RST;
-    out += "  ";
-    out += DIM;
-    out += "eta ";
-    out += RST;
-    out += WHT;
-    out += fmt_eta(eta_s);
-    out += RST;
-    out += "\r\n";
-
-    char stat[256];
-    std::snprintf(stat, sizeof(stat),
-                  " %sloss%s %s%.4f%s  %slr%s %.2e  %stok/s%s %.0f  %sstep%s %.1fs  %smem%s %.0fMB",
-                  DIM, RST, WHT, ema, RST, DIM, RST, last.lr,
-                  DIM, RST, tok_s, DIM, RST, med_ms / 1000.0f, DIM, RST, last.mem_mb);
-    out += stat;
-    out += "\r\n";
-
-    // -------------------------------------------------------- loss panel
-    const int lossw = tw;
-    const int lossh = std::max(6, (th - 13) * 3 / 5);
     {
-        Canvas cv(lossw - 2, lossh);
-        float ymin = 1e30f, ymax = -1e30f;
-        for (auto& p : ema_pts) { ymin = std::min(ymin, p.second); ymax = std::max(ymax, p.second); }
-        for (auto& p : raw_pts) ymax = std::max(ymax, p.second);
-        float pad = 0.05f * (ymax - ymin + 1e-6f);
-        ymin -= pad; ymax += pad;
-        float x0 = raw_pts.front().first, x1 = std::max(raw_pts.back().first, x0 + 1);
+        std::string left = std::string(WHT) + " TRANSFORMER" + RST + DIM + " ▮ " + RST +
+                           LBL + name + RST;
+        if (!d.desc.empty()) left += std::string(DIM) + " · " + d.desc + RST;
+        if (d.params > 0) left += std::string(DIM) + " · " + fmt_count(double(d.params)) +
+                                  " params" + RST;
+        out += left + "\r\n";
 
-        // Raw loss as sparse dots (subsampled), EMA as the solid line.
-        Canvas raw_cv(lossw - 2, lossh);
-        size_t stride = std::max<size_t>(1, raw_pts.size() / (cv.W * 2));
-        std::vector<std::pair<float, float>> raw_sub;
-        for (size_t i = 0; i < raw_pts.size(); i += stride) raw_sub.push_back(raw_pts[i]);
-        for (auto& p : raw_sub) {
-            int px = static_cast<int>((p.first - x0) / (x1 - x0) * (raw_cv.W * 2 - 1));
-            int py = static_cast<int>((1.0f - (p.second - ymin) / (ymax - ymin)) * (raw_cv.H * 4 - 1));
-            raw_cv.set(px, py);
-        }
-        plot_line(cv, ema_pts, x0, x1, ymin, ymax);
-
-        // Composite the two layers cell by cell: the EMA line (cyan)
-        // wins over the raw dots (faint) where both are present.
-        std::vector<std::string> body(lossh);
-        for (int r = 0; r < lossh; r++) {
-            std::string line;
-            for (int c = 0; c < cv.W; c++) {
-                uint8_t e = cv.cells[static_cast<size_t>(r) * cv.W + c];
-                uint8_t w = raw_cv.cells[static_cast<size_t>(r) * raw_cv.W + c];
-                unsigned cp = 0x2800 + (e ? e : w);
-                std::string ch;
-                ch += static_cast<char>(0xE0 | (cp >> 12));
-                ch += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                ch += static_cast<char>(0x80 | (cp & 0x3F));
-                if (e) { line += CYAN; line += ch; line += RST; }
-                else if (w) { line += FAINT; line += ch; line += RST; }
-                else line += " ";
-            }
-            body[r] = line;
-        }
-        emit_panel(out, "train loss  [" + fmt(ymin + pad, 3) + " .. " + fmt(ymax - pad, 3) +
-                            "]  raw " + FAINT + "⣿" + RST + LBL + "  ema " + CYAN + "⣿" + RST,
-                   lossw, body);
+        std::string right = " " + kv("step", std::to_string(last.step + 1) +
+                                     std::string(DIM) + "/" + std::to_string(total) + RST) +
+                            "  " + kv("eta", fmt_dur(eta_s)) +
+                            "  " + kv("elapsed", fmt_dur(d.elapsed_s), LBL) + "  ";
+        int barw = std::max(10, tw - static_cast<int>(visible_width(right)) - 10);
+        int fillw = static_cast<int>(barw * done / 100.0 + 0.5);
+        std::string bar;
+        for (int i = 0; i < barw; i++) bar += (i < fillw) ? "█" : "░";
+        out += right + GRN + bar + RST + " " + WHT + fmt(done, 1) + "%" + RST + "\r\n";
     }
 
-    // ------------------------------------- validation + recent loss row
-    const int half = tw / 2;
-    const int vh = std::max(4, th - 13 - lossh - 1);
-    std::vector<std::string> lbody, rbody;
+    // ------------------------------------------------------- stats strip
     {
-        // Left: validation loss curve.
-        Canvas cv(half - 2, vh);
-        if (d.evals.size() >= 2) {
-            std::vector<std::pair<float, float>> pts;
-            float ymin = 1e30f, ymax = -1e30f;
-            for (const auto& e : d.evals) {
-                pts.push_back({static_cast<float>(e.step), e.val_loss});
-                ymin = std::min(ymin, e.val_loss);
-                ymax = std::max(ymax, e.val_loss);
-            }
-            float pad = 0.08f * (ymax - ymin + 1e-6f);
-            plot_line(cv, pts, pts.front().first, std::max(pts.back().first, pts.front().first + 1),
-                      ymin - pad, ymax + pad);
-        }
-        for (int r = 0; r < vh; r++) {
-            lbody.push_back(std::string(MAG) + cv.row(r) + RST);
-        }
-        std::string title = "val loss";
+        std::string l1 = " " + kv("loss", fmt(ema, 4), CYAN) +
+                         "  " + kv("ppl", fmt(std::exp(ema), 2), CYAN);
         if (!d.evals.empty()) {
-            auto best = *std::min_element(d.evals.begin(), d.evals.end(),
-                                          [](auto& a, auto& b) { return a.val_loss < b.val_loss; });
-            title += "  last " + fmt(d.evals.back().val_loss) + "  best " + fmt(best.val_loss) +
-                     " (ppl " + fmt(std::exp(best.val_loss), 1) + ") @" + std::to_string(best.step);
+            l1 += "  " + kv("val", fmt(d.evals.back().val_loss, 4), MAG) +
+                  "  " + kv("val-ppl", fmt(std::exp(d.evals.back().val_loss), 2), MAG);
+            if (best) {
+                l1 += std::string(DIM) + "  best " + RST + GRN + fmt(best->val_loss, 4) + RST +
+                      DIM + " @" + std::to_string(best->step) + RST;
+            }
+        }
+        l1 += "  " + kv("lr", fmt_sci(last.lr), ORN);
+        out += l1 + "\r\n";
+
+        double tokens_seen = double(last.step + 1) * d.tokens_per_step;
+        double tokens_total = double(total) * d.tokens_per_step;
+        std::string l2 = " " + kv("tok/s", fmt_count(tok_s), GRN) +
+                         "  " + kv("TFLOP/s", fmt(tflops, 2), GRN) +
+                         "  " + kv("tokens", fmt_count(tokens_seen) + std::string(DIM) + "/" +
+                                             fmt_count(tokens_total) + RST) +
+                         "  " + kv("step", fmt(med_ms / 1000.0f, 1) + "s") +
+                         "  " + kv("‖g‖", gn_pts.empty() ? "-" : fmt(gn_pts.back().second, 2), YEL) +
+                         "  " + kv("clip", fmt(clip_pct, 1) + "%", clip_pct > 20 ? RED : LBL) +
+                         "  " + kv("mem", fmt(last.mem_mb / 1024.0f, 1) + "GB");
+        out += l2 + "\r\n";
+    }
+
+    // ------------------------------------------------------------ layout
+    const int th_avail = std::max(16, th - 6);
+    const int main_h = std::max(9, th_avail * 3 / 5);   // incl. borders
+    const int bot_h = std::max(5, th_avail - main_h);   // incl. borders
+    const int left_w = tw * 58 / 100;
+    const int right_w = tw - left_w;
+
+    // ------------------------------------------------- main loss chart
+    std::string left_panel;
+    {
+        // Raw loss subsampled to the pixel budget as scatter; EMA and the
+        // validation track drawn as lines on the same scale.
+        std::vector<std::pair<float, float>> raw_sub;
+        size_t stride = std::max<size_t>(1, raw_pts.size() / ((left_w - 2) * 2));
+        for (size_t i = 0; i < raw_pts.size(); i += stride) raw_sub.push_back(raw_pts[i]);
+        std::vector<std::pair<float, float>> val_pts;
+        for (const auto& e : d.evals) val_pts.push_back({static_cast<float>(e.step), e.val_loss});
+
+        std::vector<Series> layers;
+        layers.push_back({val_pts, MAG, false});
+        layers.push_back({ema_pts, CYAN, false});
+        layers.push_back({raw_sub, FAINT, true});
+        Range r = fit_range(layers, 0.05f);
+        auto rows = chart_rows(left_w - 2, main_h - 2, layers, r);
+        std::string title = "loss  " + std::string(CYAN) + "⣿" + RST + LBL + " train-ema  " +
+                            FAINT + "⣿" + RST + LBL + " raw  " + MAG + "⣿" + RST + LBL +
+                            " val   [" + fmt(r.y0, 3) + " .. " + fmt(r.y1, 3) + "]";
+        left_panel = panel(title, left_w, rows);
+    }
+
+    // ------------------------------------------- right column: 3 charts
+    std::string right_panel;
+    {
+        int h1 = main_h / 3, h2 = main_h / 3;
+        int h3 = main_h - h1 - h2;
+        // Validation perplexity.
+        std::vector<std::pair<float, float>> ppl_pts;
+        for (const auto& e : d.evals)
+            ppl_pts.push_back({static_cast<float>(e.step), std::exp(e.val_loss)});
+        std::string t1 = "val perplexity";
+        if (!ppl_pts.empty()) {
+            t1 += "  last " + fmt(ppl_pts.back().second, 1);
+            if (best) t1 += "  best " + fmt(std::exp(best->val_loss), 1);
         } else {
-            title += "  (first eval pending)";
+            t1 += "  (first eval pending)";
         }
-        std::string panel;
-        emit_panel(panel, title, half, lbody);
-        // Right: recent loss zoom (last quarter or 1000 steps).
-        Canvas rc(tw - half - 2, vh);
-        size_t nrecent = std::min<size_t>(std::max<size_t>(200, d.train.size() / 4), 1000);
-        size_t start = d.train.size() > nrecent ? d.train.size() - nrecent : 0;
+        std::vector<Series> l1{{ppl_pts, MAG, ppl_pts.size() < 2}};
+        Range r1 = fit_range(l1, 0.08f);
+        std::string p1 = panel(t1, right_w, chart_rows(right_w - 2, std::max(1, h1 - 2), l1, r1));
+
+        // Learning-rate schedule (realized).
+        std::vector<Series> l2{{lr_pts, ORN, false}};
+        Range r2 = fit_range(l2, 0.08f);
+        std::string p2 = panel("learning rate  " + fmt_sci(last.lr), right_w,
+                               chart_rows(right_w - 2, std::max(1, h2 - 2), l2, r2));
+
+        // Gradient norm with the clip threshold as a dashed line.
+        std::vector<Series> l3{{gn_pts, YEL, false}};
+        Range r3 = fit_range(l3, 0.08f);
+        std::string t3 = "grad norm  clip@" + fmt(kClipNorm, 0) + " " +
+                         std::string(RED) + "┄" + RST + LBL + " " + fmt(clip_pct, 1) + "% clipped";
+        std::string p3 = panel(t3, right_w,
+                               chart_rows(right_w - 2, std::max(1, h3 - 2), l3, r3, kClipNorm));
+
+        right_panel = p1 + p2 + p3;
+    }
+
+    out += beside({left_panel, right_panel});
+
+    // ------------------------------------------------------- bottom row
+    {
+        int half = tw / 2;
+        // Recent loss zoom.
+        size_t nrecent = std::min<size_t>(std::max<size_t>(200, N / 4), 1000);
+        size_t start = N > nrecent ? N - nrecent : 0;
         std::vector<std::pair<float, float>> rpts;
-        float rmin = 1e30f, rmax = -1e30f;
-        for (size_t i = start; i < d.train.size(); i++) {
+        for (size_t i = start; i < N; i++)
             rpts.push_back({static_cast<float>(d.train[i].step), d.train[i].loss});
-            rmin = std::min(rmin, d.train[i].loss);
-            rmax = std::max(rmax, d.train[i].loss);
-        }
-        if (rpts.size() >= 2) {
-            float pad = 0.08f * (rmax - rmin + 1e-6f);
-            plot_line(rc, rpts, rpts.front().first, rpts.back().first, rmin - pad, rmax + pad);
-        }
-        for (int r = 0; r < vh; r++) rbody.push_back(std::string(YEL) + rc.row(r) + RST);
-        std::string rpanel;
-        emit_panel(rpanel, "recent loss  last " + std::to_string(rpts.size()) + " steps  [" +
-                               fmt(rmin) + " .. " + fmt(rmax) + "]",
-                   tw - half, rbody);
+        std::vector<Series> lz{{rpts, YEL, rpts.size() < 2}};
+        Range rz = fit_range(lz, 0.08f);
+        std::string pz = panel("recent loss  last " + std::to_string(rpts.size()) + " steps  [" +
+                                   fmt(rz.y0) + " .. " + fmt(rz.y1) + "]",
+                               half, chart_rows(half - 2, std::max(1, bot_h - 2), lz, rz));
 
-        // Stitch the two panels side by side.
-        std::istringstream ls(panel), rs(rpanel);
-        std::string a, b;
-        while (std::getline(ls, a) && std::getline(rs, b)) {
-            if (!a.empty() && a.back() == '\r') a.pop_back();
-            if (!b.empty() && b.back() == '\r') b.pop_back();
-            out += a + b + "\r\n";
-        }
+        // Throughput.
+        std::vector<Series> lt{{tok_pts, GRN, tok_pts.size() < 2}};
+        Range rt = fit_range(lt, 0.08f);
+        std::string pt = panel("throughput tok/s  now " + fmt_count(tok_s),
+                               tw - half, chart_rows(tw - half - 2, std::max(1, bot_h - 2), lt, rt));
+        out += beside({pz, pt});
     }
 
-    // --------------------------------------------------------- sparkline
-    std::vector<float> gn, ms_series;
-    for (const auto& r : d.train) {
-        if (r.has_gn) gn.push_back(r.grad_norm);
-        ms_series.push_back(r.step_ms);
+    // ------------------------------------------------------ events feed
+    {
+        std::string ev = std::string(DIM) + " evals " + RST;
+        float running_best = 1e30f;
+        std::vector<std::string> items;
+        for (const auto& e : d.evals) {
+            bool star = e.val_loss < running_best;
+            running_best = std::min(running_best, e.val_loss);
+            items.push_back(std::string(LBL) + std::to_string(e.step) + RST + DIM + "→" + RST +
+                            (star ? GRN : LBL) + fmt(e.val_loss, 4) + (star ? "★" : "") + RST);
+        }
+        size_t show = std::min<size_t>(items.size(), 5);
+        for (size_t i = items.size() - show; i < items.size(); i++) ev += items[i] + "  ";
+        if (items.empty()) ev += std::string(DIM) + "(none yet)" + RST;
+        out += ev + "\r\n";
+        out += std::string(DIM) + " q quit · refresh 1s · " + std::to_string(N) +
+               " steps logged" + RST + "\r\n";
     }
-    int sw = (tw - 30) / 2;
-    out += " ";
-    out += DIM;
-    out += "grad‖g‖ ";
-    out += RST;
-    out += LBL;
-    out += sparkline(gn, sw);
-    out += RST;
-    out += "  ";
-    out += DIM;
-    out += "step-time ";
-    out += RST;
-    out += LBL;
-    out += sparkline(ms_series, sw);
-    out += RST;
-    out += "\r\n";
-    out += DIM;
-    out += " q quit · refreshes 1s · " + std::to_string(d.train.size()) + " steps logged";
-    out += RST;
-    out += "\r\n";
     return out;
 }
 
@@ -477,7 +557,7 @@ void term_size(int& w, int& h) {
         h = ws.ws_row;
     } else {
         w = 110;
-        h = 32;
+        h = 34;
     }
 }
 
@@ -505,8 +585,7 @@ std::string newest_metrics_csv(const std::string& dir) {
 }
 
 int run_dashboard(const std::string& csv_path, bool once) {
-    // Derive a display name from the file: tinystories_modern_metrics.csv
-    // -> tinystories_modern.
+    // tinystories_modern_metrics.csv -> tinystories_modern
     std::string name = csv_path;
     size_t slash = name.find_last_of('/');
     if (slash != std::string::npos) name = name.substr(slash + 1);

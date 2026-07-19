@@ -11,22 +11,25 @@ namespace utils {
 // terminal dashboard) and survives crashes/resumes: a resumed run appends
 // to the existing file so the dashboard sees the whole history.
 //
-// Rows:  m,<total_steps>,<tokens_per_step>
-//        t,<step>,<loss>,<lr>,<grad_norm|empty>,<step_ms>,<mem_mb>
-//        e,<step>,<val_loss>
+// Rows:  m,<total_steps>,<tokens_per_step>,<param_count>,<model_desc>
+//        t,<step>,<loss>,<lr>,<grad_norm>,<step_ms>,<mem_mb>,<wall_s>
+//        e,<step>,<val_loss>,<wall_s>
+// wall_s restarts at zero on resume; readers sum segments for elapsed.
 class MetricsLog {
 public:
     MetricsLog(const std::string& path, bool append,
-               int total_steps, long tokens_per_step);
+               int total_steps, long tokens_per_step,
+               long param_count, const std::string& model_desc);
 
-    void log_step(int step, float loss, float lr,
-                  float grad_norm, bool has_grad_norm,
+    void log_step(int step, float loss, float lr, float grad_norm,
                   long step_ms, long mem_mb);
     void log_eval(int step, float val_loss);
 
 private:
     std::ofstream out_;
+    std::chrono::steady_clock::time_point start_;
     int since_flush_ = 0;
+    double wall_s() const;
     void maybe_flush(bool force = false);
 };
 

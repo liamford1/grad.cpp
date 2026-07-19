@@ -152,10 +152,19 @@ bool Trainer::train() {
 
     // Per-step CSV for `transformer watch`; resumes append so the
     // dashboard sees the run's whole history.
+    long param_count = 0;
+    for (const auto& p : model_.getAllParameters()) param_count += p->getData().numel();
+    char desc[128];
+    std::snprintf(desc, sizeof(desc), "%s d%d L%d H%d seq%d b%dx%d vocab%d",
+                  model_.getArch() == GPTArch::Modern ? "modern" : "gpt2",
+                  config_.d_model, config_.num_layers, config_.num_heads,
+                  config_.seq_length, config_.batch_size, config_.grad_accum,
+                  config_.vocab_size);
     mlog_ = std::make_unique<utils::MetricsLog>(
         config_.checkpoint_prefix + "_metrics.csv", start_step_ > 0,
         config_.num_steps,
-        static_cast<long>(config_.batch_size) * config_.grad_accum * config_.seq_length);
+        static_cast<long>(config_.batch_size) * config_.grad_accum * config_.seq_length,
+        param_count, desc);
 
     g_stop_requested = 0;
     auto prev_int = std::signal(SIGINT, request_stop);
@@ -282,12 +291,13 @@ void Trainer::training_step(int step) {
     }
 
     float loss_val = loss_sum / config_.grad_accum;
-    float grad_norm = 0.0f;
-    const bool has_grad_norm = (step % 100 == 0);
 
-    if (has_grad_norm) {
-        auto params = model_.getAllParameters();
-        grad_norm = utils::compute_grad_norm(params);
+    // Pre-clip gradient norm, every step: one linear pass over the
+    // parameters (<1% of step time) buys the dashboard its gradient-norm
+    // track and clip-rate statistic.
+    auto params = model_.getAllParameters();
+    float grad_norm = utils::compute_grad_norm(params);
+    if (step % 100 == 0) {
         metrics_->record_step(step, loss_val, grad_norm);
     }
 
@@ -297,9 +307,8 @@ void Trainer::training_step(int step) {
     if (mlog_) {
         auto step_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - step_start).count();
-        mlog_->log_step(step, loss_val, optimizer_->current_lr(),
-                        grad_norm, has_grad_norm, step_ms,
-                        static_cast<long>(utils::get_memory_mb()));
+        mlog_->log_step(step, loss_val, optimizer_->current_lr(), grad_norm,
+                        step_ms, static_cast<long>(utils::get_memory_mb()));
     }
 
     if (step % 10 == 0) {
