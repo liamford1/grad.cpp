@@ -20,7 +20,7 @@ Not going to win a Pulitzer, but every gradient that trained it was derived and 
 - **Reverse-mode autograd** (`variable.h/cpp`) — dynamic computation graph with hand-derived backward passes for every op, validated against numerical gradients
 - **Transformer components** — multi-head self-attention with causal masking, pre-LayerNorm residual blocks, GELU feed-forward, learned positional embeddings, and weight tying between the token embedding and the output projection
 - **BPE tokenizer** — byte-pair encoding trained on the corpus, with caching so repeat runs start instantly
-- **Training stack** — Adam with linear warmup, gradient clipping, dropout, a shuffling DataLoader, checkpoint save/load, and live loss/grad-norm metrics
+- **Training stack** — AdamW (decoupled weight decay, matrices only) with linear warmup + cosine LR decay, gradient clipping, dropout, a shuffling DataLoader, checkpoint save/load, live loss/grad-norm metrics, and held-out validation perplexity every 250 steps
 - **Text generation** — KV-cached incremental decoding (`inference.h`), greedy or sampled with temperature, top-k, top-p, and a repetition penalty
 
 About 5,400 lines of implementation and 1,200 lines of tests.
@@ -60,6 +60,12 @@ Three modes:
 
 # Sample from a trained checkpoint
 ./build/transformer generate shakespeare_final.bin "ROMEO:"
+
+# Interactive REPL: type a prompt, watch it stream a continuation
+./build/transformer chat shakespeare_final.bin
+
+# Reproduce the BENCHMARKS.md numbers
+./build/transformer bench
 ```
 
 The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.

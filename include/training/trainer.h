@@ -24,7 +24,9 @@ struct TrainingConfig {
     int num_steps;
     int checkpoint_interval;
     std::string checkpoint_prefix;
-    int eval_interval = 250;  // steps between validation runs (0 = never)
+    int eval_interval = 250;    // steps between validation runs (0 = never)
+    float weight_decay = 0.1f;  // AdamW decay on weight matrices
+
 };
 
 class Trainer {

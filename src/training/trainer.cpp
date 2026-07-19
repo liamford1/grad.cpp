@@ -18,8 +18,11 @@ Trainer::Trainer(const TrainingConfig& config,
 
     auto params = model_.getAllParameters();
     optimizer_ = std::make_unique<AdamOptimizer>(params, config_.learning_rate,
-                                                  0.9f, 0.999f, 1e-8f, 0.0f);
-    optimizer_->set_warmup_steps(config_.warmup_steps);
+                                                  0.9f, 0.999f, 1e-8f,
+                                                  config_.weight_decay);
+    // Linear warmup, then cosine decay to 10% of the base learning rate.
+    optimizer_->set_schedule(config_.warmup_steps, config_.num_steps,
+                             config_.learning_rate * 0.1f);
 
     metrics_ = std::make_unique<utils::TrainingMetrics>(config_.num_steps);
 }
