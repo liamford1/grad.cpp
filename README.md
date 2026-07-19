@@ -1,8 +1,8 @@
-# transformer-from-scratch
+# grad.cpp
 
-[![CI](https://github.com/liamford1/transformer-from-scratch/actions/workflows/ci.yml/badge.svg)](https://github.com/liamford1/transformer-from-scratch/actions/workflows/ci.yml)
+[![CI](https://github.com/liamford1/grad.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/liamford1/grad.cpp/actions/workflows/ci.yml)
 
-A GPT-style language model implemented from scratch in C++17 — tensors, reverse-mode autograd, multi-head attention, Adam, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
+A from-scratch autograd engine and the GPT-style language models it trains, implemented in C++17 — tensors, reverse-mode automatic differentiation with hand-derived backward passes, multi-head attention, AdamW, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication. *(Formerly `transformer-from-scratch`.)*
 
 A ~22M-parameter model trained with this code on the Tiny Shakespeare corpus produces text like this (sampled at temperature 0.8; line breaks added at speaker changes for readability, text otherwise unedited):
 
@@ -53,22 +53,22 @@ Three modes:
 
 ```bash
 # Quick end-to-end smoke test: trains a tiny model for 50 steps (~1 min)
-./build/transformer train-fast
+./build/grad train-fast
 
 # Full training run on Tiny Shakespeare (produces shakespeare_final.bin)
-./build/transformer train
+./build/grad train
 
 # Sample from a trained checkpoint
-./build/transformer generate shakespeare_final.bin "ROMEO:"
+./build/grad generate shakespeare_final.bin "ROMEO:"
 
 # Interactive REPL: type a prompt, watch it stream a continuation
-./build/transformer chat shakespeare_final.bin
+./build/grad chat shakespeare_final.bin
 
 # Reproduce the BENCHMARKS.md numbers
-./build/transformer bench
+./build/grad bench
 
 # Pre-tokenize a corpus for fast, memory-mapped training (see below)
-./build/transformer prepare my_corpus.txt 5000
+./build/grad prepare my_corpus.txt 5000
 ```
 
 The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.
@@ -78,8 +78,8 @@ The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_50
 Any plain-text file works. For anything beyond toy size, pre-tokenize it once:
 
 ```bash
-./build/transformer prepare my_corpus.txt 5000   # writes my_corpus.txt.5000.{train,val}.bin
-./build/transformer train my_corpus.txt          # memory-maps the .bin files
+./build/grad prepare my_corpus.txt 5000   # writes my_corpus.txt.5000.{train,val}.bin
+./build/grad train my_corpus.txt          # memory-maps the .bin files
 ```
 
 `prepare` trains a BPE tokenizer on the corpus (sampling the first 32MB for merge learning on large corpora — frequencies converge long before that) and writes the encoded tokens as binary files (uint16 per token, 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM — the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
@@ -99,16 +99,16 @@ Two model presets are built in:
 ```bash
 curl -L -o data/tinystories.txt \
   "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt"
-./build/transformer prepare data/tinystories.txt 16000
-./build/transformer train data/tinystories.txt medium     # writes tinystories_final.bin
-./build/transformer chat tinystories_final.bin data/tinystories.txt 16000
+./build/grad prepare data/tinystories.txt 16000
+./build/grad train data/tinystories.txt medium     # writes tinystories_final.bin
+./build/grad chat tinystories_final.bin data/tinystories.txt 16000
 ```
 
 Every run logs per-step metrics to `<prefix>_metrics.csv`, and a live terminal dashboard renders them — loss curves on a braille canvas (raw + EMA), the validation track with running best, gradient-norm and step-time sparklines, progress and ETA. Open it in a second terminal while training:
 
 ```bash
-./build/transformer watch                      # newest run in this directory
-./build/transformer watch tinystories_modern   # or a specific run prefix
+./build/grad watch                      # newest run in this directory
+./build/grad watch tinystories_modern   # or a specific run prefix
 ```
 
 It refreshes once a second, works on finished runs too (the CSV is the run's permanent record), and `q` quits.
@@ -116,13 +116,13 @@ It refreshes once a second, works on finished runs too (the CSV is the run's per
 Long runs are interruptible: Ctrl-C saves a resume pair (`<prefix>_resume_model.bin` + `<prefix>_resume_state.bin` — weights, Adam moments, and schedule position), which is also refreshed at every eval interval, so a crash costs at most a few minutes of work.
 
 ```bash
-./build/transformer train data/tinystories.txt medium resume               # continue where it stopped
-./build/transformer train data/tinystories.txt medium tinystories_best.bin # warm-start: weights only, fresh schedule
+./build/grad train data/tinystories.txt medium resume               # continue where it stopped
+./build/grad train data/tinystories.txt medium tinystories_best.bin # warm-start: weights only, fresh schedule
 ```
 
 A resumed or warm-started run reseeds the data loader (by step position and checkpoint path respectively), so it draws fresh training windows instead of replaying the batches the checkpoint already saw.
 
-Performance across optimization iterations is tracked in [BENCHMARKS.md](BENCHMARKS.md) (`./build/transformer bench` reproduces the numbers).
+Performance across optimization iterations is tracked in [BENCHMARKS.md](BENCHMARKS.md) (`./build/grad bench` reproduces the numbers).
 
 ## Tests
 

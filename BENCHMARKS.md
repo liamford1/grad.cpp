@@ -4,7 +4,7 @@ One row per optimization iteration, so the performance story is readable at a gl
 
 **Machine:** Apple M2 Pro (arm64), macOS. Release build (`-O3 -march=native`), Apple Accelerate BLAS, single process.
 
-**Workload:** `./build/transformer bench 20`
+**Workload:** `./build/grad bench 20`
 - *Training:* full model config — d_model 512, 6 layers, 8 heads, seq 96, batch 8, vocab 5000 (~22M params). 3 warmup steps, then 20 timed steps.
 - *Generation:* 64 tokens sampled at temperature 0.8 from a short prompt, same model config.
 

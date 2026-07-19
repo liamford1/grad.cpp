@@ -11,7 +11,7 @@ namespace utils {
 int run_dashboard(const std::string& csv_path, bool once);
 
 // Most recently modified *_metrics.csv in dir, or "" if none - the
-// default target for `transformer watch`.
+// default target for `grad watch`.
 std::string newest_metrics_csv(const std::string& dir);
 
 }  // namespace utils

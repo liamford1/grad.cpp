@@ -7,7 +7,7 @@
 namespace utils {
 
 // Append-only per-step training log, one CSV row per step plus eval and
-// meta rows. This is the data source for `transformer watch` (the live
+// meta rows. This is the data source for `grad watch` (the live
 // terminal dashboard) and survives crashes/resumes: a resumed run appends
 // to the existing file so the dashboard sees the whole history.
 //

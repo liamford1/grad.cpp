@@ -150,7 +150,7 @@ bool Trainer::train() {
 
     metrics_->start_training(start_step_);
 
-    // Per-step CSV for `transformer watch`; resumes append so the
+    // Per-step CSV for `grad watch`; resumes append so the
     // dashboard sees the run's whole history.
     long param_count = 0;
     for (const auto& p : model_.getAllParameters()) param_count += p->getData().numel();

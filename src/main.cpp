@@ -335,7 +335,7 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
 
         std::cout << "\nWrote " << train_bin << " (" << split << " tokens)"
                   << "\nWrote " << val_bin << " (" << (tokens.size() - split) << " tokens)"
-                  << "\n\nTrain with: ./build/transformer train " << corpus_path
+                  << "\n\nTrain with: ./build/grad train " << corpus_path
                   << std::endl;
         return 0;
     } catch (const std::exception& e) {
@@ -454,7 +454,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
             std::ifstream cache_check(cache_file);
             if (!cache_check.good()) {
                 throw std::runtime_error("Found token files but no tokenizer cache ("
-                                         + cache_file + "); run: ./build/transformer prepare "
+                                         + cache_file + "); run: ./build/grad prepare "
                                          + corpus_path);
             }
             tokenizer.load(cache_file);
@@ -568,7 +568,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         }
 
         if (!trainer.train()) {
-            std::cout << "\nResume with: ./build/transformer "
+            std::cout << "\nResume with: ./build/grad "
                       << (fast_mode ? "train-fast " + corpus_path
                                     : "train " + corpus_path + " " + preset.name)
                       << " resume\n" << std::endl;

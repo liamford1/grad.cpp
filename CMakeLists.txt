@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(transformer-from-scratch)
+project(grad-cpp)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,7 +21,7 @@ else()
     set(METAL_BACKEND_SRC "")
 endif()
 
-add_executable(transformer
+add_executable(grad
     src/main.cpp
     src/transformer/tensor.cpp
     ${METAL_BACKEND_SRC}
@@ -75,7 +75,7 @@ add_executable(sanity_tests
     src/utils/metrics.cpp
 )
 
-target_include_directories(transformer PRIVATE include)
+target_include_directories(grad PRIVATE include)
 target_include_directories(sanity_tests PRIVATE include)
 
 # ============================================================================
@@ -87,13 +87,13 @@ if(APPLE)
     find_library(MPS_LIBRARY MetalPerformanceShaders)
     find_library(FOUNDATION_LIBRARY Foundation)
     set(APPLE_GPU_LIBS ${METAL_LIBRARY} ${MPS_LIBRARY} ${FOUNDATION_LIBRARY})
-    target_link_libraries(transformer ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
+    target_link_libraries(grad ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
     target_link_libraries(sanity_tests ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
     add_compile_definitions(ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     message(STATUS "Using Apple Accelerate framework for BLAS")
 else()
     find_package(BLAS REQUIRED)
-    target_link_libraries(transformer ${BLAS_LIBRARIES})
+    target_link_libraries(grad ${BLAS_LIBRARIES})
     target_link_libraries(sanity_tests ${BLAS_LIBRARIES})
     message(STATUS "Using OpenBLAS for BLAS")
 endif()
