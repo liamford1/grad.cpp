@@ -122,7 +122,19 @@ Long runs are interruptible: Ctrl-C saves a resume pair (`<prefix>_resume_model.
 
 A resumed or warm-started run reseeds the data loader (by step position and checkpoint path respectively), so it draws fresh training windows instead of replaying the batches the checkpoint already saw.
 
-Performance across optimization iterations is tracked in [BENCHMARKS.md](BENCHMARKS.md) (`./build/grad bench` reproduces the numbers).
+## Performance
+
+Training throughput vs PyTorch 2.13 on the same machine (M2 Pro, fp32). The PyTorch side ([`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py)) builds the identical model configs — parameter counts match — written as idiomatic PyTorch with fused QKV and `scaled_dot_product_attention`:
+
+| training config | grad.cpp (CPU) | PyTorch (CPU) | PyTorch (MPS GPU) |
+|---|---:|---:|---:|
+| 22M · d512 L6 · seq 96 | **5,418 tok/s** | 3,685 | 8,112 |
+| 70M GPT-2 · d768 L8 · seq 256 | **3,650 tok/s** | 1,489 | 6,135 |
+| 70M Llama-style (RoPE/SwiGLU) | **3,490 tok/s** | — | 5,099 |
+
+On CPU, grad.cpp outruns PyTorch by 1.5× at 22M and 2.5× at 70M — the lead grows with scale. PyTorch's Metal backend is 1.5–1.7× ahead, and that gap is the roadmap: asynchronous GPU dispatch that overlaps CPU work, then a fused attention kernel. (PyTorch's bf16 autocast on MPS measured *slower* than its own fp32 at this scale — the same null result as this repo's fp16 experiment, BENCHMARKS.md #11.)
+
+The full optimization history — 1.2 → 7.9 steps/s across 11 measured rounds, including the honest nulls — is in [BENCHMARKS.md](BENCHMARKS.md); `./build/grad bench` reproduces the 22M numbers.
 
 ## Tests
 

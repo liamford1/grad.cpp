@@ -23,6 +23,23 @@ One row per optimization iteration, so the performance story is readable at a gl
 | 10 | 2026-07-19 | Overhead round, driven by a live-training profile (see note): 4-lane dropout RNG, strided per-head attention (gather/scatter copies eliminated), uninitialized allocation for fully-written outputs, move semantics for op results (was: one full activation copy per op, three for the logits) | 7.9 | 6074 | 358.9 | 1085 MB |
 | 11 | 2026-07-19 | fp16 GPU operands (fp32 accumulate), opt-in via `TRANSFORMER_METAL_FP16=1`. **Another honest null at this scale** (see note): modern-preset training identical at 0.28 it/s, and lowering the GPU threshold to feed it more matmuls ran 14% *slower* | 7.9 | 6074 | — | 1085 MB |
 
+## Head-to-head: PyTorch (2026-07-19)
+
+Same machine, same session, runs interleaved minutes apart. The PyTorch side is [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py): identical model configs (parameter parity verified: 22.0M / 69.8M / 68.9M), same optimizer settings, dropout placement, and loss — but written as idiomatic PyTorch (fused QKV projection, `scaled_dot_product_attention`), torch 2.13, not a transliteration of this repo's internals. Training throughput, fp32 unless noted.
+
+| training config | grad.cpp (CPU) | PyTorch (CPU) | PyTorch (MPS GPU) |
+|---|---:|---:|---:|
+| 22M · d512 L6 · seq 96 · batch 8 | **5,418 tok/s** | 3,685 | 8,112 |
+| 70M GPT-2 · d768 L8 · seq 256 · batch 8×4 | **3,650 tok/s** | 1,489 | 6,135 |
+| 70M Llama-style (RMSNorm/RoPE/SwiGLU) | **3,490 tok/s** | — | 5,099 |
+
+Readings:
+
+- **grad.cpp beats PyTorch-CPU 1.5× at 22M and 2.5× at 70M** — and the lead *grows* with scale: per-op framework overhead is a constant tax PyTorch pays per kernel launch, while this codebase's overhead rounds (#9, #10) cut most of ours away.
+- **PyTorch-MPS leads by 1.5–1.7×.** That gap is the roadmap, and it is a GPU-utilization gap, not a kernel-quality gap: this repo's Metal backend already wins per-matmul at these shapes (#7's sweep) but dispatches synchronously while the CPU idles. Async dispatch overlapping CPU work, then a fused attention kernel, are the levers.
+- **PyTorch's bf16 autocast on MPS measured 4,062 tok/s at 70M — 34% slower than its own fp32.** The same verdict as #11's fp16 experiment: at this scale, precision-conversion overhead eats the bandwidth win. Two independent implementations, one conclusion.
+- Conditions: grad.cpp 70M numbers are medians from training-run CSVs on an otherwise idle machine (medium: fresh warm-start probe; modern: steps 1850–1925 of the live run). The 22M number re-measured this session at 7.1 steps/s vs #11's 7.9 (ambient variance — iCloud was syncing checkpoint backups); both sides ran under the same conditions, so the ratios stand.
+
 ## Notes
 
 **#11 — fp16 GPU matmuls: correct, and not (yet) worth it.** The backend can now convert operands to fp16 on-device (a compute kernel fills persistent private scratch inside the same command buffer) and run the MPS matmul at half the operand bandwidth with an fp32 result matrix, so all accumulation - including beta=1 gradient accumulation - stays full precision. Verified against CPU BLAS across every transpose/beta case; the worst error is ~0.6x the fp16 input-rounding bound, i.e. exactly the rounding and nothing else. But measured on the modern preset: **0.28 it/s with it, 0.28 without** (only the 50-GFLOP logits matmuls cross the GPU threshold, and their bandwidth win just covers the conversion cost), and dropping the threshold to 5 GFLOP to route the FFN matmuls through it ran **0.24 it/s - 14% slower**. Synchronous dispatch with the CPU idle during GPU work still loses to AMX at these sizes, halved bandwidth or not. Default off (`TRANSFORMER_METAL_FP16=1` to enable); like the backend itself in #7, it should earn its keep at the next model size up, or when dispatch overlaps CPU work.
