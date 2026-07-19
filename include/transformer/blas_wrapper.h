@@ -6,7 +6,27 @@
 #else
     #include <cblas.h>
 #endif
+#include "metal_backend.h"
 #include <cmath>
+#include <cstdlib>
+
+// Matmuls above this many FLOPs (2*M*N*K) route to the Metal GPU when one
+// is available. The default crossover comes from measuring MPS against
+// Accelerate on an M2 Pro across model scales (see BENCHMARKS.md): below
+// ~10 GFLOPs the AMX units win or tie (the entire 22M-param config stays
+// on CPU - measured, not assumed); above it the GPU pulls ahead, reaching
+// 1.5-1.8x at 60-120M-param shapes. Tune with TRANSFORMER_METAL_THRESHOLD;
+// disable with TRANSFORMER_METAL=0.
+inline bool metal_worthwhile(size_t flops)
+{
+    static const long long threshold = [] {
+        if (const char* env = std::getenv("TRANSFORMER_METAL_THRESHOLD")) {
+            return static_cast<long long>(std::atoll(env));
+        }
+        return 10LL * 1000 * 1000 * 1000;
+    }();
+    return flops >= static_cast<size_t>(threshold);
+}
 
 // C = alpha * op(A) @ op(B) + beta * C
 // A, B, C are row-major. op(A) is (M,K), op(B) is (K,N), C is (M,N).
@@ -17,6 +37,12 @@ inline void blas_sgemm_ex(const float* A, const float* B, float* C,
                           bool transA, bool transB,
                           float alpha, float beta)
 {
+    const size_t flops = 2ull * M * N * K;
+    if (metal_worthwhile(flops)
+        && metalgpu::sgemm(A, B, C, M, N, K, transA, transB, alpha, beta)) {
+        return;
+    }
+
     int lda = transA ? M : K;
     int ldb = transB ? K : N;
     int ldc = N;

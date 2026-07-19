@@ -126,7 +126,7 @@ data/            Tiny Shakespeare corpus (~1.1MB)
 
 ## Limitations and roadmap
 
-- CPU-only. A CUDA port was attempted and rolled back (see git history) — a GPU backend done properly, likely Metal on Apple Silicon, is the most interesting next step.
+- A Metal (MPS) backend routes matmuls above ~10 GFLOPs to the GPU via zero-copy unified memory. At the current 22M-param scale that threshold is never crossed — measurement showed Apple's AMX (CPU) winning below it (see BENCHMARKS.md #7) — but it engages automatically at larger model/batch/context sizes. A CUDA port was attempted earlier and rolled back (see git history).
 - Educational scale: don't expect it to replace your favorite inference engine.
 
 ## License

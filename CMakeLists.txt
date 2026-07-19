@@ -4,9 +4,21 @@ project(transformer-from-scratch)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Metal backend (Apple only): Objective-C++ source compiled into every
+# target, since blas_wrapper.h routes large matmuls through it.
+if(APPLE)
+    enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 17)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+    set(METAL_BACKEND_SRC src/transformer/metal_backend.mm)
+else()
+    set(METAL_BACKEND_SRC "")
+endif()
+
 add_executable(transformer
     src/main.cpp
     src/transformer/tensor.cpp
+    ${METAL_BACKEND_SRC}
     src/transformer/attention.cpp
     src/transformer/multihead_attention.cpp
     src/transformer/layer_norm.cpp
@@ -33,6 +45,7 @@ add_executable(transformer
 add_executable(sanity_tests
     tests/integration/sanity_tests.cpp
     src/transformer/tensor.cpp
+    ${METAL_BACKEND_SRC}
     src/transformer/attention.cpp
     src/transformer/multihead_attention.cpp
     src/transformer/layer_norm.cpp
@@ -63,8 +76,12 @@ target_include_directories(sanity_tests PRIVATE include)
 # ============================================================================
 if(APPLE)
     find_library(ACCELERATE_LIBRARY Accelerate)
-    target_link_libraries(transformer ${ACCELERATE_LIBRARY})
-    target_link_libraries(sanity_tests ${ACCELERATE_LIBRARY})
+    find_library(METAL_LIBRARY Metal)
+    find_library(MPS_LIBRARY MetalPerformanceShaders)
+    find_library(FOUNDATION_LIBRARY Foundation)
+    set(APPLE_GPU_LIBS ${METAL_LIBRARY} ${MPS_LIBRARY} ${FOUNDATION_LIBRARY})
+    target_link_libraries(transformer ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
+    target_link_libraries(sanity_tests ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
     add_compile_definitions(ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     message(STATUS "Using Apple Accelerate framework for BLAS")
 else()
@@ -172,6 +189,7 @@ if(BUILD_TESTS)
         tests/unit/test_gradients.cpp
         # Reuse all the implementation files (no main.cpp!)
         src/transformer/tensor.cpp
+        ${METAL_BACKEND_SRC}
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/linear.cpp
@@ -195,6 +213,7 @@ if(BUILD_TESTS)
     add_executable(test_model_gradients
         tests/unit/test_model_gradients.cpp
         src/transformer/tensor.cpp
+        ${METAL_BACKEND_SRC}
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/linear.cpp
@@ -215,9 +234,16 @@ if(BUILD_TESTS)
         src/data/dataloader.cpp
     )
 
+    add_executable(test_metal_matmul
+        tests/unit/test_metal_matmul.cpp
+        src/transformer/tensor.cpp
+        ${METAL_BACKEND_SRC}
+    )
+
     add_executable(test_dropout
         tests/unit/test_dropout.cpp
         src/transformer/tensor.cpp
+        ${METAL_BACKEND_SRC}
         src/transformer/variable.cpp
         src/transformer/activations.cpp
     )
@@ -225,6 +251,7 @@ if(BUILD_TESTS)
     add_executable(test_attention_bias
         tests/unit/test_attention_bias.cpp
         src/transformer/tensor.cpp
+        ${METAL_BACKEND_SRC}
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/multihead_attention.cpp
@@ -233,6 +260,7 @@ if(BUILD_TESTS)
     add_executable(test_weight_tying
         tests/unit/test_weight_tying.cpp
         src/transformer/tensor.cpp
+        ${METAL_BACKEND_SRC}
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/token_embedding.cpp
@@ -248,6 +276,7 @@ if(BUILD_TESTS)
     add_executable(test_attention_gradients
         tests/unit/test_attention_gradients.cpp
         src/transformer/tensor.cpp
+        ${METAL_BACKEND_SRC}
         src/transformer/variable.cpp
         src/transformer/activations.cpp
         src/transformer/linear.cpp
@@ -257,7 +286,7 @@ if(BUILD_TESTS)
 
     target_include_directories(test_gradients PRIVATE include)
     if(APPLE)
-        target_link_libraries(test_gradients ${ACCELERATE_LIBRARY})
+        target_link_libraries(test_gradients ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
         target_compile_definitions(test_gradients PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     else()
         target_link_libraries(test_gradients ${BLAS_LIBRARIES})
@@ -266,16 +295,25 @@ if(BUILD_TESTS)
 
     target_include_directories(test_model_gradients PRIVATE include)
     if(APPLE)
-        target_link_libraries(test_model_gradients ${ACCELERATE_LIBRARY})
+        target_link_libraries(test_model_gradients ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
         target_compile_definitions(test_model_gradients PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     else()
         target_link_libraries(test_model_gradients ${BLAS_LIBRARIES})
     endif()
     add_test(NAME ModelGradientChecking COMMAND test_model_gradients)
 
+    target_include_directories(test_metal_matmul PRIVATE include)
+    if(APPLE)
+        target_link_libraries(test_metal_matmul ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
+        target_compile_definitions(test_metal_matmul PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
+    else()
+        target_link_libraries(test_metal_matmul ${BLAS_LIBRARIES})
+    endif()
+    add_test(NAME MetalMatmulVsCPU COMMAND test_metal_matmul)
+
     target_include_directories(test_dropout PRIVATE include)
     if(APPLE)
-        target_link_libraries(test_dropout ${ACCELERATE_LIBRARY})
+        target_link_libraries(test_dropout ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
         target_compile_definitions(test_dropout PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     else()
         target_link_libraries(test_dropout ${BLAS_LIBRARIES})
@@ -284,7 +322,7 @@ if(BUILD_TESTS)
 
     target_include_directories(test_attention_bias PRIVATE include)
     if(APPLE)
-        target_link_libraries(test_attention_bias ${ACCELERATE_LIBRARY})
+        target_link_libraries(test_attention_bias ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
         target_compile_definitions(test_attention_bias PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     else()
         target_link_libraries(test_attention_bias ${BLAS_LIBRARIES})
@@ -293,7 +331,7 @@ if(BUILD_TESTS)
 
     target_include_directories(test_weight_tying PRIVATE include)
     if(APPLE)
-        target_link_libraries(test_weight_tying ${ACCELERATE_LIBRARY})
+        target_link_libraries(test_weight_tying ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
         target_compile_definitions(test_weight_tying PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     else()
         target_link_libraries(test_weight_tying ${BLAS_LIBRARIES})
@@ -302,7 +340,7 @@ if(BUILD_TESTS)
 
     target_include_directories(test_attention_gradients PRIVATE include)
     if(APPLE)
-        target_link_libraries(test_attention_gradients ${ACCELERATE_LIBRARY})
+        target_link_libraries(test_attention_gradients ${ACCELERATE_LIBRARY} ${APPLE_GPU_LIBS})
         target_compile_definitions(test_attention_gradients PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
     else()
         target_link_libraries(test_attention_gradients ${BLAS_LIBRARIES})

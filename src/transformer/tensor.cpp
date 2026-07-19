@@ -5,16 +5,62 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
+#include <new>
 #include <random>
 #include <stdexcept>
 #include <utility>
 #include <cassert>
 #include <string>
 
+namespace {
+
+// Large tensor storage is page-aligned and page-rounded. On Apple Silicon
+// the CPU and GPU share physical memory, so Metal can wrap these pages in
+// an MTLBuffer directly (newBufferWithBytesNoCopy) - the GPU computes on
+// the same bytes the CPU sees, no transfer. That API requires page
+// alignment and page-multiple lengths; 16KB covers both Apple Silicon
+// (16K pages) and Linux (4K pages).
+//
+// Only tensors big enough to plausibly hit the GPU matmul path get the
+// aligned treatment: page-aligned allocation bypasses malloc's small-block
+// cache and touches fresh kernel pages, which measurably slowed training
+// when applied to every scratch tensor. Small tensors use plain new[];
+// the Metal backend's alignment check routes them to the CPU automatically.
+constexpr size_t kPageBytes = 16384;
+constexpr size_t kAlignThresholdBytes = 256 * 1024;
+
+// The element count decides which allocator was used, so free recomputes
+// the same rule. Tensor dimensions are immutable after construction, which
+// makes this sound.
+float* alloc_floats(size_t n) {
+    const size_t raw_bytes = n * sizeof(float);
+    if (raw_bytes >= kAlignThresholdBytes) {
+        size_t bytes = ((raw_bytes + kPageBytes - 1) / kPageBytes) * kPageBytes;
+        void* p = nullptr;
+        if (posix_memalign(&p, kPageBytes, bytes) != 0) {
+            throw std::bad_alloc();
+        }
+        return static_cast<float*>(p);
+    }
+    return new float[n];
+}
+
+void free_floats(float* p, size_t n) {
+    if (!p) return;
+    if (n * sizeof(float) >= kAlignThresholdBytes) {
+        std::free(p);
+    } else {
+        delete[] p;
+    }
+}
+
+}  // namespace
+
 Tensor::Tensor() {
     this->rows = 0;
-    this->cols = 0; 
+    this->cols = 0;
     this->batch_size = 0;
     this->is_3d = false;
     this->data = nullptr;
@@ -37,11 +83,8 @@ Tensor::Tensor(size_t rows, size_t cols) {
                                   " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
     }
 
-    this->data = new float[total];
-
-    for (size_t i = 0; i < total; i++) {
-        data[i] = 0.0f;
-    }
+    this->data = alloc_floats(total);
+    std::memset(this->data, 0, total * sizeof(float));
 }
 
 Tensor::Tensor(size_t batch_size, size_t rows, size_t cols) {
@@ -61,11 +104,8 @@ Tensor::Tensor(size_t batch_size, size_t rows, size_t cols) {
                                   " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
     }
 
-    this->data = new float[total];
-
-    for (size_t i = 0; i < total; i++) {
-        data[i] = 0.0f;
-    }
+    this->data = alloc_floats(total);
+    std::memset(this->data, 0, total * sizeof(float));
 }
 
 Tensor::Tensor(const Tensor& other) {
@@ -81,11 +121,8 @@ Tensor::Tensor(const Tensor& other) {
                                   " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
     }
 
-    this->data = new float[total];
-
-    for (size_t i = 0; i < total; i++) {
-        this->data[i] = other.data[i];
-    }
+    this->data = alloc_floats(total);
+    std::memcpy(this->data, other.data, total * sizeof(float));
 }
 
 Tensor::Tensor(Tensor&& other) noexcept :
@@ -114,7 +151,7 @@ Tensor& Tensor::operator=(const Tensor& other) {
 
 Tensor& Tensor::operator=(Tensor&& other) noexcept {
     if (this == &other) return *this;
-    delete[] data;
+    free_floats(data, batch_size * rows * cols);
     data = other.data;
     rows = other.rows;
     cols = other.cols;
@@ -127,7 +164,7 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
 }
 
 Tensor::~Tensor() {
-    delete[] data;
+    free_floats(data, batch_size * rows * cols);
 }
 
 //2D Tensor methods

@@ -17,8 +17,23 @@ One row per optimization iteration, so the performance story is readable at a gl
 | 4 | 2026-07-18 | Thread pool (`parallel.h`): GELU, dropout, softmax, LayerNorm, Adam across all 10 cores | 3.4 | 2618 | — | 1450 MB |
 | 5 | 2026-07-18 | Batched-attention restructure: parallel per-(batch, head) with cached softmax, flat-sgemm projections, zero physical transposes | 6.1 | 4679 | — | 1184 MB |
 | 6 | 2026-07-18 | Fast paths in add backward: in-place residual accumulation, row-major bias column sums | 6.7 | 5174 | 375.5 | 1457 MB |
+| 7 | 2026-07-18 | Metal (MPS) backend for large matmuls, zero-copy via unified memory. **No change at 22M scale — by measurement and then by design** (see note); kicks in automatically at ~10 GFLOPs/op | 6.7 | 5174 | 375.5 | 1457 MB |
 
 ## Notes
+
+**#7 — Metal backend: an honest null result at this scale.** The GPU path works (MPS matmuls verified against CPU BLAS across every transpose/beta combination) and costs nothing: tensors ≥256KB are page-aligned so `MTLBuffer` wraps them zero-copy through Apple Silicon's unified memory, and every call can fall back to CPU. But **measurement said no**: routing the 22M model's matmuls to the GPU made training *slower* (4.5 vs 4.6 steps/s under identical conditions). A per-shape sweep found the crossover:
+
+| GEMM shape (M×N×K) | context | CPU GF/s | GPU GF/s | GPU/CPU |
+|---|---|---:|---:|---:|
+| 768×512×512 | 22M model, QKV proj | 1251 | 599 | 0.48× |
+| 768×5000×512 | 22M model, logits | 1557 | 1817 | 1.17× |
+| 4096×3072×768 | 60M model, FFN | 1991 | 2963 | 1.49× |
+| 4096×16000×768 | 60M model, logits | 2200 | 3950 | 1.80× |
+| 8192×4096×1024 | 120M model, FFN | 2212 | 3881 | 1.75× |
+
+(CPU numbers depressed ~30% by a concurrent training run; the true crossover is if anything higher.) Apple's AMX units are simply excellent at small-to-medium GEMMs, and synchronous MPS dispatch can't amortize below ~10 GFLOPs per op. So the default threshold is set there: the current model runs entirely on CPU (hence identical numbers above), and the backend engages automatically as model/batch/context grow — exactly the scales where training needs it. `TRANSFORMER_METAL=0` disables it; `TRANSFORMER_METAL_THRESHOLD` tunes the crossover.
+
+The same instinct that would have shipped this as a "GPU acceleration 🚀" bullet point without measuring is how the repo got its dead CUDA port. The infrastructure earns its keep at the next model size up; at this one, the honest number is a tie.
 
 **#0 — Baseline.** Starting point after restoring the pre-CUDA implementation and fixing the generation memory leak (which alone brought generation peak memory down from >5GB). Generation has no KV cache yet, so its tok/s decays quadratically as context grows — 86.7 tok/s is measured at short context and is flattering. Peak RSS of 1.7GB for a 22M-param model points at per-op allocation churn in the autograd graph.
 
