@@ -82,7 +82,24 @@ Any plain-text file works. For anything beyond toy size, pre-tokenize it once:
 ./build/transformer train my_corpus.txt          # memory-maps the .bin files
 ```
 
-`prepare` trains a BPE tokenizer on the corpus and writes the encoded tokens as binary files (uint16 per token, 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM — the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
+`prepare` trains a BPE tokenizer on the corpus (sampling the first 32MB for merge learning on large corpora — frequencies converge long before that) and writes the encoded tokens as binary files (uint16 per token, 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM — the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
+
+Two model presets are built in:
+
+| preset | params | config | intended for |
+|---|---|---|---|
+| `small` (default) | ~22M | d512 × 6L × 8H, seq 96, batch 8, vocab 5k | Tiny Shakespeare |
+| `medium` | ~70M | d768 × 8L × 12H, seq 256, batch 16, vocab 16k | TinyStories-scale corpora |
+
+`medium` is sized so its FFN and logits matmuls cross the ~10 GFLOP threshold where the Metal GPU backend engages (BENCHMARKS.md #7). Example end-to-end:
+
+```bash
+curl -L -o data/tinystories.txt \
+  "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt"
+./build/transformer prepare data/tinystories.txt 16000
+./build/transformer train data/tinystories.txt medium     # writes tinystories_final.bin
+./build/transformer chat tinystories_final.bin data/tinystories.txt 16000
+```
 
 Performance across optimization iterations is tracked in [BENCHMARKS.md](BENCHMARKS.md) (`./build/transformer bench` reproduces the numbers).
 

@@ -83,6 +83,7 @@ float Trainer::evaluate() {
     int batches = 0;
 
     while (val_loader_->has_next()) {
+        if (config_.max_eval_batches > 0 && batches >= config_.max_eval_batches) break;
         auto batch = val_loader_->next_batch();
         auto in = Variable::create(batch.input, false);
         auto tgt = Variable::create(batch.target, false);

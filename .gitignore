@@ -21,3 +21,7 @@ compile_commands.json
 
 # System files
 .DS_Store
+
+# Downloaded/derived corpora (only the small Shakespeare corpus is tracked)
+data/tinystories*
+data/ts_slice*

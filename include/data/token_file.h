@@ -9,7 +9,14 @@
 // uint64 token count, then uint16 token ids (so vocab must fit in 65536).
 namespace tokenfile {
 
-void write(const std::string& path, const std::vector<int>& tokens, int vocab_size);
+// Writes count tokens starting at data. Pointer + count (rather than a
+// vector) so a large corpus can be split into train/val files without
+// materializing sub-vector copies.
+void write(const std::string& path, const int* data, size_t count, int vocab_size);
+
+inline void write(const std::string& path, const std::vector<int>& tokens, int vocab_size) {
+    write(path, tokens.data(), tokens.size(), vocab_size);
+}
 
 bool exists(const std::string& path);
 

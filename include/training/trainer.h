@@ -26,7 +26,11 @@ struct TrainingConfig {
     std::string checkpoint_prefix;
     int eval_interval = 250;    // steps between validation runs (0 = never)
     float weight_decay = 0.1f;  // AdamW decay on weight matrices
-
+    // Cap on batches per validation pass (0 = whole val set). At large
+    // corpus scale the 5% holdout is tens of millions of tokens; a fixed
+    // sample of the (unshuffled) val loader gives a stable perplexity
+    // estimate in bounded time.
+    int max_eval_batches = 0;
 };
 
 class Trainer {

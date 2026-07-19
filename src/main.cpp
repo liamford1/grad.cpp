@@ -108,15 +108,44 @@ void generate_samples(GPTModel& model, BPETokenizer& tokenizer) {
     }
 }
 
-int run_generation(const std::string& checkpoint_path, const std::string& prompt) {
+// The default corpus keeps its historical cache name so existing caches
+// and checkpoints stay valid; other corpora get corpus-derived names.
+std::string tokenizer_cache_prefix(const std::string& corpus_path) {
+    if (corpus_path == "data/shakespeare.txt") return "tokenizer";
+    return corpus_path + ".tokenizer";
+}
+
+std::string token_bin_path(const std::string& corpus_path, int vocab_size,
+                           const std::string& split) {
+    return corpus_path + "." + std::to_string(vocab_size) + "." + split + ".bin";
+}
+
+// Inference-time tokenizer loading: the cache must exist (train/prepare
+// created it), so the corpus text - possibly gigabytes - is never read.
+// Falls back to training from text only for small unprepared corpora.
+void load_tokenizer_for_inference(const std::string& corpus_path, int vocab_size,
+                                  BPETokenizer& tokenizer) {
+    std::string cache_file = tokenizer_cache_prefix(corpus_path) + "_"
+                           + std::to_string(vocab_size) + ".cache";
+    std::ifstream cache_check(cache_file);
+    if (cache_check.good()) {
+        cache_check.close();
+        tokenizer.load(cache_file);
+        std::cout << "Tokenizer: " << cache_file << " (vocab "
+                  << tokenizer.getCurrentVocabSize() << ")" << std::endl;
+        return;
+    }
+    std::string text = read_text_file(corpus_path);
+    load_tokenizer(text, tokenizer_cache_prefix(corpus_path), vocab_size, tokenizer);
+}
+
+int run_generation(const std::string& checkpoint_path, const std::string& prompt,
+                   const std::string& corpus_path, int vocab_size) {
     std::cout << "\nTransformer Generation\n" << std::endl;
 
     try {
-        const int vocab_size = 5000;
-
         BPETokenizer tokenizer(vocab_size);
-        std::string text = read_text_file("data/shakespeare.txt");
-        load_tokenizer(text, "tokenizer", vocab_size, tokenizer);
+        load_tokenizer_for_inference(corpus_path, vocab_size, tokenizer);
 
         utils::print_section("Loading Model");
         GPTModel model = GPTModel::load(checkpoint_path);
@@ -143,23 +172,20 @@ int run_generation(const std::string& checkpoint_path, const std::string& prompt
 // token. Note this is a base language model, not an instruction-tuned
 // assistant: it continues text in the style of its training corpus rather
 // than answering questions.
-int run_chat(const std::string& checkpoint_path) {
+int run_chat(const std::string& checkpoint_path,
+             const std::string& corpus_path, int vocab_size) {
     std::cout << "\nTransformer Chat\n" << std::endl;
 
     try {
-        const int vocab_size = 5000;
-
         BPETokenizer tokenizer(vocab_size);
-        std::string text = read_text_file("data/shakespeare.txt");
-        load_tokenizer(text, "tokenizer", vocab_size, tokenizer);
+        load_tokenizer_for_inference(corpus_path, vocab_size, tokenizer);
 
         utils::print_section("Loading Model");
         GPTModel model = GPTModel::load(checkpoint_path);
         TextGen generator(model, &tokenizer);
 
-        std::cout << "\nThis model continues text in the style of its training data"
-                  << " (Shakespeare).\nTry a prompt like \"ROMEO:\" or"
-                  << " \"First Citizen:\". Empty line or 'exit' quits.\n" << std::endl;
+        std::cout << "\nThis is a base language model: it continues text in the"
+                  << " style of its training corpus.\nEmpty line or 'exit' quits.\n" << std::endl;
 
         std::string line;
         while (true) {
@@ -259,18 +285,6 @@ int run_benchmark(int bench_steps) {
     }
 }
 
-// The default corpus keeps its historical cache name so existing caches
-// and checkpoints stay valid; other corpora get corpus-derived names.
-std::string tokenizer_cache_prefix(const std::string& corpus_path) {
-    if (corpus_path == "data/shakespeare.txt") return "tokenizer";
-    return corpus_path + ".tokenizer";
-}
-
-std::string token_bin_path(const std::string& corpus_path, int vocab_size,
-                           const std::string& split) {
-    return corpus_path + "." + std::to_string(vocab_size) + "." + split + ".bin";
-}
-
 // Pre-tokenize a corpus once: train (or load) the BPE tokenizer, encode the
 // whole text, and write 95/5 train/val token files. Training then memory-
 // maps those files instead of re-encoding the corpus on every run.
@@ -281,7 +295,22 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
         utils::print_section("Tokenizing corpus");
         std::string text = read_text_file(corpus_path);
         BPETokenizer tokenizer(vocab_size);
-        load_tokenizer(text, tokenizer_cache_prefix(corpus_path), vocab_size, tokenizer);
+
+        // BPE merge learning scans every unique word once per merge, so its
+        // cost grows with corpus size for no statistical benefit: token
+        // frequencies converge long before 32MB. Train on a prefix sample
+        // (cut at a word boundary), then encode the full corpus with it.
+        constexpr size_t kTokenizerSampleBytes = 32ull * 1024 * 1024;
+        if (text.size() > kTokenizerSampleBytes) {
+            size_t cut = text.rfind(' ', kTokenizerSampleBytes);
+            if (cut == std::string::npos) cut = kTokenizerSampleBytes;
+            std::cout << "Corpus is " << (text.size() >> 20) << "MB; training tokenizer on a "
+                      << (cut >> 20) << "MB sample" << std::endl;
+            std::string sample = text.substr(0, cut);
+            load_tokenizer(sample, tokenizer_cache_prefix(corpus_path), vocab_size, tokenizer);
+        } else {
+            load_tokenizer(text, tokenizer_cache_prefix(corpus_path), vocab_size, tokenizer);
+        }
 
         std::cout << "Encoding text..." << std::flush;
         auto start = std::chrono::high_resolution_clock::now();
@@ -290,18 +319,20 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
         std::cout << " " << tokens.size() << " tokens (" << ms << "ms)" << std::endl;
 
-        size_t split = tokens.size() * 95 / 100;
-        std::vector<int> train_tokens(tokens.begin(), tokens.begin() + split);
-        std::vector<int> val_tokens(tokens.begin() + split, tokens.end());
+        // Release the raw text before writing; the token ids are all that
+        // remain live, and the split writes directly from ranges of them.
+        text.clear();
+        text.shrink_to_fit();
 
+        size_t split = tokens.size() * 95 / 100;
         int vocab = tokenizer.getCurrentVocabSize();
         std::string train_bin = token_bin_path(corpus_path, vocab_size, "train");
         std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
-        tokenfile::write(train_bin, train_tokens, vocab);
-        tokenfile::write(val_bin, val_tokens, vocab);
+        tokenfile::write(train_bin, tokens.data(), split, vocab);
+        tokenfile::write(val_bin, tokens.data() + split, tokens.size() - split, vocab);
 
-        std::cout << "\nWrote " << train_bin << " (" << train_tokens.size() << " tokens)"
-                  << "\nWrote " << val_bin << " (" << val_tokens.size() << " tokens)"
+        std::cout << "\nWrote " << train_bin << " (" << split << " tokens)"
+                  << "\nWrote " << val_bin << " (" << (tokens.size() - split) << " tokens)"
                   << "\n\nTrain with: ./build/transformer train " << corpus_path
                   << std::endl;
         return 0;
@@ -311,13 +342,52 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
     }
 }
 
-int run_training(bool fast_mode, const std::string& corpus_path) {
-    std::cout << "\nTransformer Training\n" << std::endl;
+// Model/training presets. "small" is the original 22M-param Shakespeare
+// config; "medium" (~70M params) is sized so its FFN and logits matmuls
+// cross the ~10 GFLOP threshold where the Metal GPU backend starts winning
+// (BENCHMARKS.md #7). "fast" is the CI smoke test.
+struct Preset {
+    const char* name;
+    int vocab_size;
+    int d_model, num_layers, num_heads;
+    int max_len, seq_length, batch_size;
+    float learning_rate;
+    int warmup_steps, num_steps;
+    int checkpoint_interval, eval_interval;
+    int max_eval_batches;  // 0 = evaluate the whole val set
+};
+
+const Preset kPresets[] = {
+    {"fast",   500,   128, 2,  4,  1024, 64,  4,  3e-4f, 10,   50,    2500, 25,  0},
+    {"small",  5000,  512, 6,  8,  1024, 96,  8,  3e-4f, 500,  50000, 2500, 250, 0},
+    {"medium", 16000, 768, 8,  12, 1024, 256, 16, 3e-4f, 1000, 20000, 2000, 250, 32},
+};
+
+const Preset* find_preset(const std::string& name) {
+    for (const auto& p : kPresets) {
+        if (name == p.name) return &p;
+    }
+    return nullptr;
+}
+
+// Checkpoint prefix from the corpus filename: data/tinystories.txt ->
+// "tinystories" (data/shakespeare.txt keeps its historical "shakespeare").
+std::string checkpoint_stem(const std::string& corpus_path) {
+    size_t slash = corpus_path.find_last_of('/');
+    std::string base = (slash == std::string::npos) ? corpus_path
+                                                    : corpus_path.substr(slash + 1);
+    size_t dot = base.find_last_of('.');
+    return (dot == std::string::npos) ? base : base.substr(0, dot);
+}
+
+int run_training(const Preset& preset, const std::string& corpus_path) {
+    std::cout << "\nTransformer Training (" << preset.name << ")\n" << std::endl;
 
     try {
-        const int vocab_size = fast_mode ? 500 : 5000;
-        const int num_steps = fast_mode ? 50 : 50000;
-        const int seq_length = fast_mode ? 64 : 96;
+        const int vocab_size = preset.vocab_size;
+        const int num_steps = preset.num_steps;
+        const int seq_length = preset.seq_length;
+        const bool fast_mode = std::string(preset.name) == "fast";
 
         BPETokenizer tokenizer(vocab_size);
         std::shared_ptr<Dataset> dataset;
@@ -379,19 +449,21 @@ int run_training(bool fast_mode, const std::string& corpus_path) {
 
         training::TrainingConfig config;
         config.vocab_size = tokenizer.getCurrentVocabSize();
-        config.d_model = fast_mode ? 128 : 512;
-        config.num_layers = fast_mode ? 2 : 6;
-        config.num_heads = fast_mode ? 4 : 8;
-        config.max_len = 1024;
+        config.d_model = preset.d_model;
+        config.num_layers = preset.num_layers;
+        config.num_heads = preset.num_heads;
+        config.max_len = preset.max_len;
         config.seq_length = seq_length;
-        config.batch_size = fast_mode ? 4 : 8;
-        config.learning_rate = 3e-4f;
+        config.batch_size = preset.batch_size;
+        config.learning_rate = preset.learning_rate;
         config.dropout = 0.1f;
-        config.warmup_steps = fast_mode ? 10 : 500;
+        config.warmup_steps = preset.warmup_steps;
         config.num_steps = num_steps;
-        config.checkpoint_interval = 2500;
-        config.checkpoint_prefix = fast_mode ? "shakespeare_fast" : "shakespeare";
-        config.eval_interval = fast_mode ? 25 : 250;
+        config.checkpoint_interval = preset.checkpoint_interval;
+        config.checkpoint_prefix = checkpoint_stem(corpus_path)
+                                 + (fast_mode ? "_fast" : "");
+        config.eval_interval = preset.eval_interval;
+        config.max_eval_batches = preset.max_eval_batches;
 
         auto start = std::chrono::high_resolution_clock::now();
         GPTModel model(config.vocab_size, config.d_model, config.num_layers,
@@ -432,10 +504,17 @@ int main(int argc, char* argv[]) {
     std::string default_corpus = "data/shakespeare.txt";
 
     if (mode == "train") {
-        return run_training(false, (argc > 2) ? argv[2] : default_corpus);
+        std::string corpus = (argc > 2) ? argv[2] : default_corpus;
+        std::string preset_name = (argc > 3) ? argv[3] : "small";
+        const Preset* preset = find_preset(preset_name);
+        if (!preset || preset_name == "fast") {
+            std::cerr << "Unknown preset '" << preset_name << "' (available: small, medium)" << std::endl;
+            return 1;
+        }
+        return run_training(*preset, corpus);
     }
     if (mode == "train-fast") {
-        return run_training(true, (argc > 2) ? argv[2] : default_corpus);
+        return run_training(*find_preset("fast"), (argc > 2) ? argv[2] : default_corpus);
     }
     if (mode == "prepare") {
         if (argc < 3) {
@@ -448,7 +527,9 @@ int main(int argc, char* argv[]) {
     if (mode == "generate") {
         std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
         std::string prompt = (argc > 3) ? argv[3] : "ROMEO:\n";
-        return run_generation(checkpoint, prompt);
+        std::string corpus = (argc > 4) ? argv[4] : default_corpus;
+        int vocab = (argc > 5) ? std::atoi(argv[5]) : 5000;
+        return run_generation(checkpoint, prompt, corpus, vocab);
     }
     if (mode == "bench") {
         int steps = (argc > 2) ? std::atoi(argv[2]) : 20;
@@ -456,15 +537,17 @@ int main(int argc, char* argv[]) {
     }
     if (mode == "chat") {
         std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
-        return run_chat(checkpoint);
+        std::string corpus = (argc > 3) ? argv[3] : default_corpus;
+        int vocab = (argc > 4) ? std::atoi(argv[4]) : 5000;
+        return run_chat(checkpoint, corpus, vocab);
     }
 
     std::cerr << "Usage: " << argv[0] << " <mode>\n"
-              << "  prepare <corpus.txt> [vocab]     pre-tokenize a corpus to .bin token files\n"
-              << "  train [corpus.txt]               full training run (uses .bin files if present)\n"
-              << "  train-fast [corpus.txt]          small config for a quick smoke test\n"
-              << "  generate [checkpoint] [prompt]   sample from a saved checkpoint\n"
-              << "  chat [checkpoint]                interactive prompt/continue REPL\n"
-              << "  bench [steps]                    measure training and generation speed\n";
+              << "  prepare <corpus.txt> [vocab]         pre-tokenize a corpus to .bin token files\n"
+              << "  train [corpus.txt] [small|medium]    full training run (uses .bin files if present)\n"
+              << "  train-fast [corpus.txt]              tiny config for a quick smoke test\n"
+              << "  generate [ckpt] [prompt] [corpus] [vocab]   sample from a saved checkpoint\n"
+              << "  chat [ckpt] [corpus] [vocab]                interactive prompt/continue REPL\n"
+              << "  bench [steps]                        measure training and generation speed\n";
     return 1;
 }

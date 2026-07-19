@@ -18,7 +18,7 @@ constexpr size_t kHeaderBytes = 4 + sizeof(uint32_t) + sizeof(uint64_t);
 
 namespace tokenfile {
 
-void write(const std::string& path, const std::vector<int>& tokens, int vocab_size) {
+void write(const std::string& path, const int* data, size_t count, int vocab_size) {
     if (vocab_size <= 0 || vocab_size > 65536) {
         throw std::invalid_argument("token file requires 0 < vocab_size <= 65536 (uint16 storage)");
     }
@@ -29,20 +29,20 @@ void write(const std::string& path, const std::vector<int>& tokens, int vocab_si
     }
 
     const uint32_t vocab = static_cast<uint32_t>(vocab_size);
-    const uint64_t count = tokens.size();
+    const uint64_t count64 = count;
     file.write(kMagic, 4);
     file.write(reinterpret_cast<const char*>(&vocab), sizeof(vocab));
-    file.write(reinterpret_cast<const char*>(&count), sizeof(count));
+    file.write(reinterpret_cast<const char*>(&count64), sizeof(count64));
 
     // Convert and write in chunks so huge corpora never need a full-size
     // duplicate buffer in memory.
     constexpr size_t kChunk = 1 << 20;
-    std::vector<uint16_t> buffer(std::min(kChunk, tokens.size()));
+    std::vector<uint16_t> buffer(std::min(kChunk, count));
     size_t written = 0;
-    while (written < tokens.size()) {
-        size_t n = std::min(kChunk, tokens.size() - written);
+    while (written < count) {
+        size_t n = std::min(kChunk, count - written);
         for (size_t i = 0; i < n; i++) {
-            int t = tokens[written + i];
+            int t = data[written + i];
             if (t < 0 || t >= vocab_size) {
                 throw std::runtime_error("token id out of range for vocab while writing " + path);
             }
