@@ -1,7 +1,6 @@
 #pragma once
 #include "dataset.h"
 #include "../transformer/tensor.h"
-#include <vector>
 #include <memory>
 #include <random>
 
@@ -14,15 +13,20 @@ struct Batch {
           target(batch_size, seq_length, 1) {}
 };
 
+// Shuffled loading draws each row's window uniformly at random (sampling
+// with replacement across an epoch) instead of walking a materialized
+// permutation. A permutation costs 8 bytes per window - 1.4GB for a
+// TinyStories-sized mapped corpus - and a run that consumes a fraction of
+// an epoch can't statistically distinguish the two. Sequential (shuffle
+// off) iteration is exact and unchanged.
 class DataLoader {
 private:
     std::shared_ptr<Dataset> dataset_;
     int batch_size_;
     bool shuffle_;
-    std::vector<size_t> indices_;
     size_t current_index_;
     std::mt19937 rng_;
-    
+
 public:
     DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle = true, unsigned int seed = 42);
     

@@ -89,9 +89,9 @@ Two model presets are built in:
 | preset | params | config | intended for |
 |---|---|---|---|
 | `small` (default) | ~22M | d512 × 6L × 8H, seq 96, batch 8, vocab 5k | Tiny Shakespeare |
-| `medium` | ~70M | d768 × 8L × 12H, seq 256, batch 16, vocab 16k | TinyStories-scale corpora |
+| `medium` | ~70M | d768 × 8L × 12H, seq 256, batch 8, vocab 16k | TinyStories-scale corpora |
 
-`medium` is sized so its FFN and logits matmuls cross the ~10 GFLOP threshold where the Metal GPU backend engages (BENCHMARKS.md #7). Example end-to-end:
+`medium`'s logits matmul crosses the ~10 GFLOP threshold where the Metal GPU backend engages (BENCHMARKS.md #7); its batch size is set by memory, not compute — one training step peaks at ~5.4GB of footprint, sized to fit a 16GB machine (BENCHMARKS.md #8). Example end-to-end:
 
 ```bash
 curl -L -o data/tinystories.txt \

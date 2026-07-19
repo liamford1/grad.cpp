@@ -11,6 +11,12 @@ if(APPLE)
     set(CMAKE_OBJCXX_STANDARD 17)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
     set(METAL_BACKEND_SRC src/transformer/metal_backend.mm)
+    # ARC is required for correctness, not style: sgemm alloc/new-creates
+    # seven Objective-C objects per call (buffers, matrices, MPS kernel),
+    # and without ARC those +1 references leak on every large matmul -
+    # including no-copy MTLBuffers that keep GPU mappings alive on tensor
+    # pages the CPU side has already freed.
+    set_source_files_properties(${METAL_BACKEND_SRC} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 else()
     set(METAL_BACKEND_SRC "")
 endif()

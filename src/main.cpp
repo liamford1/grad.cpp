@@ -343,9 +343,17 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
 }
 
 // Model/training presets. "small" is the original 22M-param Shakespeare
-// config; "medium" (~70M params) is sized so its FFN and logits matmuls
-// cross the ~10 GFLOP threshold where the Metal GPU backend starts winning
-// (BENCHMARKS.md #7). "fast" is the CI smoke test.
+// config; "fast" is the CI smoke test.
+//
+// "medium" (~70M params) is memory-bound, not compute-bound: the autograd
+// graph holds data + grad for every intermediate, so one step at batch 16
+// / seq 256 peaked past 10GB of phys footprint and took a 16GB machine
+// down (measured 2026-07-18). Batch 8 halves that to a ~6GB peak; the
+// step count doubles to keep the total token budget, and the checkpoint /
+// eval intervals double to keep their wall-clock cadence. Its logits
+// matmul (50 GFLOP) still crosses the ~10 GFLOP Metal threshold
+// (BENCHMARKS.md #7); the FFN matmuls land just under it, where CPU and
+// GPU tie anyway.
 struct Preset {
     const char* name;
     int vocab_size;
@@ -364,7 +372,7 @@ struct Preset {
 const Preset kPresets[] = {
     {"fast",   500,   128, 2,  4,  1024, 64,  4,  3e-4f, 10,   50,    2500, 25,  0},
     {"small",  5000,  512, 6,  8,  1024, 96,  8,  3e-4f, 500,  8000,  2500, 250, 0},
-    {"medium", 16000, 768, 8,  12, 1024, 256, 16, 3e-4f, 1000, 20000, 2000, 250, 32},
+    {"medium", 16000, 768, 8,  12, 1024, 256, 8,  3e-4f, 1000, 40000, 4000, 500, 32},
 };
 
 const Preset* find_preset(const std::string& name) {
