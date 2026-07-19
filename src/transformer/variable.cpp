@@ -1,6 +1,7 @@
 #include "transformer/variable.h"
 #include "transformer/activations.h"
 #include "transformer/blas_wrapper.h"
+#include "transformer/parallel.h"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
@@ -245,40 +246,68 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
                 return out;
             };
 
-            if (self_ptr->requires_grad) {
+            // Fast paths for the two shapes that dominate training:
+            // same-shape adds (residual connections) accumulate directly,
+            // and row-vector biases reduce via cache-friendly row-major
+            // column sums. Everything else falls back to the general
+            // broadcast reduction below.
+            auto fast_accumulate = [&dO](const Tensor& shape, Tensor& grad) -> bool {
+                const bool same_shape = shape.getIs3D() == dO.getIs3D()
+                    && shape.getRows() == dO.getRows()
+                    && shape.getCols() == dO.getCols()
+                    && (!shape.getIs3D() || shape.getBatchSize() == dO.getBatchSize());
+                if (same_shape) {
+                    blas_vadd(grad.raw(), dO.raw(), grad.raw(), dO.numel());
+                    return true;
+                }
+                if (!shape.getIs3D() && shape.getRows() == 1
+                    && shape.getCols() == dO.getCols() && dO.getCols() > 1) {
+                    const size_t rows = dO.getIs3D()
+                        ? dO.getBatchSize() * dO.getRows() : dO.getRows();
+                    const size_t C = dO.getCols();
+                    const float* g = dO.raw();
+                    float* out = grad.raw();
+                    for (size_t i = 0; i < rows; i++) {
+                        const float* row = g + i * C;
+                        for (size_t j = 0; j < C; j++) {
+                            out[j] += row[j];
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            };
+
+            if (self_ptr->requires_grad && !fast_accumulate(x, self_ptr->grad)) {
                 if (!x.getIs3D() && !dO.getIs3D()) {
                     bool br = (x.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dx = reduce2D(dO, x.getRows(), x.getCols(), br, bc);
                     self_ptr->grad.add_inplace(dx);
-                } else if (x.getIs3D() && dO.getIs3D()) {
-                    self_ptr->grad.add_inplace(dO);
                 } else if (!x.getIs3D() && dO.getIs3D()) {
                     bool br = (x.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dx = reduce3Dfrom2D(dO, x.getRows(), x.getCols(), br, bc);
                     self_ptr->grad.add_inplace(dx);
                 } else {
-                    throw std::runtime_error("add backward: unexpected (3D x, 2D dOut)");
+                    throw std::runtime_error("add backward: unexpected shape combination for x");
                 }
             }
 
-            if (other->requires_grad) {
+            if (other->requires_grad && !fast_accumulate(other->data, other->grad)) {
                 const Tensor& yD = other->data;
                 if (!yD.getIs3D() && !dO.getIs3D()) {
                     bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dy = reduce2D(dO, yD.getRows(), yD.getCols(), br, bc);
                     other->grad.add_inplace(dy);
-                } else if (yD.getIs3D() && dO.getIs3D()) {
-                    other->grad.add_inplace(dO);
                 } else if (!yD.getIs3D() && dO.getIs3D()) {
                     bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
                     bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
                     Tensor dy = reduce3Dfrom2D(dO, yD.getRows(), yD.getCols(), br, bc);
                     other->grad.add_inplace(dy);
                 } else {
-                    throw std::runtime_error("add backward: unexpected (3D y, 2D dOut)");
+                    throw std::runtime_error("add backward: unexpected shape combination for y");
                 }
             }
         });
@@ -526,13 +555,15 @@ std::shared_ptr<Variable> Variable::gelu() const {
         : Tensor(data.getRows(), data.getCols());
     float* out = result.raw();
 
-    for (size_t i = 0; i < n; i++) {
-        out[i] = k * (x[i] + a * x[i] * x[i] * x[i]);
-    }
-    vec_tanh(out, out, static_cast<int>(n));
-    for (size_t i = 0; i < n; i++) {
-        out[i] = 0.5f * x[i] * (1.0f + out[i]);
-    }
+    parallel_for(n, 32768, [&](size_t begin, size_t end) {
+        for (size_t i = begin; i < end; i++) {
+            out[i] = k * (x[i] + a * x[i] * x[i] * x[i]);
+        }
+        vec_tanh(out + begin, out + begin, static_cast<int>(end - begin));
+        for (size_t i = begin; i < end; i++) {
+            out[i] = 0.5f * x[i] * (1.0f + out[i]);
+        }
+    });
 
     auto output = createOutput(result, this->requires_grad);
 
@@ -550,19 +581,24 @@ std::shared_ptr<Variable> Variable::gelu() const {
             const float* dY = output->grad.raw();
             float* dX = self_ptr->grad.raw();
 
-            std::vector<float> t(n);
-            for (size_t i = 0; i < n; i++) {
-                t[i] = k * (x[i] + a * x[i] * x[i] * x[i]);
-            }
-            vec_tanh(t.data(), t.data(), static_cast<int>(n));
+            parallel_for(n, 32768, [&](size_t begin, size_t end) {
+                const size_t len = end - begin;
+                std::vector<float> t(len);
+                for (size_t i = 0; i < len; i++) {
+                    float xi = x[begin + i];
+                    t[i] = k * (xi + a * xi * xi * xi);
+                }
+                vec_tanh(t.data(), t.data(), static_cast<int>(len));
 
-            for (size_t i = 0; i < n; i++) {
-                float tv = t[i];
-                float sech_sq = 1.0f - tv * tv;
-                float dgelu = 0.5f * (1.0f + tv
-                    + x[i] * sech_sq * k * (1.0f + 3.0f * a * x[i] * x[i]));
-                dX[i] += dgelu * dY[i];
-            }
+                for (size_t i = 0; i < len; i++) {
+                    float xi = x[begin + i];
+                    float tv = t[i];
+                    float sech_sq = 1.0f - tv * tv;
+                    float dgelu = 0.5f * (1.0f + tv
+                        + xi * sech_sq * k * (1.0f + 3.0f * a * xi * xi));
+                    dX[begin + i] += dgelu * dY[begin + i];
+                }
+            });
         });
     }
     return output;
@@ -612,25 +648,27 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
 
     const float* in = data.raw();
     float* out = result.raw();
-    std::vector<float> exps(cols);
 
-    for (size_t i = 0; i < total_rows; i++) {
-        const float* row_in = in + i * cols;
-        float* row_out = out + i * cols;
+    parallel_for(total_rows, 8, [&](size_t begin, size_t end) {
+        std::vector<float> exps(cols);
+        for (size_t i = begin; i < end; i++) {
+            const float* row_in = in + i * cols;
+            float* row_out = out + i * cols;
 
-        float max_val = row_in[0];
-        for (size_t j = 1; j < cols; j++) {
-            max_val = std::max(max_val, row_in[j]);
+            float max_val = row_in[0];
+            for (size_t j = 1; j < cols; j++) {
+                max_val = std::max(max_val, row_in[j]);
+            }
+            for (size_t j = 0; j < cols; j++) {
+                row_out[j] = row_in[j] - max_val;
+            }
+            vec_exp(row_out, exps.data(), static_cast<int>(cols));
+            float log_sum = std::log(vec_sum(exps.data(), static_cast<int>(cols)));
+            for (size_t j = 0; j < cols; j++) {
+                row_out[j] -= log_sum;
+            }
         }
-        for (size_t j = 0; j < cols; j++) {
-            row_out[j] = row_in[j] - max_val;
-        }
-        vec_exp(row_out, exps.data(), static_cast<int>(cols));
-        float log_sum = std::log(vec_sum(exps.data(), static_cast<int>(cols)));
-        for (size_t j = 0; j < cols; j++) {
-            row_out[j] -= log_sum;
-        }
-    }
+    });
 
     auto output = createOutput(result, this->requires_grad);
 
@@ -649,19 +687,21 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
             const float* res = result.raw();
             const float* dY = output->grad.raw();
             float* dX = self_ptr->grad.raw();
-            std::vector<float> soft(cols);
 
-            for (size_t i = 0; i < total_rows; i++) {
-                const float* row_res = res + i * cols;
-                const float* row_dY = dY + i * cols;
-                float* row_dX = dX + i * cols;
+            parallel_for(total_rows, 8, [&](size_t begin, size_t end) {
+                std::vector<float> soft(cols);
+                for (size_t i = begin; i < end; i++) {
+                    const float* row_res = res + i * cols;
+                    const float* row_dY = dY + i * cols;
+                    float* row_dX = dX + i * cols;
 
-                float sum = vec_sum(row_dY, static_cast<int>(cols));
-                vec_exp(row_res, soft.data(), static_cast<int>(cols));
-                for (size_t j = 0; j < cols; j++) {
-                    row_dX[j] += row_dY[j] - soft[j] * sum;
+                    float sum = vec_sum(row_dY, static_cast<int>(cols));
+                    vec_exp(row_res, soft.data(), static_cast<int>(cols));
+                    for (size_t j = 0; j < cols; j++) {
+                        row_dX[j] += row_dY[j] - soft[j] * sum;
+                    }
                 }
-            }
+            });
         });
     }
     return output;

@@ -1,5 +1,6 @@
 #include "transformer/optimizer.h"
 #include "transformer/blas_wrapper.h"
+#include "transformer/parallel.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -68,20 +69,22 @@ void AdamOptimizer::step() {
         float* mptr = m.raw();
         float* vptr = v.raw();
 
-        for (int i = 0; i < n; ++i) {
-            float g = gptr[i];
+        parallel_for(n, 65536, [&](size_t begin, size_t end) {
+            for (size_t i = begin; i < end; ++i) {
+                float g = gptr[i];
 
-            float mi = mptr[i] = b1 * mptr[i] + (1.0f - b1) * g;
-            float vi = vptr[i] = b2 * vptr[i] + (1.0f - b2) * (g * g);
+                float mi = mptr[i] = b1 * mptr[i] + (1.0f - b1) * g;
+                float vi = vptr[i] = b2 * vptr[i] + (1.0f - b2) * (g * g);
 
-            float m_hat = mi * inv_bc1;
-            float v_hat = vi * inv_bc2;
+                float m_hat = mi * inv_bc1;
+                float v_hat = vi * inv_bc2;
 
-            // AdamW: decoupled decay, applied to the weight itself rather
-            // than added to the gradient where Adam's normalization would
-            // scale it unevenly across parameters.
-            dptr[i] -= lr * (m_hat / (std::sqrt(v_hat) + eps) + wd * dptr[i]);
-        }
+                // AdamW: decoupled decay, applied to the weight itself
+                // rather than added to the gradient where Adam's
+                // normalization would scale it unevenly across parameters.
+                dptr[i] -= lr * (m_hat / (std::sqrt(v_hat) + eps) + wd * dptr[i]);
+            }
+        });
     }
 }
 

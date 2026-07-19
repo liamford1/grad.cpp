@@ -1,5 +1,6 @@
 #include "transformer/tensor.h"
 #include "transformer/blas_wrapper.h"
+#include "transformer/parallel.h"
 
 #include <iostream>
 #include <algorithm>
@@ -663,25 +664,28 @@ Tensor Tensor::softmax() const {
                                 : Tensor(this->rows, this->cols);
     const float* input_data = this->raw();
     float* output_data = result.raw();
+    const size_t cols = this->cols;
 
-    for (size_t i = 0; i < total_rows; i++) {
-        const float* row_in = input_data + i * this->cols;
-        float* row_out = output_data + i * this->cols;
+    parallel_for(total_rows, 16, [&](size_t begin, size_t end) {
+        for (size_t i = begin; i < end; i++) {
+            const float* row_in = input_data + i * cols;
+            float* row_out = output_data + i * cols;
 
-        float max_val = row_in[0];
-        for (size_t j = 1; j < this->cols; j++) {
-            max_val = std::max(max_val, row_in[j]);
-        }
-        for (size_t j = 0; j < this->cols; j++) {
-            row_out[j] = row_in[j] - max_val;
-        }
-        vec_exp(row_out, row_out, static_cast<int>(this->cols));
+            float max_val = row_in[0];
+            for (size_t j = 1; j < cols; j++) {
+                max_val = std::max(max_val, row_in[j]);
+            }
+            for (size_t j = 0; j < cols; j++) {
+                row_out[j] = row_in[j] - max_val;
+            }
+            vec_exp(row_out, row_out, static_cast<int>(cols));
 
-        const float inv_sum = 1.0f / vec_sum(row_out, static_cast<int>(this->cols));
-        for (size_t j = 0; j < this->cols; j++) {
-            row_out[j] *= inv_sum;
+            const float inv_sum = 1.0f / vec_sum(row_out, static_cast<int>(cols));
+            for (size_t j = 0; j < cols; j++) {
+                row_out[j] *= inv_sum;
+            }
         }
-    }
+    });
     return result;
 }
 
