@@ -45,6 +45,7 @@ add_executable(transformer
     src/data/dataloader.cpp
     src/utils/training_utils.cpp
     src/utils/metrics.cpp
+    src/utils/dashboard.cpp
     src/training/trainer.cpp
 )
 

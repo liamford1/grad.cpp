@@ -104,6 +104,15 @@ curl -L -o data/tinystories.txt \
 ./build/transformer chat tinystories_final.bin data/tinystories.txt 16000
 ```
 
+Every run logs per-step metrics to `<prefix>_metrics.csv`, and a live terminal dashboard renders them — loss curves on a braille canvas (raw + EMA), the validation track with running best, gradient-norm and step-time sparklines, progress and ETA. Open it in a second terminal while training:
+
+```bash
+./build/transformer watch                      # newest run in this directory
+./build/transformer watch tinystories_modern   # or a specific run prefix
+```
+
+It refreshes once a second, works on finished runs too (the CSV is the run's permanent record), and `q` quits.
+
 Long runs are interruptible: Ctrl-C saves a resume pair (`<prefix>_resume_model.bin` + `<prefix>_resume_state.bin` — weights, Adam moments, and schedule position), which is also refreshed at every eval interval, so a crash costs at most a few minutes of work.
 
 ```bash

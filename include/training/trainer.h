@@ -70,6 +70,7 @@ private:
     DataLoader* val_loader_;
     std::unique_ptr<AdamOptimizer> optimizer_;
     std::unique_ptr<utils::TrainingMetrics> metrics_;
+    std::unique_ptr<utils::MetricsLog> mlog_;
     int start_step_ = 0;
     float best_val_loss_restored_ = -1.0f;  // <0 = no restored value
 

@@ -150,6 +150,13 @@ bool Trainer::train() {
 
     metrics_->start_training(start_step_);
 
+    // Per-step CSV for `transformer watch`; resumes append so the
+    // dashboard sees the run's whole history.
+    mlog_ = std::make_unique<utils::MetricsLog>(
+        config_.checkpoint_prefix + "_metrics.csv", start_step_ > 0,
+        config_.num_steps,
+        static_cast<long>(config_.batch_size) * config_.grad_accum * config_.seq_length);
+
     g_stop_requested = 0;
     auto prev_int = std::signal(SIGINT, request_stop);
     auto prev_term = std::signal(SIGTERM, request_stop);
@@ -177,6 +184,7 @@ bool Trainer::train() {
                 best_val_loss = val_loss;
                 save_checkpoint(config_.checkpoint_prefix + "_best.bin");
             }
+            mlog_->log_eval(step, val_loss);
             save_resume_state(step + 1, best_val_loss);
         }
 
@@ -242,6 +250,7 @@ float Trainer::evaluate() {
 }
 
 void Trainer::training_step(int step) {
+    auto step_start = std::chrono::steady_clock::now();
     optimizer_->zero_grad();
 
     // Gradient accumulation: run grad_accum micro-batches, each building
@@ -274,8 +283,9 @@ void Trainer::training_step(int step) {
 
     float loss_val = loss_sum / config_.grad_accum;
     float grad_norm = 0.0f;
+    const bool has_grad_norm = (step % 100 == 0);
 
-    if (step % 100 == 0) {
+    if (has_grad_norm) {
         auto params = model_.getAllParameters();
         grad_norm = utils::compute_grad_norm(params);
         metrics_->record_step(step, loss_val, grad_norm);
@@ -283,6 +293,14 @@ void Trainer::training_step(int step) {
 
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();
+
+    if (mlog_) {
+        auto step_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - step_start).count();
+        mlog_->log_step(step, loss_val, optimizer_->current_lr(),
+                        grad_norm, has_grad_norm, step_ms,
+                        static_cast<long>(utils::get_memory_mb()));
+    }
 
     if (step % 10 == 0) {
         metrics_->print_progress(step, loss_val);

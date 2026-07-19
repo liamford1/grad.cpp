@@ -5,6 +5,7 @@
 #include "data/dataloader.h"
 #include "data/token_file.h"
 #include "training/trainer.h"
+#include "utils/dashboard.h"
 #include "utils/metrics.h"
 #include "utils/training_utils.h"
 #include <cstdlib>
@@ -624,6 +625,29 @@ int main(int argc, char* argv[]) {
         int steps = (argc > 2) ? std::atoi(argv[2]) : 20;
         return run_benchmark(steps);
     }
+    if (mode == "watch") {
+        // Argument is a run prefix ("tinystories_modern"), a metrics path,
+        // or nothing - then the most recently modified *_metrics.csv in
+        // the working directory (i.e. whatever is training right now).
+        std::string target = (argc > 2) ? argv[2] : "";
+        bool once = false;
+        for (int i = 2; i < argc; i++) {
+            if (std::string(argv[i]) == "--once") { once = true; if (target == argv[i]) target = ""; }
+        }
+        std::string csv;
+        if (!target.empty() && target != "--once") {
+            csv = (target.size() > 4 && target.substr(target.size() - 4) == ".csv")
+                ? target : target + "_metrics.csv";
+        } else {
+            csv = utils::newest_metrics_csv(".");
+            if (csv.empty()) {
+                std::cerr << "No *_metrics.csv found; start a training run first "
+                          << "(runs on this build log metrics automatically)." << std::endl;
+                return 1;
+            }
+        }
+        return utils::run_dashboard(csv, once);
+    }
     if (mode == "chat") {
         std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
         std::string corpus = (argc > 3) ? argv[3] : default_corpus;
@@ -640,6 +664,9 @@ int main(int argc, char* argv[]) {
               << "  train-fast [corpus.txt] [ckpt.bin|resume]   tiny config for a quick smoke test\n"
               << "  generate [ckpt] [prompt] [corpus] [vocab]   sample from a saved checkpoint\n"
               << "  chat [ckpt] [corpus] [vocab]                interactive prompt/continue REPL\n"
-              << "  bench [steps]                        measure training and generation speed\n";
+              << "  bench [steps]                        measure training and generation speed\n"
+              << "  watch [run-prefix]                   live terminal dashboard for a training\n"
+              << "      run (loss curves, val track, throughput); defaults to the most recent\n"
+              << "      run in this directory - open it in a second terminal while training\n";
     return 1;
 }

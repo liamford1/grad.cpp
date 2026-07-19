@@ -5,6 +5,37 @@
 
 namespace utils {
 
+MetricsLog::MetricsLog(const std::string& path, bool append,
+                       int total_steps, long tokens_per_step)
+    : out_(path, append ? std::ios::app : std::ios::trunc) {
+    // The meta row repeats on resume; readers take the last one.
+    out_ << "m," << total_steps << "," << tokens_per_step << "\n";
+    maybe_flush(true);
+}
+
+void MetricsLog::log_step(int step, float loss, float lr,
+                          float grad_norm, bool has_grad_norm,
+                          long step_ms, long mem_mb) {
+    out_ << "t," << step << "," << loss << "," << lr << ",";
+    if (has_grad_norm) out_ << grad_norm;
+    out_ << "," << step_ms << "," << mem_mb << "\n";
+    maybe_flush();
+}
+
+void MetricsLog::log_eval(int step, float val_loss) {
+    out_ << "e," << step << "," << val_loss << "\n";
+    maybe_flush(true);
+}
+
+void MetricsLog::maybe_flush(bool force) {
+    // Flush every few rows so a live dashboard lags at most a few steps
+    // and a crash loses almost nothing, without a syscall per step.
+    if (force || ++since_flush_ >= 5) {
+        out_.flush();
+        since_flush_ = 0;
+    }
+}
+
 TrainingMetrics::TrainingMetrics(int total_steps)
     : total_steps_(total_steps), start_step_(0), running_loss_(0.0f), step_count_(0) {}
 

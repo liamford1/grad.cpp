@@ -19,6 +19,9 @@ compile_commands.json
 *.bin
 *.cache
 
+# Per-run training metrics (regenerated; read by `transformer watch`)
+*_metrics.csv
+
 # System files
 .DS_Store
 
