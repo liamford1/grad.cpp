@@ -7,9 +7,14 @@
     #include <cblas.h>
 #endif
 
-inline void blas_sgemm(const float* A, const float* B, float* C,
-                       int M, int N, int K,
-                       bool transA = false, bool transB = false)
+// C = alpha * op(A) @ op(B) + beta * C
+// A, B, C are row-major. op(A) is (M,K), op(B) is (K,N), C is (M,N).
+// beta = 1 accumulates into C in place - used by backward passes to add
+// gradient contributions without materializing a temporary.
+inline void blas_sgemm_ex(const float* A, const float* B, float* C,
+                          int M, int N, int K,
+                          bool transA, bool transB,
+                          float alpha, float beta)
 {
     int lda = transA ? M : K;
     int ldb = transB ? K : N;
@@ -19,11 +24,18 @@ inline void blas_sgemm(const float* A, const float* B, float* C,
                 transA ? CblasTrans : CblasNoTrans,
                 transB ? CblasTrans : CblasNoTrans,
                 M, N, K,
-                1.0f,
+                alpha,
                 A, lda,
                 B, ldb,
-                0.0f,
+                beta,
                 C, ldc);
+}
+
+inline void blas_sgemm(const float* A, const float* B, float* C,
+                       int M, int N, int K,
+                       bool transA = false, bool transB = false)
+{
+    blas_sgemm_ex(A, B, C, M, N, K, transA, transB, 1.0f, 0.0f);
 }
 
 // vDSP-style Vector Operations

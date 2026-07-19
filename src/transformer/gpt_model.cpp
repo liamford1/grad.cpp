@@ -5,6 +5,7 @@
 #include "transformer/linear.h"
 #include "transformer/layer_norm.h"
 #include "transformer/gpt_model.h"
+#include "transformer/blas_wrapper.h"
 #include <iostream>
 #include <iomanip>
 #include <memory>
@@ -57,8 +58,15 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     int d_model_dim = norm_data.getCols();
     int vocab = emb_data.getRows();
 
-    Tensor emb_transposed = emb_data.transpose();
-    Tensor logits_tensor = norm_data.matmul(emb_transposed);
+    // Weight tying: logits = norm @ E^T. A 3D (batch, seq, d) tensor is
+    // contiguous, so it multiplies as one flat (batch*seq, d) matrix, and
+    // the transpose happens inside the sgemm instead of materializing E^T.
+    int flat_rows = batch_size * seq_len;
+    Tensor logits_tensor = is_3d ? Tensor(batch_size, seq_len, vocab)
+                                 : Tensor(seq_len, vocab);
+    blas_sgemm_ex(norm_data.raw(), emb_data.raw(), logits_tensor.raw(),
+                  flat_rows, vocab, d_model_dim,
+                  false, true, 1.0f, 0.0f);
 
     auto logits = Variable::create(logits_tensor,
                                      normalized_output->requiresGrad() || embedding_table->requiresGrad());
@@ -67,45 +75,29 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
         logits->addChild(normalized_output);
         logits->addChild(embedding_table);
 
-        logits->setBackwardFn([normalized_output, embedding_table, logits, is_3d]() {
+        logits->setBackwardFn([normalized_output, embedding_table,
+                               logits_weak = std::weak_ptr<Variable>(logits),
+                               flat_rows, vocab, d_model_dim]() {
+            auto logits = logits_weak.lock();
+            if (!logits) return;
             const Tensor& grad_logits = logits->getGrad();
             const Tensor& norm_data = normalized_output->getData();
             const Tensor& emb_data = embedding_table->getData();
 
             if (normalized_output->requiresGrad()) {
-                Tensor grad_norm = grad_logits.matmul(emb_data);
-                normalized_output->getGrad().add_inplace(grad_norm);
+                // dNorm += dLogits @ E, accumulated in place (beta = 1)
+                blas_sgemm_ex(grad_logits.raw(), emb_data.raw(),
+                              normalized_output->getGrad().raw(),
+                              flat_rows, d_model_dim, vocab,
+                              false, false, 1.0f, 1.0f);
             }
 
             if (embedding_table->requiresGrad()) {
-                Tensor grad_logits_transposed = grad_logits.transpose();
-                Tensor grad_emb;
-
-                if (is_3d) {
-                    int batch = grad_logits.getBatchSize();
-                    int seq = grad_logits.getRows();
-                    int v = grad_logits.getCols();
-                    int d = norm_data.getCols();
-
-                    grad_emb = Tensor(v, d);
-                    grad_emb.fill(0.0f);
-
-                    for (int b = 0; b < batch; b++) {
-                        for (int s = 0; s < seq; s++) {
-                            for (int vi = 0; vi < v; vi++) {
-                                float g = grad_logits.getValue(b, s, vi);
-                                for (int di = 0; di < d; di++) {
-                                    float n = norm_data.getValue(b, s, di);
-                                    grad_emb.setValue(vi, di, grad_emb.getValue(vi, di) + g * n);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    grad_emb = grad_logits_transposed.matmul(norm_data);
-                }
-
-                embedding_table->getGrad().add_inplace(grad_emb);
+                // dE += dLogits^T @ Norm, summing over batch*seq via the sgemm
+                blas_sgemm_ex(grad_logits.raw(), norm_data.raw(),
+                              embedding_table->getGrad().raw(),
+                              vocab, d_model_dim, flat_rows,
+                              true, false, 1.0f, 1.0f);
             }
         });
     }

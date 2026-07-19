@@ -1,4 +1,5 @@
 #include "transformer/variable.h"
+#include "transformer/blas_wrapper.h"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
@@ -72,30 +73,37 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
             output->grad.assertValid("Variable::matmul(dOut)");
             self_ptr->data.assertValid("Variable::matmul(self.data)");
             other->data.assertValid("Variable::matmul(other.data)");
-            if (self_ptr->requires_grad) {
-                Tensor other_transposed = other->data.transpose();
-                Tensor self_grad = output->grad.matmul(other_transposed);
-                self_ptr->grad.add_inplace(self_grad);
-            }
-            if (other->requires_grad) {
-                Tensor self_transposed = self_ptr->data.transpose();
-                Tensor other_grad = self_transposed.matmul(output->grad);
 
-                // If self was 3D and other was 2D, other_grad will be 3D
-                // We need to sum across the batch dimension
-                if (other_grad.getIs3D() && !other->grad.getIs3D()) {
-                    Tensor other_grad_2d(other->grad.getRows(), other->grad.getCols());
-                    other_grad_2d.fill(0.0f);
-                    for (size_t b = 0; b < other_grad.getBatchSize(); b++) {
-                        for (size_t i = 0; i < other_grad.getRows(); i++) {
-                            for (size_t j = 0; j < other_grad.getCols(); j++) {
-                                other_grad_2d.setValue(i, j,
-                                    other_grad_2d.getValue(i, j) + other_grad.getValue(b, i, j));
-                            }
-                        }
-                    }
-                    other->grad.add_inplace(other_grad_2d);
-                } else {
+            if (!other->data.getIs3D()) {
+                // X (flat, K) @ W (K, N) = Y (flat, N), where a 3D X is its
+                // contiguous (batch*rows, K) view. Both gradients are single
+                // sgemms accumulated in place (beta = 1); the sgemm's transA
+                // sums dW over batch*rows with no temporaries.
+                const Tensor& X = self_ptr->data;
+                const Tensor& dY = output->grad;
+                int K = other->data.getRows();
+                int N = other->data.getCols();
+                int flat = X.getIs3D() ? X.getBatchSize() * X.getRows() : X.getRows();
+
+                if (self_ptr->requires_grad) {
+                    // dX += dY @ W^T
+                    blas_sgemm_ex(dY.raw(), other->data.raw(), self_ptr->grad.raw(),
+                                  flat, K, N, false, true, 1.0f, 1.0f);
+                }
+                if (other->requires_grad) {
+                    // dW += X^T @ dY
+                    blas_sgemm_ex(X.raw(), dY.raw(), other->grad.raw(),
+                                  K, N, flat, true, false, 1.0f, 1.0f);
+                }
+            } else {
+                if (self_ptr->requires_grad) {
+                    Tensor other_transposed = other->data.transpose();
+                    Tensor self_grad = output->grad.matmul(other_transposed);
+                    self_ptr->grad.add_inplace(self_grad);
+                }
+                if (other->requires_grad) {
+                    Tensor self_transposed = self_ptr->data.transpose();
+                    Tensor other_grad = self_transposed.matmul(output->grad);
                     other->grad.add_inplace(other_grad);
                 }
             }

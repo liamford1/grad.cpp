@@ -1,182 +1,95 @@
-#include "transformer/tensor.h"
 #include "transformer/token_embedding.h"
-#include <iostream>
 #include <stdexcept>
+#include <vector>
 
 TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
     vocab_size(vocab_size),
     d_model(d_model),
     embedding_scale(1.0f)
 {
-    Tensor embedding_tensor(vocab_size, d_model);
-    embedding_tensor.xavier(vocab_size, d_model);
-
-    embedding_table = Variable::create(embedding_tensor, true);
+    Tensor table(vocab_size, d_model);
+    table.xavier(vocab_size, d_model);
+    embedding_table = Variable::create(table, true);
 }
 
 TokenEmbedding::~TokenEmbedding() {}
 
+// Accepts token IDs in any of three layouts, all contiguous row-major:
+//   (batch, seq, 1) 3D -> (batch, seq, d_model)
+//   (seq, 1)        2D -> (seq, d_model)
+//   (batch, seq)    2D -> (batch, seq, d_model)
 std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> input_ids) const {
     const Tensor& input_tensor = input_ids->getData();
 
+    bool output_3d;
+    int batch_size, seq_len;
     if (input_tensor.getIs3D()) {
-        int batch_size = input_tensor.getBatchSize();
-        int seq_len = input_tensor.getRows();
-        
         if (input_tensor.getCols() != 1) {
             throw std::invalid_argument("3D input_ids must have shape (batch, seq_len, 1)");
         }
-        
-        Tensor result(batch_size, seq_len, d_model);
-        std::vector<std::vector<int>> token_ids(batch_size, std::vector<int>(seq_len));
-        
-        for (int b = 0; b < batch_size; b++) {
-            for (int i = 0; i < seq_len; i++) {
-                int token_id = static_cast<int>(input_tensor.getValue(b, i, 0));
-                if (token_id < 0 || token_id >= vocab_size) {
-                    throw std::out_of_range("Token ID out of vocab range");
-                }
-                token_ids[b][i] = token_id;
-
-                for (int j = 0; j < d_model; j++) {
-                    result.setValue(b, i, j, embedding_table->getData().getValue(token_id, j) * embedding_scale);
-                }
-            }
-        }
-
-        auto output = Variable::create(result, input_ids->requiresGrad());
-        
-        if (input_ids->requiresGrad()) {
-            auto self_embedding = embedding_table;
-            int self_vocab_size = vocab_size;
-            int self_d_model = d_model;
-            float self_scale = embedding_scale;
-
-            output->addChild(input_ids);
-            output->addChild(embedding_table);
-
-            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size,
-                                   self_d_model, self_scale, batch_size, seq_len]() {
-                Tensor dEmbedding(self_vocab_size, self_d_model);
-                dEmbedding.fill(0.0f);
-
-                for (int b = 0; b < batch_size; b++) {
-                    for (int i = 0; i < seq_len; i++) {
-                        int token_id = token_ids[b][i];
-                        for (int j = 0; j < self_d_model; j++) {
-                            float grad = output->getGrad().getValue(b, i, j) * self_scale;
-                            dEmbedding.setValue(token_id, j,
-                                dEmbedding.getValue(token_id, j) + grad);
-                        }
-                    }
-                }
-
-                self_embedding->getGrad().add_inplace(dEmbedding);
-            });
-        }
-        return output;
-    }
-
-    if (input_tensor.getCols() == 1) {
-        int seq_len = input_tensor.getRows();
-        Tensor result(seq_len, d_model);
-
-        std::vector<int> token_ids(seq_len);
-        for (int i = 0; i < seq_len; i++) {
-            int token_id = static_cast<int>(input_tensor.getValue(i, 0));
-            if (token_id < 0 || token_id >= vocab_size) {
-                throw std::out_of_range("Token ID out of vocabulary range");
-            }
-            token_ids[i] = token_id;
-
-            for (int j = 0; j < d_model; j++) {
-                result.setValue(i, j, embedding_table->getData().getValue(token_id, j) * embedding_scale);
-            }
-        }
-
-        auto output = Variable::create(result, input_ids->requiresGrad());
-
-        if (input_ids->requiresGrad()) {
-            auto self_embedding = embedding_table;
-            int self_vocab_size = vocab_size;
-            int self_d_model = d_model;
-            float self_scale = embedding_scale;
-
-            output->addChild(input_ids);
-            output->addChild(embedding_table);
-
-            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size,
-                                   self_d_model, self_scale, seq_len]() {
-
-                Tensor dEmbedding(self_vocab_size, self_d_model);
-                dEmbedding.fill(0.0f);
-
-                for (int i = 0; i < seq_len; i++) {
-                    int token_id = token_ids[i];
-                    for (int j = 0; j < self_d_model; j++) {
-                        float grad = output->getGrad().getValue(i, j) * self_scale;
-                        dEmbedding.setValue(token_id, j,
-                            dEmbedding.getValue(token_id, j) + grad);
-                    }
-                }
-
-                self_embedding->getGrad().add_inplace(dEmbedding);
-            });
-        }
-        return output;
-
+        batch_size = input_tensor.getBatchSize();
+        seq_len = input_tensor.getRows();
+        output_3d = true;
+    } else if (input_tensor.getCols() == 1) {
+        batch_size = 1;
+        seq_len = input_tensor.getRows();
+        output_3d = false;
     } else {
-        int batch_size = input_tensor.getRows();
-        int seq_len = input_tensor.getCols();
+        batch_size = input_tensor.getRows();
+        seq_len = input_tensor.getCols();
+        output_3d = true;
+    }
 
-        Tensor result(batch_size, seq_len, d_model);
-        
-        std::vector<std::vector<int>> token_ids(batch_size, std::vector<int>(seq_len));
-        
-        for (int b = 0; b < batch_size; b++) {
-            for (int i = 0; i < seq_len; i++) {
-                int token_id = static_cast<int>(input_tensor.getValue(b, i));
-                if (token_id < 0 || token_id >= vocab_size) {
-                    throw std::out_of_range("Token ID out of vocab range");
-                }
-                token_ids[b][i] = token_id;
+    const int total = batch_size * seq_len;
+    Tensor result = output_3d ? Tensor(batch_size, seq_len, d_model)
+                              : Tensor(seq_len, d_model);
 
-                for (int j = 0; j < d_model; j++) {
-                    result.setValue(b, i, j, embedding_table->getData().getValue(token_id, j) * embedding_scale);
+    std::vector<int> token_ids(total);
+    const float* ids = input_tensor.raw();
+    const float* table = embedding_table->getData().raw();
+    float* out = result.raw();
+
+    for (int t = 0; t < total; t++) {
+        int token_id = static_cast<int>(ids[t]);
+        if (token_id < 0 || token_id >= vocab_size) {
+            throw std::out_of_range("Token ID out of vocab range");
+        }
+        token_ids[t] = token_id;
+
+        const float* row = table + static_cast<size_t>(token_id) * d_model;
+        float* dst = out + static_cast<size_t>(t) * d_model;
+        for (int j = 0; j < d_model; j++) {
+            dst[j] = row[j] * embedding_scale;
+        }
+    }
+
+    // The lookup differentiates w.r.t. the embedding table, not the discrete
+    // token IDs, so grad tracking must key off the table.
+    bool needs_grad = embedding_table->requiresGrad() || input_ids->requiresGrad();
+    auto output = Variable::create(result, needs_grad);
+
+    if (embedding_table->requiresGrad()) {
+        auto table_var = embedding_table;
+        const float scale = embedding_scale;
+        const int dm = d_model;
+
+        output->addChild(embedding_table);
+        output->setBackwardFn([table_var,
+                               output_weak = std::weak_ptr<Variable>(output),
+                               ids = std::move(token_ids), scale, dm]() {
+            auto output = output_weak.lock();
+            if (!output) return;
+            const float* dOut = output->getGrad().raw();
+            float* dTable = table_var->getGrad().raw();
+
+            for (size_t t = 0; t < ids.size(); t++) {
+                const float* src = dOut + t * dm;
+                float* dst = dTable + static_cast<size_t>(ids[t]) * dm;
+                for (int j = 0; j < dm; j++) {
+                    dst[j] += src[j] * scale;
                 }
             }
-        }
-        auto output = Variable::create(result, input_ids->requiresGrad());
-
-        if (input_ids->requiresGrad()) {
-            auto self_embedding = embedding_table;
-            int self_vocab_size = vocab_size;
-            int self_d_model = d_model;
-            float self_scale = embedding_scale;
-
-            output->addChild(input_ids);
-            output->addChild(embedding_table);
-
-            output->setBackwardFn([self_embedding, output, token_ids, self_vocab_size,
-                                   self_d_model, self_scale, batch_size, seq_len]() {
-                
-                Tensor dEmbedding(self_vocab_size, self_d_model);
-                dEmbedding.fill(0.0f);
-
-                for (int b = 0; b < batch_size; b++) {
-                    for (int i = 0; i < seq_len; i++) {
-                        int token_id = token_ids[b][i];
-                        for (int j = 0; j < self_d_model; j++) {
-                            float grad = output->getGrad().getValue(b, i, j) * self_scale;
-                            dEmbedding.setValue(token_id, j,
-                                dEmbedding.getValue(token_id, j) + grad);
-                        }
-                    }
-                }
-
-                self_embedding->getGrad().add_inplace(dEmbedding);
-            });
-        }
-        return output;
+        });
     }
+    return output;
 }

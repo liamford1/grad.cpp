@@ -186,6 +186,27 @@ if(BUILD_TESTS)
         src/data/dataloader.cpp
     )
 
+    add_executable(test_model_gradients
+        tests/unit/test_model_gradients.cpp
+        src/transformer/tensor.cpp
+        src/transformer/variable.cpp
+        src/transformer/activations.cpp
+        src/transformer/linear.cpp
+        src/transformer/layer_norm.cpp
+        src/transformer/attention.cpp
+        src/transformer/multihead_attention.cpp
+        src/transformer/feedforward.cpp
+        src/transformer/transformer_block.cpp
+        src/transformer/token_embedding.cpp
+        src/transformer/positional_encoding.cpp
+        src/transformer/gpt_model.cpp
+        src/transformer/text_gen.cpp
+        src/transformer/optimizer.cpp
+        src/tokenizer/bpe_tokenizer.cpp
+        src/data/dataset.cpp
+        src/data/dataloader.cpp
+    )
+
     add_executable(test_dropout
         tests/unit/test_dropout.cpp
         src/transformer/tensor.cpp
@@ -234,6 +255,15 @@ if(BUILD_TESTS)
         target_link_libraries(test_gradients ${BLAS_LIBRARIES})
     endif()
     add_test(NAME GradientChecking COMMAND test_gradients)
+
+    target_include_directories(test_model_gradients PRIVATE include)
+    if(APPLE)
+        target_link_libraries(test_model_gradients ${ACCELERATE_LIBRARY})
+        target_compile_definitions(test_model_gradients PRIVATE ACCELERATE_NEW_LAPACK ACCELERATE_LAPACK_ILP64)
+    else()
+        target_link_libraries(test_model_gradients ${BLAS_LIBRARIES})
+    endif()
+    add_test(NAME ModelGradientChecking COMMAND test_model_gradients)
 
     target_include_directories(test_dropout PRIVATE include)
     if(APPLE)
