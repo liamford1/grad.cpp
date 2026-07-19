@@ -45,16 +45,61 @@ inline void add_column_sums(const float* x, int rows, int cols, float* out) {
     }
 }
 
+// cos/sin tables for RoPE: row i holds cos/sin(i * theta_j) for the
+// head_size/2 rotation frequencies theta_j = 10000^(-2j/head_size).
+void build_rope_tables(int seq_len, int head_size,
+                       std::vector<float>& cos_t, std::vector<float>& sin_t) {
+    const int half = head_size / 2;
+    cos_t.resize(static_cast<size_t>(seq_len) * half);
+    sin_t.resize(static_cast<size_t>(seq_len) * half);
+    for (int j = 0; j < half; j++) {
+        const float theta = std::pow(10000.0f, -2.0f * j / head_size);
+        for (int i = 0; i < seq_len; i++) {
+            cos_t[static_cast<size_t>(i) * half + j] = std::cos(i * theta);
+            sin_t[static_cast<size_t>(i) * half + j] = std::sin(i * theta);
+        }
+    }
+}
+
+// Rotates each head's (2j, 2j+1) pairs in a (seq_len, d_model) block by
+// its row's position angle, in place. inverse applies the transpose
+// rotation - backward through RoPE, since rotations are orthogonal.
+void rope_apply(float* buf, int seq_len, int d_model, int num_heads, int head_size,
+                const float* cos_t, const float* sin_t, bool inverse) {
+    const int half = head_size / 2;
+    for (int i = 0; i < seq_len; i++) {
+        const float* c_row = cos_t + static_cast<size_t>(i) * half;
+        const float* s_row = sin_t + static_cast<size_t>(i) * half;
+        float* row = buf + static_cast<size_t>(i) * d_model;
+        for (int h = 0; h < num_heads; h++) {
+            float* head = row + h * head_size;
+            for (int j = 0; j < half; j++) {
+                const float c = c_row[j];
+                const float s = inverse ? -s_row[j] : s_row[j];
+                const float a = head[2 * j];
+                const float b = head[2 * j + 1];
+                head[2 * j] = a * c - b * s;
+                head[2 * j + 1] = a * s + b * c;
+            }
+        }
+    }
+}
+
 }  // namespace
 
 
-MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout_rate) : 
+MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout_rate,
+                                       bool rope) :
     d_model(d_model),
     num_heads(num_heads),
-    dropout_rate(dropout_rate)
+    dropout_rate(dropout_rate),
+    rope_(rope)
 {
     if (num_heads == 0 || (d_model % num_heads) != 0) {
         throw std::invalid_argument("d_model must be divisible by num_heads and num_heads > 0");
+    }
+    if (rope && (d_model / num_heads) % 2 != 0) {
+        throw std::invalid_argument("RoPE requires an even head size");
     }
 
     Tensor wq_tensor(d_model, d_model);
@@ -95,6 +140,12 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
     if (!input_tensor.getIs3D()) {
         // 2D case
+        if (rope_) {
+            // Training and generation both run batched/incremental paths;
+            // nothing exercises 2D + RoPE, so it is unimplemented rather
+            // than silently position-blind.
+            throw std::runtime_error("RoPE attention requires batched 3D input");
+        }
         int seq_len = input_tensor.getRows();
         int head_size = d_model / num_heads;
 
@@ -391,6 +442,21 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         project(W_k->getData(), b_k->getData(), *K);
         project(W_v->getData(), b_v->getData(), *V);
 
+        // RoPE: rotate Q and K in place, so both the score matmuls below
+        // and the cached copies the backward pass regathers are the
+        // rotated values. V is untouched.
+        auto rope_cos = std::make_shared<std::vector<float>>();
+        auto rope_sin = std::make_shared<std::vector<float>>();
+        if (rope_) {
+            build_rope_tables(S, head_size, *rope_cos, *rope_sin);
+            for (int b = 0; b < batch_size; b++) {
+                float* q_block = Q->raw() + static_cast<size_t>(b) * S * d;
+                float* k_block = K->raw() + static_cast<size_t>(b) * S * d;
+                rope_apply(q_block, S, d, H, head_size, rope_cos->data(), rope_sin->data(), false);
+                rope_apply(k_block, S, d, H, head_size, rope_cos->data(), rope_sin->data(), false);
+            }
+        }
+
         // Cached softmax outputs (and dropout masks) per (batch, head).
         auto attn_cache = std::make_shared<std::vector<float>>(
             static_cast<size_t>(batch_size) * H * S * S);
@@ -485,9 +551,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             output->addChild(b_o);
 
             const bool dropout_active = use_attn_dropout;
+            const bool rope_active = rope_;
             output->setBackwardFn([self_input, self_Wq, self_Wk, self_Wv, self_Wo,
                                    self_bq, self_bk, self_bv, self_bo,
                                    Q, K, V, concat, attn_cache, drop_mask,
+                                   rope_cos, rope_sin, rope_active,
                                    output_weak = std::weak_ptr<Variable>(output),
                                    batch_size, S, d, H, head_size, flat,
                                    scale_factor, dropout_active]() {
@@ -603,6 +671,21 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         scatter_head(dV_head.raw(), dV_data + batch_offset + col, S, d, head_size);
                     }
                 });
+
+                // dQ/dK so far are gradients w.r.t. the ROTATED Q and K
+                // (forward cached the rotated values). The inverse rotation
+                // maps them back to pre-RoPE projection space before the
+                // weight/bias/input gradients below.
+                if (rope_active) {
+                    for (int b = 0; b < batch_size; b++) {
+                        rope_apply(dQ_data + static_cast<size_t>(b) * S * d,
+                                   S, d, H, head_size,
+                                   rope_cos->data(), rope_sin->data(), true);
+                        rope_apply(dK_data + static_cast<size_t>(b) * S * d,
+                                   S, d, H, head_size,
+                                   rope_cos->data(), rope_sin->data(), true);
+                    }
+                }
 
                 // Projection gradients, all flat single sgemms with beta=1
                 // accumulation. dInput sums the three projection paths.

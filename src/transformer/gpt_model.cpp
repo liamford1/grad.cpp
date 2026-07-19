@@ -11,16 +11,18 @@
 #include <memory>
 #include <vector>
 
-GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len, float dropout_rate) :
+GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
+                   float dropout_rate, GPTArch arch) :
     vocab_size(vocab_size),
     d_model(d_model),
     num_layers(num_layers),
     num_heads(num_heads),
     max_len(max_len),
     dropout_rate(dropout_rate),
+    arch(arch),
     token_embedding(vocab_size, d_model),
     pos_encoding(max_len, d_model),
-    final_norm(d_model)
+    final_norm(d_model, /*rms=*/arch == GPTArch::Modern)
 {
     std::cout << "  Initializing " << num_layers << " transformer layers..." << std::endl;
     // Save/restore stream format state: leaking fixed(1) here made every
@@ -31,7 +33,8 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
         float progress = 100.0f * i / num_layers;
         std::cout << "\r    Layer [" << i << "/" << num_layers << "] "
                   << std::fixed << std::setprecision(1) << progress << "%     " << std::flush;
-        transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, num_heads, -1, dropout_rate));
+        transformer_blocks.push_back(std::make_unique<TransformerBlock>(
+            d_model, num_heads, -1, dropout_rate, arch == GPTArch::Modern));
     }
     std::cout << "\r    Layer [" << num_layers << "/" << num_layers << "] 100.0%     " << std::endl;
     std::cout.copyfmt(old_state);
@@ -39,11 +42,14 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
 
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
-    auto encode_positions = pos_encoding.forward(embed_tokens);
-    auto transformer_input = encode_positions;
+    // Modern arch: position comes from RoPE inside attention, not from
+    // learned embeddings added to the residual stream.
+    auto transformer_input = arch == GPTArch::Modern
+        ? embed_tokens
+        : pos_encoding.forward(embed_tokens);
 
     if (training && dropout_rate > 0.0f) {
-        transformer_input = encode_positions->dropout(dropout_rate, training);
+        transformer_input = transformer_input->dropout(dropout_rate, training);
     }
     auto transformer_output = transformer_input;
 
@@ -115,22 +121,32 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
 std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
     std::vector<std::shared_ptr<Variable>> params;
     
+    const bool modern = arch == GPTArch::Modern;
+
     params.push_back(token_embedding.getEmbeddingTable());
-    params.push_back(pos_encoding.getPositionEmbeddings());
-    
+    if (!modern) {
+        params.push_back(pos_encoding.getPositionEmbeddings());
+    }
+
     for (int i = 0; i < num_layers; i++) {
         const TransformerBlock* block = transformer_blocks[i].get();
-        
+
         const MultiHeadAttention& attention = block->getAttention();
         auto attn_params = attention.parameters();
         params.insert(params.end(), attn_params.begin(), attn_params.end());
-        
+
         const FeedForward& ffn = block->getFFN();
-        params.push_back(ffn.getLayer1Weights());
-        params.push_back(ffn.getLayer1Bias());
-        params.push_back(ffn.getLayer2Weights());
-        params.push_back(ffn.getLayer2Bias());
-        
+        if (modern) {
+            params.push_back(ffn.getGateWeights());
+            params.push_back(ffn.getLayer1Weights());
+            params.push_back(ffn.getLayer2Weights());
+        } else {
+            params.push_back(ffn.getLayer1Weights());
+            params.push_back(ffn.getLayer1Bias());
+            params.push_back(ffn.getLayer2Weights());
+            params.push_back(ffn.getLayer2Bias());
+        }
+
         const LayerNorm& norm1 = block->getNorm1();
         const LayerNorm& norm2 = block->getNorm2();
         params.push_back(norm1.getGamma());
@@ -187,10 +203,14 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
     }
 
     try {
+        // Version 2 adds the arch tag; everything else is unchanged, so
+        // v1 files (all GPT-2-style checkpoints) stay loadable.
         uint32_t magic = 0x4750544D;
-        uint32_t version = 1;
+        uint32_t version = 2;
+        uint32_t arch_tag = static_cast<uint32_t>(arch);
         file.write(reinterpret_cast<const char*>(&magic), sizeof(uint32_t));
         file.write(reinterpret_cast<const char*>(&version), sizeof(uint32_t));
+        file.write(reinterpret_cast<const char*>(&arch_tag), sizeof(uint32_t));
 
         file.write(reinterpret_cast<const char*>(&vocab_size), sizeof(int));
         file.write(reinterpret_cast<const char*>(&d_model), sizeof(int));
@@ -199,8 +219,12 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
         file.write(reinterpret_cast<const char*>(&max_len), sizeof(int));
         file.write(reinterpret_cast<const char*>(&dropout_rate), sizeof(float));
 
+        const bool modern = arch == GPTArch::Modern;
+
         writeTensorToBinary(file, token_embedding.getEmbeddingTable()->getData());
-        writeTensorToBinary(file, pos_encoding.getPositionEmbeddings()->getData());
+        if (!modern) {
+            writeTensorToBinary(file, pos_encoding.getPositionEmbeddings()->getData());
+        }
 
         for (int i = 0; i < num_layers; i++) {
             const TransformerBlock* block = transformer_blocks[i].get();
@@ -216,11 +240,17 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
             writeTensorToBinary(file, attention.getB_o()->getData());
 
             const FeedForward& ff = block->getFFN();
-            writeTensorToBinary(file, ff.getLayer1Weights()->getData());
-            writeTensorToBinary(file, ff.getLayer1Bias()->getData());
-            writeTensorToBinary(file, ff.getLayer2Weights()->getData());
-            writeTensorToBinary(file, ff.getLayer2Bias()->getData());
-            
+            if (modern) {
+                writeTensorToBinary(file, ff.getGateWeights()->getData());
+                writeTensorToBinary(file, ff.getLayer1Weights()->getData());
+                writeTensorToBinary(file, ff.getLayer2Weights()->getData());
+            } else {
+                writeTensorToBinary(file, ff.getLayer1Weights()->getData());
+                writeTensorToBinary(file, ff.getLayer1Bias()->getData());
+                writeTensorToBinary(file, ff.getLayer2Weights()->getData());
+                writeTensorToBinary(file, ff.getLayer2Bias()->getData());
+            }
+
             const LayerNorm& norm1 = block->getNorm1();
             const LayerNorm& norm2 = block->getNorm2();
             writeTensorToBinary(file, norm1.getGamma()->getData());
@@ -259,9 +289,21 @@ GPTModel GPTModel::load(const std::string& filepath) {
         if (magic != 0x4750544D) {
             throw std::runtime_error("Invalid file format: wrong magic number");
         }
-        if (version != 1) {
-            throw std::runtime_error("Unsupported file version: " + std::to_string(version)); 
+        if (version != 1 && version != 2) {
+            throw std::runtime_error("Unsupported file version: " + std::to_string(version));
         }
+
+        // v1 predates the arch tag: every v1 checkpoint is GPT-2-style.
+        GPTArch arch = GPTArch::GPT2;
+        if (version == 2) {
+            uint32_t arch_tag;
+            file.read(reinterpret_cast<char*>(&arch_tag), sizeof(uint32_t));
+            if (arch_tag > 1) {
+                throw std::runtime_error("Unknown architecture tag: " + std::to_string(arch_tag));
+            }
+            arch = static_cast<GPTArch>(arch_tag);
+        }
+        const bool modern = arch == GPTArch::Modern;
 
         int vocab_size, d_model, num_layers, num_heads, max_len;
         float dropout_rate;
@@ -272,13 +314,15 @@ GPTModel GPTModel::load(const std::string& filepath) {
         file.read(reinterpret_cast<char*>(&max_len), sizeof(int));
         file.read(reinterpret_cast<char*>(&dropout_rate), sizeof(float));
 
-        GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, dropout_rate);
+        GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, dropout_rate, arch);
 
         Tensor embedding_table = readTensorFromBinary(file);
         model.token_embedding.setEmbeddingTable(embedding_table);
 
-        Tensor pos_embeddings = readTensorFromBinary(file);
-        model.pos_encoding.setPositionEmbeddings(pos_embeddings);
+        if (!modern) {
+            Tensor pos_embeddings = readTensorFromBinary(file);
+            model.pos_encoding.setPositionEmbeddings(pos_embeddings);
+        }
 
         for (int i = 0; i < num_layers; i++) {
             TransformerBlock* block = model.transformer_blocks[i].get();
@@ -304,15 +348,24 @@ GPTModel GPTModel::load(const std::string& filepath) {
             params[7]->getData() = bo;
             
             FeedForward& ff = block->getFeedForwardRef();
-            Tensor layer1_weights = readTensorFromBinary(file);
-            Tensor layer1_bias = readTensorFromBinary(file);
-            Tensor layer2_weights = readTensorFromBinary(file);
-            Tensor layer2_bias = readTensorFromBinary(file);
-            auto layer1_weights_var = Variable::create(layer1_weights, true);
-            auto layer1_bias_var = Variable::create(layer1_bias, true);
-            auto layer2_weights_var = Variable::create(layer2_weights, true);
-            auto layer2_bias_var = Variable::create(layer2_bias, true);
-            ff.setWeights(layer1_weights_var, layer1_bias_var, layer2_weights_var, layer2_bias_var);
+            if (modern) {
+                Tensor gate_weights = readTensorFromBinary(file);
+                Tensor up_weights = readTensorFromBinary(file);
+                Tensor down_weights = readTensorFromBinary(file);
+                ff.setGatedWeights(Variable::create(gate_weights, true),
+                                   Variable::create(up_weights, true),
+                                   Variable::create(down_weights, true));
+            } else {
+                Tensor layer1_weights = readTensorFromBinary(file);
+                Tensor layer1_bias = readTensorFromBinary(file);
+                Tensor layer2_weights = readTensorFromBinary(file);
+                Tensor layer2_bias = readTensorFromBinary(file);
+                auto layer1_weights_var = Variable::create(layer1_weights, true);
+                auto layer1_bias_var = Variable::create(layer1_bias, true);
+                auto layer2_weights_var = Variable::create(layer2_weights, true);
+                auto layer2_bias_var = Variable::create(layer2_bias, true);
+                ff.setWeights(layer1_weights_var, layer1_bias_var, layer2_weights_var, layer2_bias_var);
+            }
             
             LayerNorm& norm1 = block->getNorm1Ref();
             LayerNorm& norm2 = block->getNorm2Ref();

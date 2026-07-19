@@ -66,12 +66,14 @@ bool check_point(const std::string& name, float analytical, float numerical,
     return ok;
 }
 
-}  // namespace
+struct Probe { const char* name; int param_idx; int flat_idx; };
 
-int main() {
-    std::cout << "=== FULL-MODEL GRADIENT CHECK (3D batched path) ===" << std::endl;
-
-    GPTModel model(kVocab, kDModel, kLayers, kHeads, kMaxLen, /*dropout=*/0.0f);
+// Runs the end-to-end gradient check for one architecture, probing the
+// given parameter entries. Probes index into getAllParameters(), whose
+// layout differs by arch (see the tables in main).
+void run_arch(GPTArch arch, const std::vector<Probe>& probes,
+              int& passed, int& total) {
+    GPTModel model(kVocab, kDModel, kLayers, kHeads, kMaxLen, /*dropout=*/0.0f, arch);
 
     Tensor ids(kBatch, kSeq, 1);
     Tensor tgt(kBatch, kSeq, 1);
@@ -91,13 +93,28 @@ int main() {
     auto loss = logits->log_softmax()->nll_loss(targets);
     loss->backward();
 
+    for (const auto& probe : probes) {
+        int idx = probe.param_idx >= 0
+            ? probe.param_idx
+            : static_cast<int>(params.size()) + probe.param_idx;
+        auto& p = params[idx];
+        float analytical = p->hasGrad() ? p->getGrad().raw()[probe.flat_idx] : 0.0f;
+        float numerical = numerical_gradient(model, input, targets,
+                                             &p->getData().raw()[probe.flat_idx]);
+        check_point(probe.name, analytical, numerical, passed, total);
+    }
+}
+
+}  // namespace
+
+int main() {
     int passed = 0, total = 0;
 
+    std::cout << "=== FULL-MODEL GRADIENT CHECK (GPT-2 arch, 3D batched path) ===" << std::endl;
     // params[0] = token embedding table (also the tied output projection),
-    // params[1] = positional embeddings, then per-layer attention/FFN/norm
-    // parameters, ending with the final norm. Probe a few entries in each.
-    struct Probe { const char* name; int param_idx; int flat_idx; };
-    std::vector<Probe> probes = {
+    // params[1] = positional embeddings, then 16 per layer (8 attention,
+    // W1/b1/W2/b2, two norms' gamma/beta), ending with the final norm.
+    run_arch(GPTArch::GPT2, {
         {"embedding[0]",        0, 0},
         {"embedding[mid]",      0, (kVocab / 2) * kDModel + 3},
         {"pos_embedding[7]",    1, 7},
@@ -108,17 +125,29 @@ int main() {
         {"layer0.ff_w2[4]",    12, 4},
         {"layer0.norm1.g[2]",  14, 2},
         {"layer1.W_v[8]",      2 + 16 + 2, 8},
-        {"final_norm.g[3]",    static_cast<int>(params.size()) - 2, 3},
-        {"final_norm.b[3]",    static_cast<int>(params.size()) - 1, 3},
-    };
+        {"final_norm.g[3]",    -2, 3},
+        {"final_norm.b[3]",    -1, 3},
+    }, passed, total);
 
-    for (const auto& probe : probes) {
-        auto& p = params[probe.param_idx];
-        float analytical = p->getGrad().raw()[probe.flat_idx];
-        float numerical = numerical_gradient(model, input, targets,
-                                             &p->getData().raw()[probe.flat_idx]);
-        check_point(probe.name, analytical, numerical, passed, total);
-    }
+    std::cout << "\n=== FULL-MODEL GRADIENT CHECK (Modern arch: RMSNorm+RoPE+SwiGLU) ===" << std::endl;
+    // No positional embeddings; 15 per layer (8 attention, gate/up/down,
+    // two norms' gamma/beta - the betas exist but are inert in RMS mode,
+    // so they are not probed). Covers the RoPE rotation backward, the
+    // silu/mul ops, and the RMSNorm backward end to end.
+    run_arch(GPTArch::Modern, {
+        {"embedding[0]",        0, 0},
+        {"embedding[mid]",      0, (kVocab / 2) * kDModel + 3},
+        {"layer0.W_q[5]",       1, 5},
+        {"layer0.W_k[7]",       2, 7},
+        {"layer0.W_o[9]",       4, 9},
+        {"layer0.b_q[1]",       5, 1},
+        {"layer0.ff_gate[3]",   9, 3},
+        {"layer0.ff_up[11]",   10, 11},
+        {"layer0.ff_down[4]",  11, 4},
+        {"layer0.norm1.g[2]",  12, 2},
+        {"layer1.W_v[8]",      1 + 15 + 2, 8},
+        {"final_norm.g[3]",    -2, 3},
+    }, passed, total);
 
     std::cout << "\nPassed " << passed << "/" << total << std::endl;
     return (passed == total) ? 0 : 1;

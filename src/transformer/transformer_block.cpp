@@ -6,11 +6,12 @@
 #include "transformer/transformer_block.h"
 #include <iostream>
 
-TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim, float dropout_rate) :
-    attention(d_model, num_heads, dropout_rate),
-    ffn(d_model, ffn_hidden_dim, dropout_rate),
-    norm1(d_model),
-    norm2(d_model) {}
+TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim,
+                                   float dropout_rate, bool modern) :
+    attention(d_model, num_heads, dropout_rate, /*rope=*/modern),
+    ffn(d_model, ffn_hidden_dim, dropout_rate, /*gated=*/modern),
+    norm1(d_model, /*rms=*/modern),
+    norm2(d_model, /*rms=*/modern) {}
 
 std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> input, bool training) const {
     auto normed1 = norm1.forward(input);

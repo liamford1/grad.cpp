@@ -47,6 +47,9 @@ class Variable : public std::enable_shared_from_this<Variable> {
 
         std::shared_ptr<Variable> cross_entropy_loss(std::shared_ptr<Variable> targets) const;
         std::shared_ptr<Variable> gelu() const;
+        std::shared_ptr<Variable> silu() const;
+        // Elementwise product of two same-shape tensors (the SwiGLU gate).
+        std::shared_ptr<Variable> mul(std::shared_ptr<Variable> other) const;
         std::shared_ptr<Variable> dropout(float rate, bool training) const;
 
         std::shared_ptr<Variable> log_softmax() const;

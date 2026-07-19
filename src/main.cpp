@@ -356,6 +356,10 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
 // slower per token and 3GB fatter, with or without the GPU. At 40000
 // steps the run consumes 40000*32*256 = 327M tokens, about one epoch of
 // the TinyStories train split.
+// "modern" is "medium" with the Llama-style block (RMSNorm, RoPE, SwiGLU;
+// see gpt_model.h) at the same parameter count and training budget, so the
+// two runs A/B the architecture and nothing else. Its checkpoints get a
+// "_modern" prefix so both lineages can coexist on one corpus.
 struct Preset {
     const char* name;
     int vocab_size;
@@ -365,6 +369,7 @@ struct Preset {
     int warmup_steps, num_steps;
     int checkpoint_interval, eval_interval;
     int max_eval_batches;  // 0 = evaluate the whole val set
+    bool modern;           // GPTArch::Modern
 };
 
 // small's step count is set by measurement: on the 254K-token Shakespeare
@@ -372,9 +377,11 @@ struct Preset {
 // model memorizes a corpus that small). 8000 steps lets the cosine
 // schedule finish near the minimum instead of training 8x past it.
 const Preset kPresets[] = {
-    {"fast",   500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 10,   50,    2500, 25,  0},
-    {"small",  5000,  512, 6,  8,  1024, 96,  8, 1,  3e-4f, 500,  8000,  2500, 250, 0},
-    {"medium", 16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 1000, 40000, 4000, 500, 32},
+    {"fast",        500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 10,   50,    2500, 25,  0,  false},
+    {"fast-modern", 500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 10,   50,    2500, 25,  0,  true},
+    {"small",       5000,  512, 6,  8,  1024, 96,  8, 1,  3e-4f, 500,  8000,  2500, 250, 0,  false},
+    {"medium",      16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 1000, 40000, 4000, 500, 32, false},
+    {"modern",      16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 1000, 40000, 4000, 500, 32, true},
 };
 
 const Preset* find_preset(const std::string& name) {
@@ -406,9 +413,11 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         const int vocab_size = preset.vocab_size;
         const int num_steps = preset.num_steps;
         const int seq_length = preset.seq_length;
-        const bool fast_mode = std::string(preset.name) == "fast";
+        const bool fast_mode = std::string(preset.name).rfind("fast", 0) == 0;
+        const GPTArch arch = preset.modern ? GPTArch::Modern : GPTArch::GPT2;
 
         const std::string prefix = checkpoint_stem(corpus_path)
+                                 + (preset.modern ? "_modern" : "")
                                  + (fast_mode ? "_fast" : "");
         const bool resume = (init_arg == "resume");
         const std::string warm_start_path = resume ? "" : init_arg;
@@ -512,7 +521,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
                 return GPTModel::load(warm_start_path);
             }
             return GPTModel(config.vocab_size, config.d_model, config.num_layers,
-                            config.num_heads, config.max_len, config.dropout);
+                            config.num_heads, config.max_len, config.dropout, arch);
         }();
         auto end = std::chrono::high_resolution_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -520,7 +529,8 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         if (model.getVocabSize() != config.vocab_size
             || model.getDModel() != config.d_model
             || model.getNumLayers() != config.num_layers
-            || model.getNumHeads() != config.num_heads) {
+            || model.getNumHeads() != config.num_heads
+            || model.getArch() != arch) {
             throw std::runtime_error("Checkpoint architecture does not match preset '"
                                      + std::string(preset.name) + "'");
         }
@@ -586,7 +596,7 @@ int main(int argc, char* argv[]) {
         std::string init_arg = (argc > 4) ? argv[4] : "";
         const Preset* preset = find_preset(preset_name);
         if (!preset || preset_name == "fast") {
-            std::cerr << "Unknown preset '" << preset_name << "' (available: small, medium)" << std::endl;
+            std::cerr << "Unknown preset '" << preset_name << "' (available: small, medium, modern)" << std::endl;
             return 1;
         }
         return run_training(*preset, corpus, init_arg);
@@ -623,7 +633,7 @@ int main(int argc, char* argv[]) {
 
     std::cerr << "Usage: " << argv[0] << " <mode>\n"
               << "  prepare <corpus.txt> [vocab]         pre-tokenize a corpus to .bin token files\n"
-              << "  train [corpus.txt] [small|medium] [ckpt.bin|resume]\n"
+              << "  train [corpus.txt] [small|medium|modern] [ckpt.bin|resume]\n"
               << "      full training run (uses .bin files if present); Ctrl-C saves resume\n"
               << "      state - 'resume' continues an interrupted run, a checkpoint path\n"
               << "      warm-starts from those weights with a fresh schedule\n"

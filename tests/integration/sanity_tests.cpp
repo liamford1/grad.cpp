@@ -1,4 +1,5 @@
 #include "transformer/gpt_model.h"
+#include "transformer/inference.h"
 #include "transformer/variable.h"
 #include "transformer/optimizer.h"
 #include "data/dataset.h"
@@ -242,6 +243,52 @@ void benchmark_training_speed() {
     std::cout << "Speed: " << (100000.0 / duration.count()) << " steps/sec" << std::endl;
 }
 
+// The batched training forward and the KV-cache InferenceSession are two
+// independent implementations of the same model; this feeds one token
+// sequence through both and requires per-position logits to agree. Guards
+// the class of bug where the two paths drift (e.g. a RoPE pairing or norm
+// epsilon mismatch), which gradient checks cannot catch.
+void test_inference_parity(GPTArch arch) {
+    utils::print_header(std::string("Inference Parity: ")
+                        + (arch == GPTArch::Modern ? "Modern arch" : "GPT-2 arch"));
+
+    const int vocab_size = 23;
+    const int d_model = 32;
+    const int num_layers = 2;
+    const int num_heads = 4;  // head_size 8, even as RoPE requires
+    const int max_len = 16;
+    const std::vector<int> sequence = {3, 11, 7, 0, 19, 5};
+    const int S = static_cast<int>(sequence.size());
+
+    GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len,
+                   /*dropout=*/0.0f, arch);
+
+    // Batched training-path forward over the whole sequence.
+    Tensor ids(1, S, 1);
+    for (int i = 0; i < S; i++) ids.setValue(0, i, 0, static_cast<float>(sequence[i]));
+    auto logits = model.forward(Variable::create(ids, false), false);
+
+    // Incremental decoding over the same tokens.
+    InferenceSession session(model);
+    float worst = 0.0f;
+    for (int i = 0; i < S; i++) {
+        const float* step_logits = session.step(sequence[i]);
+        for (int v = 0; v < vocab_size; v++) {
+            float a = logits->getData().getValue(0, i, v);
+            float b = step_logits[v];
+            float tol = 1e-3f + 1e-3f * (std::abs(a) + std::abs(b));
+            worst = std::max(worst, std::abs(a - b) / tol);
+        }
+    }
+    logits->release_graph();
+
+    std::cout << "Worst logit disagreement: " << worst << " of tolerance" << std::endl;
+    if (worst >= 1.0f) {
+        throw std::runtime_error("Inference parity FAILED");
+    }
+    std::cout << "SUCCESS" << std::endl;
+}
+
 int main(int argc, char* argv[]) {
     std::cout << "Running Sanity Tests\n" << std::endl;
 
@@ -262,6 +309,8 @@ int main(int argc, char* argv[]) {
         } else {
             test_overfit_tiny_sequence();
             test_dataloader();
+            test_inference_parity(GPTArch::GPT2);
+            test_inference_parity(GPTArch::Modern);
             benchmark_training_speed();
         }
 

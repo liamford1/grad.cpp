@@ -9,6 +9,11 @@ class MultiHeadAttention {
         int d_model;
         int num_heads;
         float dropout_rate;
+        // Rotary position embeddings: Q and K are rotated by position-
+        // dependent angles before the score matmul, encoding relative
+        // position directly in the attention instead of via learned
+        // absolute embeddings added to the residual stream.
+        bool rope_;
 
         std::shared_ptr<Variable> W_q;
         std::shared_ptr<Variable> W_k;
@@ -19,8 +24,10 @@ class MultiHeadAttention {
         std::shared_ptr<Variable> b_v;
         std::shared_ptr<Variable> b_o;
     public:
-        MultiHeadAttention(int d_model, int num_heads, float dropout_rate = 0.1f);
+        MultiHeadAttention(int d_model, int num_heads, float dropout_rate = 0.1f,
+                           bool rope = false);
         ~MultiHeadAttention();
+        bool usesRope() const { return rope_; }
         std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
 
         const std::shared_ptr<Variable> getW_q() const { return W_q; }

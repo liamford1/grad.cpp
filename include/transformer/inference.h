@@ -46,5 +46,8 @@ private:
     std::vector<float> attn_;       // concatenated head outputs (d_model)
     std::vector<float> scores_;     // attention scores (max_len)
     std::vector<float> ffn_hidden_; // FFN activation (d_ff)
+    std::vector<float> ffn_gate_;   // SwiGLU gate activation (d_ff, modern)
+    std::vector<float> rope_cos_;   // per-step RoPE angles (head_size/2, modern)
+    std::vector<float> rope_sin_;
     std::vector<float> logits_;     // output logits (vocab)
 };

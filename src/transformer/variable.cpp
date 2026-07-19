@@ -602,6 +602,98 @@ std::shared_ptr<Variable> Variable::gelu() const {
     return output;
 }
 
+std::shared_ptr<Variable> Variable::silu() const {
+    data.assertValid("Variable::silu(x)");
+
+    // silu(x) = x * sigmoid(x), with sigmoid computed as 1/(1 + e^-x)
+    // through vec_exp (SIMD), mirroring gelu's structure.
+    const size_t n = data.numel();
+    const float* x = data.raw();
+
+    Tensor result = data.getIs3D()
+        ? Tensor(data.getBatchSize(), data.getRows(), data.getCols())
+        : Tensor(data.getRows(), data.getCols());
+    float* out = result.raw();
+
+    parallel_for(n, 32768, [&](size_t begin, size_t end) {
+        for (size_t i = begin; i < end; i++) {
+            out[i] = -x[i];
+        }
+        vec_exp(out + begin, out + begin, static_cast<int>(end - begin));
+        for (size_t i = begin; i < end; i++) {
+            out[i] = x[i] / (1.0f + out[i]);
+        }
+    });
+
+    auto output = createOutput(result, this->requires_grad);
+
+    if (this->requires_grad) {
+        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        output->addChild(self_ptr);
+        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output || !output->hasGrad()) return;
+            if (!self_ptr->requires_grad) return;
+            self_ptr->ensureGrad();
+
+            // d silu = sigmoid(x) * (1 + x * (1 - sigmoid(x))); the
+            // sigmoid is recomputed - one vec_exp is cheaper than caching
+            // a full activation tensor across the step.
+            const size_t n = self_ptr->data.numel();
+            const float* x = self_ptr->data.raw();
+            const float* dY = output->grad.raw();
+            float* dX = self_ptr->grad.raw();
+
+            parallel_for(n, 32768, [&](size_t begin, size_t end) {
+                const size_t len = end - begin;
+                std::vector<float> sig(len);
+                for (size_t i = 0; i < len; i++) {
+                    sig[i] = -x[begin + i];
+                }
+                vec_exp(sig.data(), sig.data(), static_cast<int>(len));
+                for (size_t i = 0; i < len; i++) {
+                    float s = 1.0f / (1.0f + sig[i]);
+                    float xi = x[begin + i];
+                    dX[begin + i] += dY[begin + i] * s * (1.0f + xi * (1.0f - s));
+                }
+            });
+        });
+    }
+    return output;
+}
+
+std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) const {
+    data.assertValid("Variable::mul(lhs)");
+    other->data.assertValid("Variable::mul(rhs)");
+
+    Tensor result = this->data.elementwise(other->data);
+    bool needs_grad = this->requires_grad || other->requires_grad;
+    auto output = createOutput(result, needs_grad);
+
+    if (needs_grad) {
+        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        output->addChild(self_ptr);
+        output->addChild(other);
+
+        output->setBackwardFn([self_ptr, other, output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output || !output->hasGrad()) return;
+
+            if (self_ptr->requires_grad) {
+                self_ptr->ensureGrad();
+                Tensor d = output->grad.elementwise(other->data);
+                self_ptr->grad.add_inplace(d);
+            }
+            if (other->requires_grad) {
+                other->ensureGrad();
+                Tensor d = output->grad.elementwise(self_ptr->data);
+                other->grad.add_inplace(d);
+            }
+        });
+    }
+    return output;
+}
+
 std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) const {
     if (!training || dropout_rate == 0.0f) {
         return std::const_pointer_cast<Variable>(shared_from_this());
