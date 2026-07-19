@@ -177,7 +177,7 @@ Tensor readTensorFromBinary(std::ifstream& file) {
     return tensor;
 }
 
-bool GPTModel::save(const std::string& filepath) const {
+bool GPTModel::save(const std::string& filepath, bool quiet) const {
     std::ofstream file(filepath, std::ios::binary);
     if (!file.is_open()) {
         std::cerr << "Error: Could not open file for writing: " << filepath << std::endl;
@@ -231,7 +231,9 @@ bool GPTModel::save(const std::string& filepath) const {
         writeTensorToBinary(file, final_norm.getBeta()->getData());
 
         file.close();
-        std::cout << "Model saved successfully to: " << filepath << std::endl;
+        if (!quiet) {
+            std::cout << "Model saved successfully to: " << filepath << std::endl;
+        }
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Error saving model: " << e.what() << std::endl;

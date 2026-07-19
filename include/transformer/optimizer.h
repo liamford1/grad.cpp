@@ -5,6 +5,7 @@
 #include <memory>
 #include <unordered_map>
 #include <cmath>
+#include <iosfwd>
 
 class Optimizer {
     public:
@@ -82,6 +83,23 @@ class AdamOptimizer : public Optimizer {
         void zero_grad() override;
         void clip_grad_norm(float max_norm);
         void set_warmup_steps(int steps) { warmup_steps_ = steps; }
+
+        // Multiply every parameter gradient by s. Gradient accumulation
+        // scales the summed micro-batch gradients down to their mean here,
+        // after all backward passes: the loss backwards write raw gradients
+        // (they seed dLoss = 1 and ignore upstream grad), so scaling a
+        // node stacked on top of the loss would silently not propagate.
+        void scale_grads(float s);
+
+        // Serialize / restore Adam state (step count and per-parameter
+        // m/v moments) for checkpoint resume. Parameters are matched by
+        // position, which is deterministic because getAllParameters()
+        // always walks the model in construction order. load_state
+        // returns false on any mismatch (count or shape) rather than
+        // resuming with misassigned moments.
+        bool save_state(std::ostream& out) const;
+        bool load_state(std::istream& in);
+        int step_count() const { return step_count_; }
 
         // Linear warmup to base lr, then cosine decay to min_lr at
         // total_steps. Without this, lr stays at base after warmup.

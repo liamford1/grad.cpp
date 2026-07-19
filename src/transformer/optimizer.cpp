@@ -2,8 +2,12 @@
 #include "transformer/blas_wrapper.h"
 #include "transformer/parallel.h"
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <algorithm>
+#include <istream>
+#include <ostream>
+#include <vector>
 
 AdamOptimizer::AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr, float beta1, float beta2, float epsilon, float weight_decay) : parameters_(parameters), lr_(lr), base_lr_(lr), min_lr_(lr), beta1_(beta1), beta2_(beta2), epsilon_(epsilon), weight_decay_(weight_decay), step_count_(0), warmup_steps_(0), total_steps_(0) {}
 
@@ -93,6 +97,72 @@ void AdamOptimizer::zero_grad() {
         Tensor& grad = param->getGrad();
         std::memset(grad.raw(), 0, grad.numel() * sizeof(float));
     }
+}
+
+void AdamOptimizer::scale_grads(float s) {
+    for (auto& param : parameters_) {
+        if (!param->requiresGrad()) continue;
+        Tensor& grad = param->getGrad();
+        vec_scale_inplace(grad.raw(), s, grad.numel());
+    }
+}
+
+bool AdamOptimizer::save_state(std::ostream& out) const {
+    int32_t step_count = step_count_;
+    uint32_t n_params = static_cast<uint32_t>(parameters_.size());
+    out.write(reinterpret_cast<const char*>(&step_count), sizeof(step_count));
+    out.write(reinterpret_cast<const char*>(&n_params), sizeof(n_params));
+
+    for (const auto& param : parameters_) {
+        uint64_t numel = param->getData().numel();
+        out.write(reinterpret_cast<const char*>(&numel), sizeof(numel));
+
+        auto m_it = m_.find(param.get());
+        if (m_it != m_.end()) {
+            const Tensor& v = v_.at(param.get());
+            out.write(reinterpret_cast<const char*>(m_it->second.raw()),
+                      numel * sizeof(float));
+            out.write(reinterpret_cast<const char*>(v.raw()), numel * sizeof(float));
+        } else {
+            // Saving before the first step: moments are implicitly zero.
+            std::vector<float> zeros(numel, 0.0f);
+            out.write(reinterpret_cast<const char*>(zeros.data()), numel * sizeof(float));
+            out.write(reinterpret_cast<const char*>(zeros.data()), numel * sizeof(float));
+        }
+    }
+    return out.good();
+}
+
+bool AdamOptimizer::load_state(std::istream& in) {
+    int32_t step_count;
+    uint32_t n_params;
+    in.read(reinterpret_cast<char*>(&step_count), sizeof(step_count));
+    in.read(reinterpret_cast<char*>(&n_params), sizeof(n_params));
+    if (!in.good() || n_params != parameters_.size()) return false;
+
+    for (const auto& param : parameters_) {
+        const Tensor& data = param->getData();
+        uint64_t numel;
+        in.read(reinterpret_cast<char*>(&numel), sizeof(numel));
+        if (!in.good() || numel != static_cast<uint64_t>(data.numel())) return false;
+
+        Variable* key = param.get();
+        if (m_.find(key) == m_.end()) {
+            if (data.getIs3D()) {
+                m_[key] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
+                v_[key] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
+            } else {
+                m_[key] = Tensor(data.getRows(), data.getCols());
+                v_[key] = Tensor(data.getRows(), data.getCols());
+            }
+        }
+        in.read(reinterpret_cast<char*>(m_[key].raw()), numel * sizeof(float));
+        in.read(reinterpret_cast<char*>(v_[key].raw()), numel * sizeof(float));
+        if (!in.good()) return false;
+    }
+    step_count_ = step_count;
+    lr_ = scheduled_lr();
+    return true;
 }
 
 void AdamOptimizer::clip_grad_norm(float max_norm) {

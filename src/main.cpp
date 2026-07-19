@@ -8,6 +8,7 @@
 #include "utils/metrics.h"
 #include "utils/training_utils.h"
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -348,17 +349,19 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
 // "medium" (~70M params) is memory-bound, not compute-bound: the autograd
 // graph holds data + grad for every intermediate, so one step at batch 16
 // / seq 256 peaked past 10GB of phys footprint and took a 16GB machine
-// down (measured 2026-07-18). Batch 8 halves that to a ~6GB peak; the
-// step count doubles to keep the total token budget, and the checkpoint /
-// eval intervals double to keep their wall-clock cadence. Its logits
-// matmul (50 GFLOP) still crosses the ~10 GFLOP Metal threshold
-// (BENCHMARKS.md #7); the FFN matmuls land just under it, where CPU and
-// GPU tie anyway.
+// down (measured 2026-07-18). Batch 8 halves that to a ~6GB peak, and
+// grad_accum 4 buys the optimizer an effective batch of 32 at that same
+// peak (micro-batch graphs are released one at a time). At 40000 steps
+// the run consumes 40000*32*256 = 327M tokens - about one epoch of the
+// TinyStories train split, 4x the tokens of the original batch-8 run.
+// Its logits matmul (50 GFLOP) still crosses the ~10 GFLOP Metal
+// threshold (BENCHMARKS.md #7); the FFN matmuls land just under it,
+// where CPU and GPU tie anyway.
 struct Preset {
     const char* name;
     int vocab_size;
     int d_model, num_layers, num_heads;
-    int max_len, seq_length, batch_size;
+    int max_len, seq_length, batch_size, grad_accum;
     float learning_rate;
     int warmup_steps, num_steps;
     int checkpoint_interval, eval_interval;
@@ -370,9 +373,9 @@ struct Preset {
 // model memorizes a corpus that small). 8000 steps lets the cosine
 // schedule finish near the minimum instead of training 8x past it.
 const Preset kPresets[] = {
-    {"fast",   500,   128, 2,  4,  1024, 64,  4,  3e-4f, 10,   50,    2500, 25,  0},
-    {"small",  5000,  512, 6,  8,  1024, 96,  8,  3e-4f, 500,  8000,  2500, 250, 0},
-    {"medium", 16000, 768, 8,  12, 1024, 256, 8,  3e-4f, 1000, 40000, 4000, 500, 32},
+    {"fast",   500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 10,   50,    2500, 25,  0},
+    {"small",  5000,  512, 6,  8,  1024, 96,  8, 1,  3e-4f, 500,  8000,  2500, 250, 0},
+    {"medium", 16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 1000, 40000, 4000, 500, 32},
 };
 
 const Preset* find_preset(const std::string& name) {
@@ -392,7 +395,12 @@ std::string checkpoint_stem(const std::string& corpus_path) {
     return (dot == std::string::npos) ? base : base.substr(0, dot);
 }
 
-int run_training(const Preset& preset, const std::string& corpus_path) {
+// init_arg: "" trains from scratch; "resume" continues an interrupted run
+// from <prefix>_resume_model.bin / _resume_state.bin (optimizer state and
+// schedule position included); any other value is a checkpoint path to
+// warm-start from - weights only, fresh optimizer and schedule.
+int run_training(const Preset& preset, const std::string& corpus_path,
+                 const std::string& init_arg) {
     std::cout << "\nTransformer Training (" << preset.name << ")\n" << std::endl;
 
     try {
@@ -400,6 +408,25 @@ int run_training(const Preset& preset, const std::string& corpus_path) {
         const int num_steps = preset.num_steps;
         const int seq_length = preset.seq_length;
         const bool fast_mode = std::string(preset.name) == "fast";
+
+        const std::string prefix = checkpoint_stem(corpus_path)
+                                 + (fast_mode ? "_fast" : "");
+        const bool resume = (init_arg == "resume");
+        const std::string warm_start_path = resume ? "" : init_arg;
+
+        int resume_next_step = -1;
+        if (resume) {
+            resume_next_step = training::peek_resume_step(prefix + "_resume_state.bin");
+            if (resume_next_step < 0) {
+                throw std::runtime_error("No resume state found ("
+                    + prefix + "_resume_state.bin); start a run first");
+            }
+            if (resume_next_step >= num_steps) {
+                std::cout << "Run already completed all " << num_steps
+                          << " steps; nothing to resume." << std::endl;
+                return 0;
+            }
+        }
 
         BPETokenizer tokenizer(vocab_size);
         std::shared_ptr<Dataset> dataset;
@@ -467,21 +494,37 @@ int run_training(const Preset& preset, const std::string& corpus_path) {
         config.max_len = preset.max_len;
         config.seq_length = seq_length;
         config.batch_size = preset.batch_size;
+        config.grad_accum = preset.grad_accum;
         config.learning_rate = preset.learning_rate;
         config.dropout = 0.1f;
         config.warmup_steps = preset.warmup_steps;
         config.num_steps = num_steps;
         config.checkpoint_interval = preset.checkpoint_interval;
-        config.checkpoint_prefix = checkpoint_stem(corpus_path)
-                                 + (fast_mode ? "_fast" : "");
+        config.checkpoint_prefix = prefix;
         config.eval_interval = preset.eval_interval;
         config.max_eval_batches = preset.max_eval_batches;
 
         auto start = std::chrono::high_resolution_clock::now();
-        GPTModel model(config.vocab_size, config.d_model, config.num_layers,
-                       config.num_heads, config.max_len, config.dropout);
+        GPTModel model = [&]() -> GPTModel {
+            if (resume) return GPTModel::load(prefix + "_resume_model.bin");
+            if (!warm_start_path.empty()) {
+                std::cout << "Warm start from " << warm_start_path
+                          << " (weights only, fresh optimizer)" << std::endl;
+                return GPTModel::load(warm_start_path);
+            }
+            return GPTModel(config.vocab_size, config.d_model, config.num_layers,
+                            config.num_heads, config.max_len, config.dropout);
+        }();
         auto end = std::chrono::high_resolution_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+        if (model.getVocabSize() != config.vocab_size
+            || model.getDModel() != config.d_model
+            || model.getNumLayers() != config.num_layers
+            || model.getNumHeads() != config.num_heads) {
+            throw std::runtime_error("Checkpoint architecture does not match preset '"
+                                     + std::string(preset.name) + "'");
+        }
 
         auto params = model.getAllParameters();
         int total_params = 0;
@@ -490,14 +533,37 @@ int run_training(const Preset& preset, const std::string& corpus_path) {
         std::cout << "Model initialized (" << ms << "ms)" << std::endl;
         std::cout << "Parameters: " << (total_params / 1e6f) << "M" << std::endl;
 
-        DataLoader loader(dataset, config.batch_size, true);
+        // The training loader samples windows with replacement, so any run
+        // that starts from existing weights must not repeat the seed those
+        // weights were trained with - it would replay the exact batch
+        // sequence the checkpoint already saw. Resumes perturb the seed by
+        // their step position, warm starts by the checkpoint path.
+        unsigned int loader_seed = 42;
+        if (resume) {
+            loader_seed = 42u + static_cast<unsigned int>(resume_next_step);
+        } else if (!warm_start_path.empty()) {
+            loader_seed = static_cast<unsigned int>(
+                std::hash<std::string>{}(warm_start_path));
+        }
+        DataLoader loader(dataset, config.batch_size, true, loader_seed);
         DataLoader val_loader(val_dataset, config.batch_size, false);
 
         std::cout << "Dataset: " << dataset->size() << " train / "
                   << val_dataset->size() << " val sequences\n" << std::endl;
 
         training::Trainer trainer(config, model, loader, tokenizer, &val_loader);
-        trainer.train();
+        if (resume && !trainer.load_resume_state()) {
+            throw std::runtime_error("Failed to load resume state ("
+                                     + prefix + "_resume_state.bin)");
+        }
+
+        if (!trainer.train()) {
+            std::cout << "\nResume with: ./build/transformer "
+                      << (fast_mode ? "train-fast " + corpus_path
+                                    : "train " + corpus_path + " " + preset.name)
+                      << " resume\n" << std::endl;
+            return 0;
+        }
 
         generate_samples(model, tokenizer);
 
@@ -518,15 +584,17 @@ int main(int argc, char* argv[]) {
     if (mode == "train") {
         std::string corpus = (argc > 2) ? argv[2] : default_corpus;
         std::string preset_name = (argc > 3) ? argv[3] : "small";
+        std::string init_arg = (argc > 4) ? argv[4] : "";
         const Preset* preset = find_preset(preset_name);
         if (!preset || preset_name == "fast") {
             std::cerr << "Unknown preset '" << preset_name << "' (available: small, medium)" << std::endl;
             return 1;
         }
-        return run_training(*preset, corpus);
+        return run_training(*preset, corpus, init_arg);
     }
     if (mode == "train-fast") {
-        return run_training(*find_preset("fast"), (argc > 2) ? argv[2] : default_corpus);
+        return run_training(*find_preset("fast"), (argc > 2) ? argv[2] : default_corpus,
+                            (argc > 3) ? argv[3] : "");
     }
     if (mode == "prepare") {
         if (argc < 3) {
@@ -556,8 +624,11 @@ int main(int argc, char* argv[]) {
 
     std::cerr << "Usage: " << argv[0] << " <mode>\n"
               << "  prepare <corpus.txt> [vocab]         pre-tokenize a corpus to .bin token files\n"
-              << "  train [corpus.txt] [small|medium]    full training run (uses .bin files if present)\n"
-              << "  train-fast [corpus.txt]              tiny config for a quick smoke test\n"
+              << "  train [corpus.txt] [small|medium] [ckpt.bin|resume]\n"
+              << "      full training run (uses .bin files if present); Ctrl-C saves resume\n"
+              << "      state - 'resume' continues an interrupted run, a checkpoint path\n"
+              << "      warm-starts from those weights with a fresh schedule\n"
+              << "  train-fast [corpus.txt] [ckpt.bin|resume]   tiny config for a quick smoke test\n"
               << "  generate [ckpt] [prompt] [corpus] [vocab]   sample from a saved checkpoint\n"
               << "  chat [ckpt] [corpus] [vocab]                interactive prompt/continue REPL\n"
               << "  bench [steps]                        measure training and generation speed\n";

@@ -6,9 +6,10 @@
 namespace utils {
 
 TrainingMetrics::TrainingMetrics(int total_steps)
-    : total_steps_(total_steps), running_loss_(0.0f), step_count_(0) {}
+    : total_steps_(total_steps), start_step_(0), running_loss_(0.0f), step_count_(0) {}
 
-void TrainingMetrics::start_training() {
+void TrainingMetrics::start_training(int start_step) {
+    start_step_ = start_step;
     start_time_ = std::chrono::high_resolution_clock::now();
 }
 
@@ -33,7 +34,7 @@ void TrainingMetrics::print_progress(int step, float loss) {
     auto now = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
     float progress = 100.0f * (step + 1) / total_steps_;
-    float steps_per_sec = (step + 1) / (float)(elapsed + 1);
+    float steps_per_sec = (step + 1 - start_step_) / (float)(elapsed + 1);
     int eta_sec = (int)((total_steps_ - step - 1) / (steps_per_sec + 0.0001f));
 
     std::cout << "\r[" << (step + 1) << "/" << total_steps_ << "] "
@@ -52,7 +53,7 @@ void TrainingMetrics::print_summary() {
     std::cout << "Total time: " << total_time << "s" << std::endl;
     std::cout << "Average loss: " << std::fixed << std::setprecision(4) << avg_loss << std::endl;
     std::cout << "Speed: " << std::fixed << std::setprecision(2)
-              << (total_steps_ / (float)total_time) << " steps/s" << std::endl;
+              << ((total_steps_ - start_step_) / (float)total_time) << " steps/s" << std::endl;
 }
 
 void print_header(const std::string& title) {

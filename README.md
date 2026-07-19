@@ -89,9 +89,9 @@ Two model presets are built in:
 | preset | params | config | intended for |
 |---|---|---|---|
 | `small` (default) | ~22M | d512 × 6L × 8H, seq 96, batch 8, vocab 5k | Tiny Shakespeare |
-| `medium` | ~70M | d768 × 8L × 12H, seq 256, batch 8, vocab 16k | TinyStories-scale corpora |
+| `medium` | ~70M | d768 × 8L × 12H, seq 256, batch 8×4 accum, vocab 16k | TinyStories-scale corpora |
 
-`medium`'s logits matmul crosses the ~10 GFLOP threshold where the Metal GPU backend engages (BENCHMARKS.md #7); its batch size is set by memory, not compute — one training step peaks at ~5.4GB of footprint, sized to fit a 16GB machine (BENCHMARKS.md #8). Example end-to-end:
+`medium`'s logits matmul crosses the ~10 GFLOP threshold where the Metal GPU backend engages (BENCHMARKS.md #7); its micro-batch size is set by memory, not compute — one micro-batch peaks at ~5.4GB of footprint, sized to fit a 16GB machine (BENCHMARKS.md #8) — and gradient accumulation gives the optimizer an effective batch of 32 at that same peak. Example end-to-end:
 
 ```bash
 curl -L -o data/tinystories.txt \
@@ -100,6 +100,15 @@ curl -L -o data/tinystories.txt \
 ./build/transformer train data/tinystories.txt medium     # writes tinystories_final.bin
 ./build/transformer chat tinystories_final.bin data/tinystories.txt 16000
 ```
+
+Long runs are interruptible: Ctrl-C saves a resume pair (`<prefix>_resume_model.bin` + `<prefix>_resume_state.bin` — weights, Adam moments, and schedule position), which is also refreshed at every eval interval, so a crash costs at most a few minutes of work.
+
+```bash
+./build/transformer train data/tinystories.txt medium resume               # continue where it stopped
+./build/transformer train data/tinystories.txt medium tinystories_best.bin # warm-start: weights only, fresh schedule
+```
+
+A resumed or warm-started run reseeds the data loader (by step position and checkpoint path respectively), so it draws fresh training windows instead of replaying the batches the checkpoint already saw.
 
 Performance across optimization iterations is tracked in [BENCHMARKS.md](BENCHMARKS.md) (`./build/transformer bench` reproduces the numbers).
 

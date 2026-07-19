@@ -44,7 +44,10 @@ class GPTModel {
         const TransformerBlock& getBlock(int i) const { return *transformer_blocks[i]; }
         const LayerNorm& getFinalNorm() const { return final_norm; }
 
-        bool save(const std::string& filepath) const;
+        // quiet suppresses the success print - used for the periodic
+        // resume-state writes, which would otherwise log a .tmp filename
+        // every eval interval.
+        bool save(const std::string& filepath, bool quiet = false) const;
         static GPTModel load(const std::string& filepath);
 
         GPTModel(const GPTModel&) = delete;
