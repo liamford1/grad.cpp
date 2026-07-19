@@ -20,9 +20,28 @@ size_t round_up_to_page(size_t n) {
     return ((n + kPageBytes - 1) / kPageBytes) * kPageBytes;
 }
 
+// fp32 -> fp16 conversion kernel, run on the GPU so operand halving costs
+// one bandwidth-bound pass instead of a CPU round trip. Compiled from
+// source at startup; if compilation fails the backend silently stays fp32.
+constexpr const char* kConvertSource = R"(
+#include <metal_stdlib>
+using namespace metal;
+kernel void f32_to_f16(device const float* src [[buffer(0)]],
+                       device half* dst [[buffer(1)]],
+                       uint i [[thread_position_in_grid]]) {
+    dst[i] = half(src[i]);
+}
+)";
+
 struct Context {
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> queue = nil;
+    id<MTLComputePipelineState> convert = nil;
+    // Persistent GPU-private scratch for the fp16 operand copies, grown as
+    // needed and reused across calls (guarded by gpu_mutex).
+    id<MTLBuffer> scratch[2] = {nil, nil};
+    size_t scratch_cap[2] = {0, 0};
+    bool fp16 = false;
     bool ok = false;
 
     Context() {
@@ -36,6 +55,26 @@ struct Context {
         if (![device hasUnifiedMemory]) return;
         queue = [device newCommandQueue];
         ok = (queue != nil);
+        if (!ok) return;
+
+        // Off by default: measured at the current model scale, fp16
+        // operands neither help (logits matmuls: bandwidth win cancels
+        // conversion cost) nor let smaller matmuls win on the GPU (FFN at
+        // a 5 GFLOP threshold ran 14% slower - synchronous dispatch still
+        // loses to AMX). See BENCHMARKS.md #11. The machinery stays for
+        // the next model size up, where the GPU's margin grows.
+        bool want_fp16 = false;
+        if (const char* env = std::getenv("TRANSFORMER_METAL_FP16")) {
+            if (env[0] == '1') want_fp16 = true;
+        }
+        if (want_fp16) {
+            NSError* error = nil;
+            id<MTLLibrary> lib =
+                [device newLibraryWithSource:@(kConvertSource) options:nil error:&error];
+            id<MTLFunction> fn = lib ? [lib newFunctionWithName:@"f32_to_f16"] : nil;
+            convert = fn ? [device newComputePipelineStateWithFunction:fn error:&error] : nil;
+            fp16 = (convert != nil);
+        }
     }
 };
 
@@ -58,19 +97,34 @@ id<MTLBuffer> wrap(id<MTLDevice> device, const void* p, size_t bytes) {
                                 deallocator:nil];
 }
 
-MPSMatrix* make_matrix(id<MTLBuffer> buf, int rows, int cols) {
+MPSMatrix* make_matrix(id<MTLBuffer> buf, int rows, int cols, MPSDataType dtype) {
+    const size_t elem = (dtype == MPSDataTypeFloat16) ? 2 : sizeof(float);
     MPSMatrixDescriptor* desc =
         [MPSMatrixDescriptor matrixDescriptorWithRows:rows
                                               columns:cols
-                                             rowBytes:cols * sizeof(float)
-                                             dataType:MPSDataTypeFloat32];
+                                             rowBytes:cols * elem
+                                             dataType:dtype];
     return [[MPSMatrix alloc] initWithBuffer:buf descriptor:desc];
+}
+
+id<MTLBuffer> scratch_fp16(Context& c, int slot, size_t elements) {
+    const size_t bytes = elements * 2;
+    if (c.scratch_cap[slot] < bytes) {
+        c.scratch[slot] = [c.device newBufferWithLength:bytes
+                                                options:MTLResourceStorageModePrivate];
+        c.scratch_cap[slot] = c.scratch[slot] ? bytes : 0;
+    }
+    return c.scratch[slot];
 }
 
 }  // namespace
 
 bool available() {
     return ctx().ok;
+}
+
+bool fp16_active() {
+    return ctx().ok && ctx().fp16;
 }
 
 bool sgemm(const float* A, const float* B, float* C,
@@ -84,14 +138,24 @@ bool sgemm(const float* A, const float* B, float* C,
     const int a_cols = transA ? M : K;
     const int b_rows = transB ? N : K;
     const int b_cols = transB ? K : N;
+    const size_t nA = static_cast<size_t>(a_rows) * a_cols;
+    const size_t nB = static_cast<size_t>(b_rows) * b_cols;
 
     @autoreleasepool {
         std::lock_guard<std::mutex> lk(gpu_mutex);
 
-        id<MTLBuffer> bufA = wrap(c.device, A, static_cast<size_t>(a_rows) * a_cols * sizeof(float));
-        id<MTLBuffer> bufB = wrap(c.device, B, static_cast<size_t>(b_rows) * b_cols * sizeof(float));
+        id<MTLBuffer> bufA = wrap(c.device, A, nA * sizeof(float));
+        id<MTLBuffer> bufB = wrap(c.device, B, nB * sizeof(float));
         id<MTLBuffer> bufC = wrap(c.device, C, static_cast<size_t>(M) * N * sizeof(float));
         if (!bufA || !bufB || !bufC) return false;
+
+        id<MTLBuffer> halfA = nil;
+        id<MTLBuffer> halfB = nil;
+        if (c.fp16) {
+            halfA = scratch_fp16(c, 0, nA);
+            halfB = scratch_fp16(c, 1, nB);
+        }
+        const bool use_fp16 = (halfA != nil && halfB != nil);
 
         MPSMatrixMultiplication* mm =
             [[MPSMatrixMultiplication alloc] initWithDevice:c.device
@@ -107,10 +171,33 @@ bool sgemm(const float* A, const float* B, float* C,
         id<MTLCommandBuffer> cb = [c.queue commandBuffer];
         if (!cb) return false;
 
-        [mm encodeToCommandBuffer:cb
-                       leftMatrix:make_matrix(bufA, a_rows, a_cols)
-                      rightMatrix:make_matrix(bufB, b_rows, b_cols)
-                     resultMatrix:make_matrix(bufC, M, N)];
+        if (use_fp16) {
+            // Halve the operands on-device, then multiply fp16 x fp16 with
+            // an fp32 result matrix: MPS accumulates (and applies
+            // alpha/beta) in full precision.
+            id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+            [enc setComputePipelineState:c.convert];
+            const NSUInteger tg = c.convert.maxTotalThreadsPerThreadgroup;
+            [enc setBuffer:bufA offset:0 atIndex:0];
+            [enc setBuffer:halfA offset:0 atIndex:1];
+            [enc dispatchThreads:MTLSizeMake(nA, 1, 1)
+                threadsPerThreadgroup:MTLSizeMake(tg < 256 ? tg : 256, 1, 1)];
+            [enc setBuffer:bufB offset:0 atIndex:0];
+            [enc setBuffer:halfB offset:0 atIndex:1];
+            [enc dispatchThreads:MTLSizeMake(nB, 1, 1)
+                threadsPerThreadgroup:MTLSizeMake(tg < 256 ? tg : 256, 1, 1)];
+            [enc endEncoding];
+
+            [mm encodeToCommandBuffer:cb
+                           leftMatrix:make_matrix(halfA, a_rows, a_cols, MPSDataTypeFloat16)
+                          rightMatrix:make_matrix(halfB, b_rows, b_cols, MPSDataTypeFloat16)
+                         resultMatrix:make_matrix(bufC, M, N, MPSDataTypeFloat32)];
+        } else {
+            [mm encodeToCommandBuffer:cb
+                           leftMatrix:make_matrix(bufA, a_rows, a_cols, MPSDataTypeFloat32)
+                          rightMatrix:make_matrix(bufB, b_rows, b_cols, MPSDataTypeFloat32)
+                         resultMatrix:make_matrix(bufC, M, N, MPSDataTypeFloat32)];
+        }
         [cb commit];
         [cb waitUntilCompleted];
 

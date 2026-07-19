@@ -64,8 +64,15 @@ bool run_case(int M, int N, int K, bool tA, bool tB,
     // A pure relative criterion divides rounding noise by ~0 and fails
     // spuriously - verified against a float64 ground truth, which sits the
     // same distance from Accelerate as from MPS.
-    const float atol = 1e-6f * K + 1e-4f;
-    const float rtol = 2e-3f;
+    //
+    // With fp16 operands the dominant error is input rounding (~2^-11
+    // relative per element, accumulating as ~sqrt(K) absolute for O(1)
+    // inputs); accumulation itself stays fp32. Garbage-level bugs are
+    // still orders of magnitude outside these bounds.
+    const bool half_inputs = metalgpu::fp16_active();
+    const float atol = half_inputs ? 5e-4f * std::sqrt(static_cast<float>(K)) + 1e-3f
+                                   : 1e-6f * K + 1e-4f;
+    const float rtol = half_inputs ? 1e-2f : 2e-3f;
 
     float worst = 0.0f;
     const float* cpu = C_cpu.raw();
@@ -90,6 +97,7 @@ int main() {
         std::printf("No Metal device available - skipping (this is a pass).\n");
         return 0;
     }
+    std::printf("Operand precision: %s\n", metalgpu::fp16_active() ? "fp16" : "fp32");
 
     std::mt19937 gen(1234);
     int passed = 0, total = 0;
