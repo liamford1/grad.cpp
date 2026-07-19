@@ -1,99 +1,87 @@
 #include "transformer/text_gen.h"
+#include "transformer/inference.h"
 #include <random>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 
 TextGen::TextGen(const GPTModel& model, const BPETokenizer* tok) : model(model), tokenizer(tok) {}
 
-std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens, float repetition_penalty) {
-    std::vector<int> tokens = prompt_tokens;
+namespace {
 
-    for (int i = 0; i < max_tokens; i++) {
-        Tensor input_tensor(1, tokens.size());
-        for (size_t i = 0; i < tokens.size(); i++) {
-            input_tensor.setValue(0, i, tokens[i]);
-        }
-        auto input = Variable::create(input_tensor, false);
-        auto logits_var = model.forward(input, false);
-        Tensor logits = logits_var->getData();
-        // Backward closures capture shared_ptrs to their own nodes, so the
-        // graph only frees once its cycles are broken - same as the trainer.
-        logits_var->release_graph();
+Tensor logits_with_penalty(const float* logits, int vocab,
+                           const std::vector<int>& tokens,
+                           float repetition_penalty) {
+    Tensor out(1, vocab);
+    std::memcpy(out.raw(), logits, vocab * sizeof(float));
 
-        int last_token = tokens.size() - 1;
-        Tensor last_token_logits(1, logits.getCols());
-
-        bool is_3d = logits.getIs3D();
-        for (size_t j = 0; j < logits.getCols(); j++) {
-            float logit_value = is_3d ? logits.getValue(0, last_token, j) : logits.getValue(last_token, j);
-            last_token_logits.setValue(0, j, logit_value);
-        }
-
-        if (repetition_penalty != 1.0f) {
-            int window_size = std::min(50, (int)tokens.size());
-            for (int k = tokens.size() - window_size; k < (int)tokens.size(); k++) {
-                int token_id = tokens[k];
-                float current_logit = last_token_logits.getValue(0, token_id);
-                if (current_logit > 0) {
-                    last_token_logits.setValue(0, token_id, current_logit / repetition_penalty);
-                } else {
-                    last_token_logits.setValue(0, token_id, current_logit * repetition_penalty);
-                }
+    if (repetition_penalty != 1.0f) {
+        float* data = out.raw();
+        int window_size = std::min(50, static_cast<int>(tokens.size()));
+        for (int k = tokens.size() - window_size; k < static_cast<int>(tokens.size()); k++) {
+            int token_id = tokens[k];
+            if (data[token_id] > 0) {
+                data[token_id] /= repetition_penalty;
+            } else {
+                data[token_id] *= repetition_penalty;
             }
         }
+    }
+    return out;
+}
 
+}  // namespace
+
+std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens, float repetition_penalty) {
+    std::vector<int> tokens = prompt_tokens;
+    if (tokens.empty()) return "";
+
+    InferenceSession session(model);
+    const float* logits = nullptr;
+    for (int t : tokens) {
+        logits = session.step(t);
+    }
+
+    for (int i = 0; i < max_tokens; i++) {
+        Tensor last_token_logits = logits_with_penalty(
+            logits, session.vocabSize(), tokens, repetition_penalty);
+
+        const float* data = last_token_logits.raw();
         int next_token = 0;
-        float max_score = last_token_logits.getValue(0, 0);
-        for (size_t j = 1; j < last_token_logits.getCols(); j++) {
-            if (last_token_logits.getValue(0, j) > max_score) {
-                max_score = last_token_logits.getValue(0, j);
+        float max_score = data[0];
+        for (int j = 1; j < session.vocabSize(); j++) {
+            if (data[j] > max_score) {
+                max_score = data[j];
                 next_token = j;
             }
         }
         tokens.push_back(next_token);
+        if (session.position() >= session.capacity()) break;
+        logits = session.step(next_token);
     }
     return tokens_to_string(tokens);
 }
 
 std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, float temperature, int max_tokens, float repetition_penalty, int top_k, float top_p) {
     std::vector<int> tokens = prompt_tokens;
+    if (tokens.empty()) return "";
+
+    InferenceSession session(model);
+    const float* logits = nullptr;
+    for (int t : tokens) {
+        logits = session.step(t);
+    }
 
     for (int i = 0; i < max_tokens; i++) {
-        Tensor input_tensor(1, tokens.size());
-        for (size_t i = 0; i < tokens.size(); i++) {
-            input_tensor.setValue(0, i, tokens[i]);
-        }
-        auto input = Variable::create(input_tensor, false);
-        auto logits_var = model.forward(input, false);
-        Tensor logits = logits_var->getData();
-        logits_var->release_graph();
-
-        int last_token = tokens.size() - 1;
-        Tensor last_token_logits(1, logits.getCols());
-
-        bool is_3d = logits.getIs3D();
-        for (size_t j = 0; j < logits.getCols(); j++) {
-            float logit_value = is_3d ? logits.getValue(0, last_token, j) : logits.getValue(last_token, j);
-            last_token_logits.setValue(0, j, logit_value);
-        }
-
-        if (repetition_penalty != 1.0f) {
-            int window_size = std::min(50, (int)tokens.size());
-            for (int k = tokens.size() - window_size; k < (int)tokens.size(); k++) {
-                int token_id = tokens[k];
-                float current_logit = last_token_logits.getValue(0, token_id);
-                if (current_logit > 0) {
-                    last_token_logits.setValue(0, token_id, current_logit / repetition_penalty);
-                } else {
-                    last_token_logits.setValue(0, token_id, current_logit * repetition_penalty);
-                }
-            }
-        }
+        Tensor last_token_logits = logits_with_penalty(
+            logits, session.vocabSize(), tokens, repetition_penalty);
 
         int next_token = sample_from_logits(last_token_logits, temperature, top_k, top_p);
 
         tokens.push_back(next_token);
+        if (session.position() >= session.capacity()) break;
+        logits = session.step(next_token);
     }
     return tokens_to_string(tokens);
 }

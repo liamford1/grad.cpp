@@ -16,6 +16,7 @@ class LayerNorm {
 
         std::shared_ptr<Variable> getGamma() const { return gamma; }
         std::shared_ptr<Variable> getBeta() const { return beta; }
+        float getEpsilon() const { return epsilon; }
 
         std::vector<std::shared_ptr<Variable>> parameters() const {
             return {gamma, beta};

@@ -18,6 +18,7 @@ class TokenEmbedding {
         int getDModel() const { return d_model; }
 
         std::shared_ptr<Variable> getEmbeddingTable() const { return embedding_table; }
+        float getScale() const { return embedding_scale; }
 
         std::vector<std::shared_ptr<Variable>> parameters() const {
             return {embedding_table};

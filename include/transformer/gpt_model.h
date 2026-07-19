@@ -36,6 +36,13 @@ class GPTModel {
         int getVocabSize() const { return vocab_size; }
         int getDModel() const { return d_model; }
         int getNumLayers() const { return num_layers; }
+        int getNumHeads() const { return num_heads; }
+        int getMaxLen() const { return max_len; }
+
+        const TokenEmbedding& getTokenEmbedding() const { return token_embedding; }
+        const PositionalEncoding& getPosEncoding() const { return pos_encoding; }
+        const TransformerBlock& getBlock(int i) const { return *transformer_blocks[i]; }
+        const LayerNorm& getFinalNorm() const { return final_norm; }
 
         bool save(const std::string& filepath) const;
         static GPTModel load(const std::string& filepath);

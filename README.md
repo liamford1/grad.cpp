@@ -21,7 +21,7 @@ Not going to win a Pulitzer, but every gradient that trained it was derived and 
 - **Transformer components** — multi-head self-attention with causal masking, pre-LayerNorm residual blocks, GELU feed-forward, learned positional embeddings, and weight tying between the token embedding and the output projection
 - **BPE tokenizer** — byte-pair encoding trained on the corpus, with caching so repeat runs start instantly
 - **Training stack** — Adam with linear warmup, gradient clipping, dropout, a shuffling DataLoader, checkpoint save/load, and live loss/grad-norm metrics
-- **Text generation** — greedy decoding and sampling with temperature, top-k, top-p, and a repetition penalty
+- **Text generation** — KV-cached incremental decoding (`inference.h`), greedy or sampled with temperature, top-k, top-p, and a repetition penalty
 
 About 5,400 lines of implementation and 1,200 lines of tests.
 
@@ -107,7 +107,6 @@ data/            Tiny Shakespeare corpus (~1.1MB)
 ## Limitations and roadmap
 
 - CPU-only. A CUDA port was attempted and rolled back (see git history) — a GPU backend done properly, likely Metal on Apple Silicon, is the most interesting next step.
-- No KV cache during generation, so sampling recomputes the full prefix each token.
 - Single-threaded outside of BLAS.
 - Educational scale: don't expect it to replace your favorite inference engine.
 

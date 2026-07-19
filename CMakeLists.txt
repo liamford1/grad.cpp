@@ -18,6 +18,7 @@ add_executable(transformer
     src/transformer/gpt_model.cpp
     src/transformer/activations.cpp
     src/transformer/text_gen.cpp
+    src/transformer/inference.cpp
     src/transformer/variable.cpp
     src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
@@ -42,6 +43,7 @@ add_executable(sanity_tests
     src/transformer/gpt_model.cpp
     src/transformer/activations.cpp
     src/transformer/text_gen.cpp
+    src/transformer/inference.cpp
     src/transformer/variable.cpp
     src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
@@ -180,6 +182,7 @@ if(BUILD_TESTS)
         src/transformer/positional_encoding.cpp
         src/transformer/gpt_model.cpp
         src/transformer/text_gen.cpp
+        src/transformer/inference.cpp
         src/transformer/optimizer.cpp
         src/tokenizer/bpe_tokenizer.cpp
         src/data/dataset.cpp
@@ -201,6 +204,7 @@ if(BUILD_TESTS)
         src/transformer/positional_encoding.cpp
         src/transformer/gpt_model.cpp
         src/transformer/text_gen.cpp
+        src/transformer/inference.cpp
         src/transformer/optimizer.cpp
         src/tokenizer/bpe_tokenizer.cpp
         src/data/dataset.cpp
