@@ -14,10 +14,20 @@ One row per optimization iteration, so the performance story is readable at a gl
 | 1 | 2026-07-18 | Batched 3D attention (was: batch flattened into one long sequence) + backward passes rewritten as single BLAS accumulations + embedding-gradient fix | 2.2 | 1668 | 87.6 | 1600 MB |
 | 2 | 2026-07-18 | Vectorized elementwise math: GELU/softmax through SIMD `vvtanhf`/`vvexpf`, xorshift dropout masks, `sdot`/`sscal` grad clipping | 3.5 | 2707 | 126.7 | 1488 MB |
 | 3 | 2026-07-18 | KV-cache incremental decoding (`InferenceSession`): generation no longer re-runs the full prefix per token | 3.5 | 2707 | 385.1 | 1488 MB |
+| 4 | 2026-07-18 | Thread pool (`parallel.h`): GELU, dropout, softmax, LayerNorm, Adam across all 10 cores | 3.4 | 2618 | — | 1450 MB |
+| 5 | 2026-07-18 | Batched-attention restructure: parallel per-(batch, head) with cached softmax, flat-sgemm projections, zero physical transposes | 6.1 | 4679 | — | 1184 MB |
+| 6 | 2026-07-18 | Fast paths in add backward: in-place residual accumulation, row-major bias column sums | 6.7 | 5174 | 375.5 | 1457 MB |
 
 ## Notes
 
 **#0 — Baseline.** Starting point after restoring the pre-CUDA implementation and fixing the generation memory leak (which alone brought generation peak memory down from >5GB). Generation has no KV cache yet, so its tok/s decays quadratically as context grows — 86.7 tok/s is measured at short context and is flattering. Peak RSS of 1.7GB for a 22M-param model points at per-op allocation churn in the autograd graph.
+
+**#4–6 — Multithreading round (1.9× training).** An instructive sequence:
+- **#4 was flat** — a lesson in profiling before optimizing. The thread pool parallelized GELU/dropout/softmax/LayerNorm/Adam across all 10 cores, but those had already been shrunk by the #2 vectorization; the profile (taken *before* #2, not re-taken) had gone stale. What actually dominated by then was the attention block itself.
+- **#5 restructured attention**: the 3D path now runs its 64 per-(batch, head) units in parallel with per-task scratch, caches the softmax output (and attention-dropout masks) from forward so backward recomputes nothing — which also makes the attention-dropout gradient exact where it previously ignored the mask — and does all four projections and their gradients as single flat `(batch*seq, d)` sgemms with transpose folded in. Seven physical `transpose()` materializations went away.
+- **#6** gave the add op's backward fast paths for the two shapes training actually uses: same-shape residual adds accumulate in place via SIMD, and row-vector biases reduce with cache-friendly row-major column sums (the generic path walked columns strided).
+
+Net effect of the day: **1.2 → 6.7 steps/s (5.6×)**. The remaining profile is mostly BLAS itself — the next big lever is a different device (Metal), not more CPU tuning.
 
 **#3 — KV cache (3× generation at short context, asymptotically much more).** Generation used to rebuild the whole autograd graph over the full prefix for every new token — O(context²) forward work per token, so tok/s degraded as text grew. `InferenceSession` decodes incrementally: per-layer K/V projections are cached, each new token attends against the cache, and everything runs on raw float buffers with zero graph bookkeeping and zero per-token allocation (scratch buffers are reused). Greedy output over 150 tokens is byte-identical to the old path. The benchmark number (64 tokens from a short prompt) understates the win: per-token cost is now nearly flat in context length instead of linear, so at context 1000 the gap is ~15×. Generating two 150-token samples from the trained checkpoint now takes ~1s total including model load.
 

@@ -127,7 +127,6 @@ data/            Tiny Shakespeare corpus (~1.1MB)
 ## Limitations and roadmap
 
 - CPU-only. A CUDA port was attempted and rolled back (see git history) — a GPU backend done properly, likely Metal on Apple Silicon, is the most interesting next step.
-- Single-threaded outside of BLAS.
 - Educational scale: don't expect it to replace your favorite inference engine.
 
 ## License
