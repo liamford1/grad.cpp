@@ -12,24 +12,6 @@
 
 namespace {
 
-// Copy a (rows, head_size) head slice out of / back into the interleaved
-// (rows, d_model) layout.
-inline void gather_head(const float* src, float* dst, int rows, int d_model, int head_size) {
-    for (int i = 0; i < rows; i++) {
-        std::memcpy(dst + static_cast<size_t>(i) * head_size,
-                    src + static_cast<size_t>(i) * d_model,
-                    head_size * sizeof(float));
-    }
-}
-
-inline void scatter_head(const float* src, float* dst, int rows, int d_model, int head_size) {
-    for (int i = 0; i < rows; i++) {
-        std::memcpy(dst + static_cast<size_t>(i) * d_model,
-                    src + static_cast<size_t>(i) * head_size,
-                    head_size * sizeof(float));
-    }
-}
-
 inline void fill_bias_rows(float* out, const float* bias, int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         std::memcpy(out + static_cast<size_t>(i) * cols, bias, cols * sizeof(float));
@@ -228,7 +210,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             }
         }
 
-        auto concat_var = Variable::create(result, input->requiresGrad());
+        auto concat_var = Variable::create(std::move(result), input->requiresGrad());
         auto self_concat = concat_var;
         auto output = concat_var->matmul(W_o)->add(b_o);
 
@@ -427,10 +409,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
         // Q/K/V/concat live on the heap (shared_ptr) because the backward
         // closure needs them after forward returns.
-        auto Q = std::make_shared<Tensor>(flat, d);
-        auto K = std::make_shared<Tensor>(flat, d);
-        auto V = std::make_shared<Tensor>(flat, d);
-        auto concat = std::make_shared<Tensor>(flat, d);
+        auto Q = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
+        auto K = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
+        auto V = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
+        auto concat = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
 
         const float* in_data = input_tensor.raw();
         auto project = [&](const Tensor& W, const Tensor& b, Tensor& out) {
@@ -472,12 +454,13 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         float* attn_data_all = attn_cache->data();
         float* mask_all = drop_mask ? drop_mask->data() : nullptr;
 
+        // Heads are column slices of the (rows, d_model) projections; BLAS
+        // takes them as strided views (lda = d_model), so no per-head
+        // gather/scatter copies are needed anywhere in this loop -
+        // measured at ~12% of step CPU as memmove (BENCHMARKS.md #10).
         parallel_for(static_cast<size_t>(batch_size) * H, 1,
                      [&](size_t begin, size_t end) {
-            Tensor Q_head(S, head_size);
-            Tensor K_head(S, head_size);
-            Tensor V_head(S, head_size);
-            Tensor scores(S, S);
+            Tensor scores = Tensor::uninitialized(S, S);
 
             for (size_t unit = begin; unit < end; unit++) {
                 const int b = static_cast<int>(unit) / H;
@@ -485,21 +468,38 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 const size_t batch_offset = static_cast<size_t>(b) * S * d;
                 const int col = h * head_size;
 
-                gather_head(Q_data + batch_offset + col, Q_head.raw(), S, d, head_size);
-                gather_head(K_data + batch_offset + col, K_head.raw(), S, d, head_size);
-                gather_head(V_data + batch_offset + col, V_head.raw(), S, d, head_size);
+                const float* q_ptr = Q_data + batch_offset + col;
+                const float* k_ptr = K_data + batch_offset + col;
+                const float* v_ptr = V_data + batch_offset + col;
 
                 float* scores_data = scores.raw();
-                blas_sgemm(Q_head.raw(), K_head.raw(), scores_data,
-                           S, S, head_size, false, true);
+                cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                            S, S, head_size,
+                            1.0f, q_ptr, d, k_ptr, d,
+                            0.0f, scores_data, S);
                 for (int i = 0; i < S * S; i++) {
                     scores_data[i] = scores_data[i] * scale_factor + mask_data[i];
                 }
 
-                // Nested parallel_for inside softmax runs inline here.
-                Tensor weights = scores.softmax();
+                // Softmax rows straight into the cache slice (same math as
+                // Tensor::softmax: subtract max, vec_exp, scale by 1/sum).
                 float* attn_unit = attn_data_all + unit * S * S;
-                std::memcpy(attn_unit, weights.raw(), sizeof(float) * S * S);
+                for (int i = 0; i < S; i++) {
+                    const float* row_in = scores_data + static_cast<size_t>(i) * S;
+                    float* row_out = attn_unit + static_cast<size_t>(i) * S;
+                    float max_val = row_in[0];
+                    for (int j = 1; j < S; j++) {
+                        max_val = std::max(max_val, row_in[j]);
+                    }
+                    for (int j = 0; j < S; j++) {
+                        row_out[j] = row_in[j] - max_val;
+                    }
+                    vec_exp(row_out, row_out, S);
+                    const float inv_sum = 1.0f / vec_sum(row_out, S);
+                    for (int j = 0; j < S; j++) {
+                        row_out[j] *= inv_sum;
+                    }
+                }
 
                 const float* effective = attn_unit;
                 Tensor dropped(1, 1);
@@ -507,7 +507,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     float* m = mask_all + unit * S * S;
                     fill_dropout_mask(m, static_cast<size_t>(S) * S,
                                       dropout_rate, keep_scale);
-                    dropped = Tensor(S, S);
+                    dropped = Tensor::uninitialized(S, S);
                     float* w = dropped.raw();
                     for (int i = 0; i < S * S; i++) {
                         w[i] = attn_unit[i] * m[i];
@@ -515,23 +515,22 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     effective = w;
                 }
 
-                Tensor attended(S, head_size);
-                blas_sgemm(effective, V_head.raw(), attended.raw(),
-                           S, head_size, S, false, false);
-
-                scatter_head(attended.raw(), concat_data + batch_offset + col,
-                             S, d, head_size);
+                // attended lands directly in its concat column slice.
+                cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                            S, head_size, S,
+                            1.0f, effective, S, v_ptr, d,
+                            0.0f, concat_data + batch_offset + col, d);
             }
         });
 
         // Output projection, also flat.
-        Tensor out_tensor(batch_size, S, d);
+        Tensor out_tensor = Tensor::uninitialized(batch_size, S, d);
         fill_bias_rows(out_tensor.raw(), b_o->getData().raw(), flat, d);
         blas_sgemm_ex(concat_data, W_o->getData().raw(), out_tensor.raw(),
                       flat, d, d, false, false, 1.0f, 1.0f);
 
         bool needs_grad = input->requiresGrad();
-        auto output = Variable::create(out_tensor, needs_grad);
+        auto output = Variable::create(std::move(out_tensor), needs_grad);
 
         if (needs_grad) {
             auto self_input = input;
@@ -576,13 +575,13 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 add_column_sums(dOut, flat, d, self_bo->getGrad().raw());
 
                 // dConcat = dOut @ Wo^T
-                Tensor dConcat(flat, d);
+                Tensor dConcat = Tensor::uninitialized(flat, d);
                 blas_sgemm_ex(dOut, self_Wo->getData().raw(), dConcat.raw(),
                               flat, d, d, false, true, 1.0f, 0.0f);
 
-                Tensor dQ(flat, d);
-                Tensor dK(flat, d);
-                Tensor dV(flat, d);
+                Tensor dQ = Tensor::uninitialized(flat, d);
+                Tensor dK = Tensor::uninitialized(flat, d);
+                Tensor dV = Tensor::uninitialized(flat, d);
                 float* dQ_data = dQ.raw();
                 float* dK_data = dK.raw();
                 float* dV_data = dV.raw();
@@ -593,18 +592,14 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 const float* attn_all = attn_cache->data();
                 const float* mask_all = drop_mask ? drop_mask->data() : nullptr;
 
+                // Strided views throughout, mirroring forward: head slices
+                // read with lda = d, and dQ/dK/dV written directly into
+                // their disjoint column slices (each unit owns one).
                 parallel_for(static_cast<size_t>(batch_size) * H, 1,
                              [&](size_t begin, size_t end) {
-                    Tensor Q_head(S, head_size);
-                    Tensor K_head(S, head_size);
-                    Tensor V_head(S, head_size);
-                    Tensor dAttended(S, head_size);
-                    Tensor dWeights(S, S);
-                    Tensor dScores(S, S);
-                    Tensor dQ_head(S, head_size);
-                    Tensor dK_head(S, head_size);
-                    Tensor dV_head(S, head_size);
-                    Tensor effective(S, S);
+                    Tensor dWeights = Tensor::uninitialized(S, S);
+                    Tensor dScores = Tensor::uninitialized(S, S);
+                    Tensor effective = Tensor::uninitialized(S, S);
 
                     for (size_t unit = begin; unit < end; unit++) {
                         const int b = static_cast<int>(unit) / H;
@@ -612,10 +607,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         const size_t batch_offset = static_cast<size_t>(b) * S * d;
                         const int col = h * head_size;
 
-                        gather_head(Q_data + batch_offset + col, Q_head.raw(), S, d, head_size);
-                        gather_head(K_data + batch_offset + col, K_head.raw(), S, d, head_size);
-                        gather_head(V_data + batch_offset + col, V_head.raw(), S, d, head_size);
-                        gather_head(dConcat_data + batch_offset + col, dAttended.raw(), S, d, head_size);
+                        const float* q_ptr = Q_data + batch_offset + col;
+                        const float* k_ptr = K_data + batch_offset + col;
+                        const float* v_ptr = V_data + batch_offset + col;
+                        const float* dAtt_ptr = dConcat_data + batch_offset + col;
 
                         const float* W = attn_all + unit * S * S;  // pre-dropout softmax
                         const float* W_eff = W;
@@ -630,10 +625,14 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
                         // attended = W_eff @ V_head:
                         //   dW_eff = dAttended @ V_head^T ; dV_head = W_eff^T @ dAttended
-                        blas_sgemm(dAttended.raw(), V_head.raw(), dWeights.raw(),
-                                   S, S, head_size, false, true);
-                        blas_sgemm(W_eff, dAttended.raw(), dV_head.raw(),
-                                   S, head_size, S, true, false);
+                        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                                    S, S, head_size,
+                                    1.0f, dAtt_ptr, d, v_ptr, d,
+                                    0.0f, dWeights.raw(), S);
+                        cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                                    S, head_size, S,
+                                    1.0f, W_eff, S, dAtt_ptr, d,
+                                    0.0f, dV_data + batch_offset + col, d);
 
                         float* dW = dWeights.raw();
                         if (dropout_active) {
@@ -661,14 +660,14 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                         }
 
                         // dQ_head = dScores @ K_head ; dK_head = dScores^T @ Q_head
-                        blas_sgemm(dS, K_head.raw(), dQ_head.raw(),
-                                   S, head_size, S, false, false);
-                        blas_sgemm(dS, Q_head.raw(), dK_head.raw(),
-                                   S, head_size, S, true, false);
-
-                        scatter_head(dQ_head.raw(), dQ_data + batch_offset + col, S, d, head_size);
-                        scatter_head(dK_head.raw(), dK_data + batch_offset + col, S, d, head_size);
-                        scatter_head(dV_head.raw(), dV_data + batch_offset + col, S, d, head_size);
+                        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                                    S, head_size, S,
+                                    1.0f, dS, S, k_ptr, d,
+                                    0.0f, dQ_data + batch_offset + col, d);
+                        cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                                    S, head_size, S,
+                                    1.0f, dS, S, q_ptr, d,
+                                    0.0f, dK_data + batch_offset + col, d);
                     }
                 });
 

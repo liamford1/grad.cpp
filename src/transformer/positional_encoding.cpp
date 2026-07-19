@@ -23,7 +23,7 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
         }
         
         Tensor pos_slice = position_embeddings->getData().slice(0, seq_len, 0, d_model);
-        auto pos_var = Variable::create(pos_slice, position_embeddings->requiresGrad());
+        auto pos_var = Variable::create(std::move(pos_slice), position_embeddings->requiresGrad());
         
         auto output = embeddings->add(pos_var);
         
@@ -73,7 +73,7 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
             }
         }
         
-        auto pos_var = Variable::create(pos_broadcast, position_embeddings->requiresGrad());
+        auto pos_var = Variable::create(std::move(pos_broadcast), position_embeddings->requiresGrad());
         auto output = embeddings->add(pos_var);
         
         if (embeddings->requiresGrad() || position_embeddings->requiresGrad()) {

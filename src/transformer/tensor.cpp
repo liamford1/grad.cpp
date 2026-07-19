@@ -108,6 +108,42 @@ Tensor::Tensor(size_t batch_size, size_t rows, size_t cols) {
     std::memset(this->data, 0, total * sizeof(float));
 }
 
+Tensor Tensor::uninitialized(size_t rows, size_t cols) {
+    if (rows == 0 || cols == 0) {
+        throw std::invalid_argument("Tensor dimensions must be positive");
+    }
+    Tensor t;
+    t.rows = rows;
+    t.cols = cols;
+    t.batch_size = 1;
+    t.is_3d = false;
+    size_t total = rows * cols;
+    if (total > MAX_TENSOR_ELEMENTS) {
+        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
+                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
+    }
+    t.data = alloc_floats(total);
+    return t;
+}
+
+Tensor Tensor::uninitialized(size_t batch_size, size_t rows, size_t cols) {
+    if (rows == 0 || cols == 0 || batch_size == 0) {
+        throw std::invalid_argument("Tensor dimensions must be positive");
+    }
+    Tensor t;
+    t.rows = rows;
+    t.cols = cols;
+    t.batch_size = batch_size;
+    t.is_3d = true;
+    size_t total = batch_size * rows * cols;
+    if (total > MAX_TENSOR_ELEMENTS) {
+        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
+                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
+    }
+    t.data = alloc_floats(total);
+    return t;
+}
+
 Tensor::Tensor(const Tensor& other) {
     this->rows = other.rows;
     this->cols = other.cols;
@@ -228,7 +264,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
         const size_t K = this->cols;
         const size_t N = other.cols;
 
-        Tensor result(M, N);
+        Tensor result = Tensor::uninitialized(M, N);
 
         cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                     M, N, K,
@@ -250,7 +286,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
         const size_t K = this->cols;
         const size_t N = other.cols;
 
-        Tensor result(batch_count, M, N);
+        Tensor result = Tensor::uninitialized(batch_count, M, N);
 
         for (size_t b = 0; b < batch_count; ++b) {
             const float* A = this->data + b * M * K;
@@ -277,7 +313,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
         const size_t K = this->cols;
         const size_t N = other.cols;
 
-        Tensor result(batch_count, M, N);
+        Tensor result = Tensor::uninitialized(batch_count, M, N);
 
         for (size_t b = 0; b < batch_count; ++b) {
             const float* A = this->data + b * M * K;
@@ -300,171 +336,6 @@ Tensor Tensor::matmul(const Tensor& other) const {
     }
 }
 
-// Old Matrix Multuplication before using BLAS
-/* Tensor Tensor::matmul(const Tensor& other) const {
-    assertValid("matmul(lhs)");
-    other.assertValid("matmul(rhs)");
-    
-    if (!this->is_3d && !other.is_3d) {
-        if (this->cols != other.rows) {
-            throw std::invalid_argument("Matrix dimensions do not match for multiplication");
-        }
-
-        const size_t M = this->rows;
-        const size_t K = this->cols;
-        const size_t N = other.cols;
-
-        Tensor result(M, N);
-        const float* A = this->data;
-        const float* B_data = other.data;
-        float* C = result.raw();
-
-        for (size_t i = 0; i < M * N; ++i) { C[i] = 0.0f; }
-
-        const size_t Mc = 128;
-        const size_t Nc = 128;
-        const size_t Kc = 256;
-
-        for (size_t i0 = 0; i0 < M; i0 += Mc) {
-            const size_t i_max = (i0 + Mc < M) ? (i0 + Mc) : M;
-            for (size_t k0 = 0; k0 < K; k0 += Kc) {
-                const size_t k_max = (k0 + Kc < K) ? (k0 + Kc) : K;
-                for (size_t j0 = 0; j0 < N; j0 += Nc) {
-                    const size_t j_max = (j0 + Nc < N) ? (j0 + Nc) : N;
-
-                    for (size_t i = i0; i < i_max; ++i) {
-                        const float* Ai = A + i * K + k0;
-                        float* Ci = C + i * N + j0;
-
-                        for (size_t k = k0; k < k_max; ++k) {
-                            const float a_ik = Ai[k - k0];
-                            const float* Bk = B_data + k * N + j0;
-
-                            for (size_t j = j0; j < j_max; ++j) {
-                                Ci[j - j0] += a_ik * Bk[j - j0];
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return result;
-    } else if (this->is_3d && !other.is_3d) {
-        if (this->cols != other.rows) {
-            throw std::invalid_argument("Matrix dimensions do not match for batch multiplication");
-        }
-        
-        const size_t batch_count = this->batch_size;
-        const size_t M = this->rows;
-        const size_t K = this->cols;
-        const size_t N = other.cols;
-
-        Tensor result(batch_count, M, N);
-
-        const size_t Mc = 64;
-        const size_t Nc = 64;
-        const size_t Kc = 128;
-
-        const float* A_base = this->data;
-        const float* B_data = other.data;
-        float* C_base = result.data;
-
-        for (size_t b = 0; b < batch_count; ++b) {
-            const float* A = A_base + b * M * K;
-            float* C = C_base + b * M * N;
-
-            for (size_t i = 0; i < M * N; ++i) {
-                C[i] = 0.0f;
-            }
-
-            for (size_t i0 = 0; i0 < M; i0 += Mc) {
-                const size_t i_max = std::min(i0 + Mc, M);
-
-                for (size_t k0 = 0; k0 < K; k0 += Kc) {
-                    const size_t k_max = std::min(k0 + Kc, K);
-
-                    for (size_t j0 = 0; j0 < N; j0 += Nc) {
-                        const size_t j_max = std::min(j0 + Nc, N);
-
-                        for (size_t i = i0; i < i_max; ++i) {
-                            const float* A_row = A + i * K;
-                            float* C_row = C + i * N;
-
-                            for (size_t k = k0; k < k_max; ++k) {
-                                const float a_val = A_row[k];
-                                const float* B_row = B_data + k * N;
-
-                                for (size_t j = j0; j < j_max; ++j) {
-                                    C_row[j] += a_val * B_row[j];
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return result;
-    } else if (this->is_3d && other.is_3d) {
-        if (this->batch_size != other.batch_size || this->cols != other.rows) {
-            throw std::invalid_argument("Batch matrix dimensions do not match");
-        }
-        
-        const size_t batch_count = this->batch_size;
-        const size_t M = this->rows;
-        const size_t K = this->cols;
-        const size_t N = other.cols;
-
-        Tensor result(batch_count, M, N);
-
-        const size_t Mc = 64;
-        const size_t Nc = 64;
-        const size_t Kc = 128;
-
-        const float* A_base = this->data;
-        const float* B_base = other.data;
-        float* C_base = result.data;
-
-        for (size_t b = 0; b < batch_count; ++b) {
-            const float* A = A_base + b * M * K;
-            const float* B_ptr = B_base + b * K * N;
-            float* C = C_base + b * M * N;
-
-            for (size_t i = 0; i < M * N; ++i) {
-                C[i] = 0.0f;
-            }
-
-            for (size_t i0 = 0; i0 < M; i0 += Mc) {
-                const size_t i_max = std::min(i0 + Mc, M);
-
-                for (size_t k0 = 0; k0 < K; k0 += Kc) {
-                    const size_t k_max = std::min(k0 + Kc, K);
-
-                    for (size_t j0 = 0; j0 < N; j0 += Nc) {
-                        const size_t j_max = std::min(j0 + Nc, N);
-
-                        for (size_t i = i0; i < i_max; ++i) {
-                            const float* A_row = A + i * K;
-                            float* C_row = C + i * N;
-
-                            for (size_t k = k0; k < k_max; ++k) {
-                                const float a_val = A_row[k];
-                                const float* B_row = B_ptr + k * N;
-
-                                for (size_t j = j0; j < j_max; ++j) {
-                                    C_row[j] += a_val * B_row[j];
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return result;
-    } else {
-        throw std::invalid_argument("Unsupported matrix multiplication configuration");
-    }
-} */
-
 Tensor Tensor::add(const Tensor& other) const {
     assertValid("add(lhs)");
     other.assertValid("add(rhs)");
@@ -477,7 +348,7 @@ Tensor Tensor::add(const Tensor& other) const {
 
         const size_t R = std::max(rows, other.rows);
         const size_t C = std::max(cols, other.cols);
-        Tensor result(R, C);
+        Tensor result = Tensor::uninitialized(R, C);
 
         const float* A = this->data;
         const float* B = other.data;
@@ -509,7 +380,7 @@ Tensor Tensor::add(const Tensor& other) const {
             throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
         }
 
-        Tensor result(batch_size, rows, cols);
+        Tensor result = Tensor::uninitialized(batch_size, rows, cols);
         const float* A = this->raw();
         const float* B = other.raw();
         float* C = result.raw();
@@ -539,7 +410,7 @@ Tensor Tensor::add(const Tensor& other) const {
             throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
         }
 
-        Tensor result(other.batch_size, other.rows, other.cols);
+        Tensor result = Tensor::uninitialized(other.batch_size, other.rows, other.cols);
         const float* A = this->raw();
         const float* B = other.raw();
         float* C = result.raw();
@@ -567,7 +438,7 @@ Tensor Tensor::add(const Tensor& other) const {
             throw std::invalid_argument("3D tensor dimensions don't match");
         }
 
-        Tensor result(this->batch_size, this->rows, this->cols);
+        Tensor result = Tensor::uninitialized(this->batch_size, this->rows, this->cols);
         const float* A = this->raw();
         const float* B = other.raw();
         float* C = result.raw();
@@ -588,7 +459,7 @@ Tensor Tensor::subtract(const Tensor& other) const {
         if (this->rows != other.rows || this->cols != other.cols) {
             throw std::invalid_argument("Matrix dimensions do not match for subtraction");
         }
-        Tensor result(this->rows, this->cols);
+        Tensor result = Tensor::uninitialized(this->rows, this->cols);
         const size_t total = this->rows * this->cols;
 
         blas_vsub(data, other.data, result.data, total);
@@ -598,7 +469,7 @@ Tensor Tensor::subtract(const Tensor& other) const {
         if (this->batch_size != other.batch_size || this->rows != other.rows || this->cols != other.cols) {
             throw std::invalid_argument("3D tensor dimensions don't match for subtraction");
         }
-        Tensor result(this->batch_size, this->rows, this->cols);
+        Tensor result = Tensor::uninitialized(this->batch_size, this->rows, this->cols);
         const size_t total = this->batch_size * this->rows * this->cols;
 
         blas_vsub(data, other.data, result.data, total);
@@ -617,7 +488,7 @@ Tensor Tensor::elementwise(const Tensor& other) const {
         if (this->rows != other.rows || this->cols != other.cols) {
             throw std::invalid_argument("Matrix dimensions do not match for elementwise multiply");
         }
-        Tensor result(this->rows, this->cols);
+        Tensor result = Tensor::uninitialized(this->rows, this->cols);
         const size_t total = this->rows * this->cols;
 
         blas_vmul(data, other.data, result.data, total);
@@ -628,7 +499,7 @@ Tensor Tensor::elementwise(const Tensor& other) const {
         if (this->batch_size != other.batch_size || this->rows != other.rows || this->cols != other.cols) {
             throw std::invalid_argument("3D tensor dimensions don't match for elementwise multiply");
         }
-        Tensor result(this->batch_size, this->rows, this->cols);
+        Tensor result = Tensor::uninitialized(this->batch_size, this->rows, this->cols);
         const size_t total = this->batch_size * this->rows * this->cols;
 
         blas_vmul(data, other.data, result.data, total);
@@ -642,7 +513,7 @@ Tensor Tensor::transpose() const {
     assertValid("transpose(this)");
     
     if (!this->is_3d) {
-        Tensor result(this->cols, this->rows);
+        Tensor result = Tensor::uninitialized(this->cols, this->rows);
         const float* src = this->raw();
         float* dst = result.raw();
 
@@ -663,7 +534,7 @@ Tensor Tensor::transpose() const {
         return result;
 
     } else {
-        Tensor result(this->batch_size, this->cols, this->rows);
+        Tensor result = Tensor::uninitialized(this->batch_size, this->cols, this->rows);
         const float* src = this->raw();
         float* dst = result.raw();
 
@@ -697,8 +568,9 @@ Tensor Tensor::softmax() const {
     // batch*rows covers both. exp goes through vec_exp (SIMD).
     const size_t total_rows = this->is_3d ? this->batch_size * this->rows
                                           : this->rows;
-    Tensor result = this->is_3d ? Tensor(this->batch_size, this->rows, this->cols)
-                                : Tensor(this->rows, this->cols);
+    Tensor result = this->is_3d
+        ? Tensor::uninitialized(this->batch_size, this->rows, this->cols)
+        : Tensor::uninitialized(this->rows, this->cols);
     const float* input_data = this->raw();
     float* output_data = result.raw();
     const size_t cols = this->cols;
@@ -736,7 +608,7 @@ Tensor Tensor::scale(float scaler) const {
     assertValid("scale(this)");
 
     if (!this->is_3d) {
-        Tensor result(this->rows, this->cols);
+        Tensor result = Tensor::uninitialized(this->rows, this->cols);
         const float* src = this->raw();
         float* dst = result.raw();
         const size_t total = this->rows * this->cols;
@@ -744,7 +616,7 @@ Tensor Tensor::scale(float scaler) const {
         blas_vsmul(src, scaler, dst, total);
         return result;
     } else {
-        Tensor result(this->batch_size, this->rows, this->cols);
+        Tensor result = Tensor::uninitialized(this->batch_size, this->rows, this->cols);
         const float* src = this->raw();
         float* dst = result.raw();
         const size_t total = this->batch_size * this->rows * this->cols;
@@ -760,7 +632,7 @@ Tensor Tensor::reshape(size_t new_rows, size_t new_cols) const {
     if (new_rows * new_cols != rows * cols) {
         throw std::invalid_argument("Matrix sizes do not match for reshape");
     }
-    Tensor result(new_rows, new_cols);
+    Tensor result = Tensor::uninitialized(new_rows, new_cols);
     float* out = result.raw();
     const float* in = data;
     for (size_t i = 0; i < new_rows * new_cols; ++i) out[i] = in[i];
@@ -852,7 +724,7 @@ void Tensor::xavier(size_t fan_in, size_t fan_out) {
 }
 
 Tensor Tensor::create_causal_mask(size_t seq_len) {
-    Tensor mask(seq_len, seq_len);
+    Tensor mask = Tensor::uninitialized(seq_len, seq_len);
     for (size_t i = 0; i < seq_len; i++) {
         for (size_t j = 0; j < seq_len; j++) {
             if (j > i) {
@@ -866,7 +738,7 @@ Tensor Tensor::create_causal_mask(size_t seq_len) {
 }
 
 Tensor Tensor::create_causal_mask_batch(size_t batch_size, size_t seq_len) {
-    Tensor mask(batch_size, seq_len, seq_len);
+    Tensor mask = Tensor::uninitialized(batch_size, seq_len, seq_len);
     for (size_t b = 0; b < batch_size; b++) {
         for (size_t i = 0; i < seq_len; i++) {
             for (size_t j = 0; j < seq_len; j++) {

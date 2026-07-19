@@ -16,10 +16,15 @@ class Variable : public std::enable_shared_from_this<Variable> {
         
     public:
         Variable(const Tensor& data, bool requires_grad = false);
+        // Move overloads: op results transfer into their Variable instead
+        // of being deep-copied - a full activation-sized memcpy per op
+        // otherwise (measured under _platform_memmove, BENCHMARKS.md #10).
+        Variable(Tensor&& data, bool requires_grad = false);
         Variable(int rows, int cols, bool requires_grad = false);
         Variable(int batch_size, int rows, int cols, bool requires_grad = false);
 
         static std::shared_ptr<Variable> create(const Tensor& data, bool requires_grad = false);
+        static std::shared_ptr<Variable> create(Tensor&& data, bool requires_grad = false);
         static std::shared_ptr<Variable> create(int rows, int cols, bool requires_grad = false);
         static std::shared_ptr<Variable> create(int batch_size, int rows, int cols, bool requires_grad = false);
         
@@ -63,5 +68,5 @@ class Variable : public std::enable_shared_from_this<Variable> {
         void setBackwardFn(std::function<void()> fn) { backward_fn = fn; } 
     private:
         void topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) const;
-        std::shared_ptr<Variable> createOutput(const Tensor& result, bool needs_grad) const;
+        std::shared_ptr<Variable> createOutput(Tensor&& result, bool needs_grad) const;
 };

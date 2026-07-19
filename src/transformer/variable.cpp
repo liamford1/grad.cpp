@@ -13,6 +13,9 @@
 Variable::Variable(const Tensor& data, bool requires_grad)
     : data(data), requires_grad(requires_grad) {}
 
+Variable::Variable(Tensor&& data, bool requires_grad)
+    : data(std::move(data)), requires_grad(requires_grad) {}
+
 Variable::Variable(int rows, int cols, bool requires_grad)
     : data(rows, cols), requires_grad(requires_grad) {}
 
@@ -31,6 +34,10 @@ std::shared_ptr<Variable> Variable::create(const Tensor& data, bool requires_gra
     return std::make_shared<Variable>(data, requires_grad);
 }
 
+std::shared_ptr<Variable> Variable::create(Tensor&& data, bool requires_grad) {
+    return std::make_shared<Variable>(std::move(data), requires_grad);
+}
+
 std::shared_ptr<Variable> Variable::create(int rows, int cols, bool requires_grad) {
     return std::make_shared<Variable>(rows, cols, requires_grad);
 }
@@ -39,8 +46,8 @@ std::shared_ptr<Variable> Variable::create(int batch_size, int rows, int cols, b
     return std::make_shared<Variable>(batch_size, rows, cols, requires_grad);
 }
 
-std::shared_ptr<Variable> Variable::createOutput(const Tensor& result, bool needs_grad) const {
-    return std::make_shared<Variable>(result, needs_grad);
+std::shared_ptr<Variable> Variable::createOutput(Tensor&& result, bool needs_grad) const {
+    return std::make_shared<Variable>(std::move(result), needs_grad);
 }
 
 std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) const {
@@ -50,7 +57,7 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
     Tensor result = this->data.matmul(other->data);
     bool needs_grad = this->requires_grad || other->requires_grad;
     
-    auto output = createOutput(result, needs_grad);
+    auto output = createOutput(std::move(result), needs_grad);
     
     if (needs_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(
@@ -114,7 +121,7 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
 
     Tensor result = this->data.add(other->data);
     bool needs_grad = this->requires_grad || other->requires_grad;
-    auto output = createOutput(result, needs_grad);
+    auto output = createOutput(std::move(result), needs_grad);
 
     if (needs_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(
@@ -316,7 +323,7 @@ std::shared_ptr<Variable> Variable::scale(float factor) const {
     data.assertValid("Variable::scale(x)");
 
     Tensor result = this->data.scale(factor);
-    auto output = createOutput(result, this->requires_grad);
+    auto output = createOutput(std::move(result), this->requires_grad);
     
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(
@@ -341,7 +348,7 @@ std::shared_ptr<Variable> Variable::softmax() const {
     data.assertValid("Variable::softmax(x)");
 
     Tensor result = this->data.softmax();
-    auto output = createOutput(result, this->requires_grad);
+    auto output = createOutput(std::move(result), this->requires_grad);
     
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(
@@ -349,9 +356,13 @@ std::shared_ptr<Variable> Variable::softmax() const {
         );
         
         output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, result, output_weak = std::weak_ptr<Variable>(output)]() {
+        // The softmax output needed by backward IS this node's data; the
+        // retire-as-you-go backward frees it only after this fn has run,
+        // so reading it here avoids capturing a full copy.
+        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
             auto output = output_weak.lock();
             if (!output || !output->hasGrad()) return;
+            const Tensor& result = output->getData();
             result.assertValid("Variable::softmax(y)");
 
             if (self_ptr->requires_grad) {
@@ -437,7 +448,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
         }
         total_loss /= this->data.getRows();
         loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(loss_tensor, this->requires_grad || targets->requires_grad);
+        auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
         
         if (output->requires_grad) {
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
@@ -496,7 +507,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
         
         total_loss /= total_elements;
         loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(loss_tensor, this->requires_grad || targets->requires_grad);
+        auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
         
         if (output->requires_grad) {
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
@@ -549,8 +560,8 @@ std::shared_ptr<Variable> Variable::gelu() const {
     const float* x = data.raw();
 
     Tensor result = data.getIs3D()
-        ? Tensor(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor(data.getRows(), data.getCols());
+        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
+        : Tensor::uninitialized(data.getRows(), data.getCols());
     float* out = result.raw();
 
     parallel_for(n, 32768, [&](size_t begin, size_t end) {
@@ -563,7 +574,7 @@ std::shared_ptr<Variable> Variable::gelu() const {
         }
     });
 
-    auto output = createOutput(result, this->requires_grad);
+    auto output = createOutput(std::move(result), this->requires_grad);
 
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
@@ -611,8 +622,8 @@ std::shared_ptr<Variable> Variable::silu() const {
     const float* x = data.raw();
 
     Tensor result = data.getIs3D()
-        ? Tensor(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor(data.getRows(), data.getCols());
+        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
+        : Tensor::uninitialized(data.getRows(), data.getCols());
     float* out = result.raw();
 
     parallel_for(n, 32768, [&](size_t begin, size_t end) {
@@ -625,7 +636,7 @@ std::shared_ptr<Variable> Variable::silu() const {
         }
     });
 
-    auto output = createOutput(result, this->requires_grad);
+    auto output = createOutput(std::move(result), this->requires_grad);
 
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
@@ -668,7 +679,7 @@ std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) const {
 
     Tensor result = this->data.elementwise(other->data);
     bool needs_grad = this->requires_grad || other->requires_grad;
-    auto output = createOutput(result, needs_grad);
+    auto output = createOutput(std::move(result), needs_grad);
 
     if (needs_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
@@ -701,12 +712,14 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
 
     data.assertValid("Variable::dropout(x)");
     float scale = 1.0f / (1.0f - dropout_rate);
-    Tensor mask = data.getIs3D() ? Tensor(data.getBatchSize(), data.getRows(), data.getCols()) : Tensor(data.getRows(), data.getCols());
+    Tensor mask = data.getIs3D()
+        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
+        : Tensor::uninitialized(data.getRows(), data.getCols());
 
     fill_dropout_mask(mask.raw(), mask.numel(), dropout_rate, scale);
 
     Tensor result = this->data.elementwise(mask);
-    auto output = createOutput(result, this->requires_grad);
+    auto output = createOutput(std::move(result), this->requires_grad);
     
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
@@ -734,8 +747,8 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
         : data.getRows();
 
     Tensor result = data.getIs3D()
-        ? Tensor(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor(data.getRows(), data.getCols());
+        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
+        : Tensor::uninitialized(data.getRows(), data.getCols());
 
     const float* in = data.raw();
     float* out = result.raw();
@@ -761,22 +774,24 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
         }
     });
 
-    auto output = createOutput(result, this->requires_grad);
+    auto output = createOutput(std::move(result), this->requires_grad);
 
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
 
-        output->setBackwardFn([self_ptr, result, total_rows, cols,
+        output->setBackwardFn([self_ptr, total_rows, cols,
                                output_weak = std::weak_ptr<Variable>(output)]() {
             auto output = output_weak.lock();
             if (!output || !output->hasGrad()) return;
             self_ptr->ensureGrad();
 
             // d/dx log_softmax: dX = dY - softmax(x) * sum(dY) per row,
-            // where softmax(x) = exp(result). Accumulates into the grad
-            // tensor directly.
-            const float* res = result.raw();
+            // where softmax(x) = exp(this node's own output data - read in
+            // place rather than captured as a copy; retirement frees it
+            // only after this fn runs). Accumulates into the grad tensor
+            // directly.
+            const float* res = output->getData().raw();
             const float* dY = output->grad.raw();
             float* dX = self_ptr->grad.raw();
 
@@ -817,7 +832,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
         
         Tensor loss_tensor(1, 1);
         loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(loss_tensor, this->requires_grad);
+        auto output = createOutput(std::move(loss_tensor), this->requires_grad);
         
         if (this->requires_grad) {
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
@@ -876,7 +891,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
         
         Tensor loss_tensor(1, 1);
         loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(loss_tensor, this->requires_grad);
+        auto output = createOutput(std::move(loss_tensor), this->requires_grad);
         
         if (this->requires_grad) {
             auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());

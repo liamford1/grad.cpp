@@ -73,13 +73,14 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     // contiguous, so it multiplies as one flat (batch*seq, d) matrix, and
     // the transpose happens inside the sgemm instead of materializing E^T.
     int flat_rows = batch_size * seq_len;
-    Tensor logits_tensor = is_3d ? Tensor(batch_size, seq_len, vocab)
-                                 : Tensor(seq_len, vocab);
+    Tensor logits_tensor = is_3d
+        ? Tensor::uninitialized(batch_size, seq_len, vocab)
+        : Tensor::uninitialized(seq_len, vocab);
     blas_sgemm_ex(norm_data.raw(), emb_data.raw(), logits_tensor.raw(),
                   flat_rows, vocab, d_model_dim,
                   false, true, 1.0f, 0.0f);
 
-    auto logits = Variable::create(logits_tensor,
+    auto logits = Variable::create(std::move(logits_tensor),
                                      normalized_output->requiresGrad() || embedding_table->requiresGrad());
 
     if (logits->requiresGrad()) {

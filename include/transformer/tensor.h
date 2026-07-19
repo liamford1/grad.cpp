@@ -13,6 +13,16 @@ class Tensor {
         Tensor();
         Tensor(size_t rows, size_t cols);
         Tensor(size_t batch_size, size_t rows, size_t cols);
+
+        // Allocation without the zero-fill, for outputs whose every element
+        // is written before being read (beta=0 matmuls, elementwise
+        // producers). The plain constructors zero because accumulation
+        // targets (gradients, Adam moments) rely on it; that memset was
+        // ~6% of training-step CPU when applied to everything
+        // (BENCHMARKS.md #10).
+        static Tensor uninitialized(size_t rows, size_t cols);
+        static Tensor uninitialized(size_t batch_size, size_t rows, size_t cols);
+
         Tensor(const Tensor& other);
         Tensor& operator=(const Tensor& other);
         Tensor(Tensor&& other) noexcept;

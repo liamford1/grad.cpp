@@ -31,8 +31,8 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         : static_cast<int>(input_tensor.getRows());
 
     Tensor result = input_tensor.getIs3D()
-        ? Tensor(input_tensor.getBatchSize(), input_tensor.getRows(), d_model)
-        : Tensor(input_tensor.getRows(), d_model);
+        ? Tensor::uninitialized(input_tensor.getBatchSize(), input_tensor.getRows(), d_model)
+        : Tensor::uninitialized(input_tensor.getRows(), d_model);
 
     const float* input_data = input_tensor.raw();
     const float* gamma_data = gamma->getData().raw();
@@ -93,7 +93,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         }
     });
 
-    auto output = Variable::create(result, input->requiresGrad());
+    auto output = Variable::create(std::move(result), input->requiresGrad());
 
     if (input->requiresGrad()) {
         auto self_input = input;
