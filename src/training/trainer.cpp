@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <iomanip>
+#include <limits>
 #include <chrono>
 
 namespace training {
@@ -37,7 +38,10 @@ void Trainer::train() {
               << " heads=" << config_.num_heads << std::endl;
     std::cout << "  Sequence length: " << config_.seq_length << std::endl;
     std::cout << "  Batch size: " << config_.batch_size << std::endl;
-    std::cout << "  Learning rate: " << config_.learning_rate << std::endl;
+    // Explicit format: inherited stream state (progress printers set
+    // fixed(1)) would render 3e-4 as "0.0".
+    std::cout << "  Learning rate: " << std::defaultfloat << std::setprecision(6)
+              << config_.learning_rate << std::endl;
     std::cout << "  Training steps: " << config_.num_steps << "\n" << std::endl;
 
     std::cout << std::setw(10) << "Step"
@@ -47,16 +51,27 @@ void Trainer::train() {
 
     metrics_->start_training();
 
+    // Best-val checkpointing: training loss keeps falling long after the
+    // model starts memorizing (observed on Shakespeare: val perplexity
+    // bottomed at step ~6000 of 50000, then quintupled). The checkpoint
+    // worth keeping is the val-loss minimum, saved as it happens.
+    float best_val_loss = std::numeric_limits<float>::max();
+
     for (int step = 0; step < config_.num_steps; step++) {
         training_step(step);
 
         if (val_loader_ && config_.eval_interval > 0
             && step > 0 && step % config_.eval_interval == 0) {
             float val_loss = evaluate();
+            bool improved = val_loss < best_val_loss;
             std::cout << "  [step " << step
                       << " | val loss " << std::fixed << std::setprecision(4) << val_loss
                       << " | perplexity " << std::setprecision(1) << std::exp(val_loss)
-                      << "]" << std::defaultfloat << std::endl;
+                      << (improved ? " | best]" : "]") << std::defaultfloat << std::endl;
+            if (improved) {
+                best_val_loss = val_loss;
+                save_checkpoint(config_.checkpoint_prefix + "_best.bin");
+            }
         }
 
         if (step > 0 && step % config_.checkpoint_interval == 0) {
@@ -71,6 +86,11 @@ void Trainer::train() {
         float val_loss = evaluate();
         std::cout << "Final val loss: " << val_loss
                   << " | perplexity: " << std::exp(val_loss) << std::endl;
+        if (best_val_loss < std::numeric_limits<float>::max()) {
+            std::cout << "Best val loss: " << best_val_loss
+                      << " | perplexity: " << std::exp(best_val_loss)
+                      << " (saved as " << config_.checkpoint_prefix << "_best.bin)" << std::endl;
+        }
     }
     save_checkpoint(config_.checkpoint_prefix + "_final.bin");
 }

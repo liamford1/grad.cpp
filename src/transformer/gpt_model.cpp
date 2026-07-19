@@ -23,6 +23,10 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
     final_norm(d_model)
 {
     std::cout << "  Initializing " << num_layers << " transformer layers..." << std::endl;
+    // Save/restore stream format state: leaking fixed(1) here made every
+    // later float print misleading ("Learning rate: 0.0" for 3e-4).
+    std::ios old_state(nullptr);
+    old_state.copyfmt(std::cout);
     for (int i = 0; i < num_layers; i++) {
         float progress = 100.0f * i / num_layers;
         std::cout << "\r    Layer [" << i << "/" << num_layers << "] "
@@ -30,6 +34,7 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, num_heads, -1, dropout_rate));
     }
     std::cout << "\r    Layer [" << num_layers << "/" << num_layers << "] 100.0%     " << std::endl;
+    std::cout.copyfmt(old_state);
 }
 
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {

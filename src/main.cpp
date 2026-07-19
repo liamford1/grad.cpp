@@ -357,9 +357,13 @@ struct Preset {
     int max_eval_batches;  // 0 = evaluate the whole val set
 };
 
+// small's step count is set by measurement: on the 254K-token Shakespeare
+// corpus, val perplexity bottoms around step 6000 and rises after (a 22M
+// model memorizes a corpus that small). 8000 steps lets the cosine
+// schedule finish near the minimum instead of training 8x past it.
 const Preset kPresets[] = {
     {"fast",   500,   128, 2,  4,  1024, 64,  4,  3e-4f, 10,   50,    2500, 25,  0},
-    {"small",  5000,  512, 6,  8,  1024, 96,  8,  3e-4f, 500,  50000, 2500, 250, 0},
+    {"small",  5000,  512, 6,  8,  1024, 96,  8,  3e-4f, 500,  8000,  2500, 250, 0},
     {"medium", 16000, 768, 8,  12, 1024, 256, 16, 3e-4f, 1000, 20000, 2000, 250, 32},
 };
 
