@@ -5,6 +5,8 @@
 #include "data/dataloader.h"
 #include "training/trainer.h"
 #include "utils/metrics.h"
+#include "utils/training_utils.h"
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -136,6 +138,83 @@ int run_generation(const std::string& checkpoint_path, const std::string& prompt
     }
 }
 
+// Repeatable performance benchmark: times raw training steps and token
+// generation at the full model config, without writing checkpoints.
+int run_benchmark(int bench_steps) {
+    std::cout << "\nTransformer Benchmark\n" << std::endl;
+
+    try {
+        const int vocab_size = 5000;
+        const int warmup_steps = 3;
+
+        BPETokenizer tokenizer(vocab_size);
+        std::string text = read_text_file("data/shakespeare.txt");
+        load_tokenizer(text, "tokenizer", vocab_size, tokenizer);
+        std::vector<int> tokens = tokenizer.encode(text);
+
+        const int d_model = 512, num_layers = 6, num_heads = 8;
+        const int max_len = 1024, seq_length = 96, batch_size = 8;
+
+        GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.1f);
+        auto params = model.getAllParameters();
+        AdamOptimizer optimizer(params, 3e-4f, 0.9f, 0.999f, 1e-8f, 0.0f);
+
+        auto dataset = std::make_shared<TextDataset>(tokens, seq_length);
+        DataLoader loader(dataset, batch_size, true);
+
+        utils::print_section("Training throughput");
+        std::cout << "Config: d_model=" << d_model << " layers=" << num_layers
+                  << " heads=" << num_heads << " seq=" << seq_length
+                  << " batch=" << batch_size << std::endl;
+
+        auto run_step = [&]() {
+            if (!loader.has_next()) loader.reset();
+            auto batch = loader.next_batch();
+            auto in = Variable::create(batch.input, false);
+            auto tgt = Variable::create(batch.target, false);
+            auto logits = model.forward(in, true);
+            auto loss = logits->log_softmax()->nll_loss(tgt);
+            optimizer.zero_grad();
+            loss->backward();
+            loss->release_graph();
+            optimizer.clip_grad_norm(5.0f);
+            optimizer.step();
+        };
+
+        for (int i = 0; i < warmup_steps; i++) run_step();
+
+        auto start = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < bench_steps; i++) run_step();
+        auto end = std::chrono::high_resolution_clock::now();
+        double train_s = std::chrono::duration<double>(end - start).count();
+
+        double steps_per_s = bench_steps / train_s;
+        double tokens_per_s = steps_per_s * batch_size * seq_length;
+        std::cout << bench_steps << " steps in " << train_s << "s" << std::endl;
+        std::cout << "  " << steps_per_s << " steps/s" << std::endl;
+        std::cout << "  " << tokens_per_s << " tokens/s" << std::endl;
+
+        utils::print_section("Generation throughput");
+        const int gen_tokens = 64;
+        TextGen generator(model, &tokenizer);
+        auto prompt = tokenizer.encode("ROMEO:\n");
+
+        start = std::chrono::high_resolution_clock::now();
+        generator.generate_sample(prompt, 0.8f, gen_tokens);
+        end = std::chrono::high_resolution_clock::now();
+        double gen_s = std::chrono::duration<double>(end - start).count();
+        std::cout << gen_tokens << " tokens in " << gen_s << "s ("
+                  << (gen_tokens / gen_s) << " tok/s)" << std::endl;
+
+        std::cout << "\nPeak memory: " << utils::get_memory_mb() << " MB" << std::endl;
+        return 0;
+
+    } catch (const std::exception& e) {
+        std::cerr << "\nError: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
 int run_training(bool fast_mode) {
     std::cout << "\nTransformer Training\n" << std::endl;
 
@@ -213,10 +292,15 @@ int main(int argc, char* argv[]) {
         std::string prompt = (argc > 3) ? argv[3] : "ROMEO:\n";
         return run_generation(checkpoint, prompt);
     }
+    if (mode == "bench") {
+        int steps = (argc > 2) ? std::atoi(argv[2]) : 20;
+        return run_benchmark(steps);
+    }
 
     std::cerr << "Usage: " << argv[0] << " <mode>\n"
               << "  train                            full training run on data/shakespeare.txt\n"
               << "  train-fast                       small config for a quick smoke test\n"
-              << "  generate [checkpoint] [prompt]   sample from a saved checkpoint\n";
+              << "  generate [checkpoint] [prompt]   sample from a saved checkpoint\n"
+              << "  bench [steps]                    measure training and generation speed\n";
     return 1;
 }

@@ -64,6 +64,8 @@ Three modes:
 
 The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.
 
+Performance across optimization iterations is tracked in [BENCHMARKS.md](BENCHMARKS.md) (`./build/transformer bench` reproduces the numbers).
+
 ## Tests
 
 ```bash

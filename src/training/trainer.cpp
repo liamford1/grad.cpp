@@ -59,15 +59,12 @@ void Trainer::training_step(int step) {
     if (!loader_.has_next()) loader_.reset();
     auto batch = loader_.next_batch();
 
-    int batch_size = batch.input.getBatchSize();
-    int seq_len = batch.input.getRows();
-
-    Tensor input_2d(batch_size * seq_len, 1);
-    Tensor target_2d(batch_size * seq_len, 1);
-    utils::reshape_batch_to_2d(batch.input, batch.target, input_2d, target_2d);
-
-    auto in = Variable::create(input_2d, false);
-    auto tgt = Variable::create(target_2d, false);
+    // Feed the batch as (batch, seq, 1) so attention runs per sequence.
+    // Flattening to 2D concatenates the batch into one long sequence:
+    // tokens attend across sequence boundaries and the attention matrix
+    // grows from batch*seq^2 to (batch*seq)^2.
+    auto in = Variable::create(batch.input, false);
+    auto tgt = Variable::create(batch.target, false);
 
     auto logits = model_.forward(in, true);
     auto loss = logits->log_softmax()->nll_loss(tgt);
