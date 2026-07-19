@@ -3,6 +3,7 @@
 #include "tokenizer/bpe_tokenizer.h"
 #include "data/dataset.h"
 #include "data/dataloader.h"
+#include "data/token_file.h"
 #include "training/trainer.h"
 #include "utils/metrics.h"
 #include "utils/training_utils.h"
@@ -258,7 +259,59 @@ int run_benchmark(int bench_steps) {
     }
 }
 
-int run_training(bool fast_mode) {
+// The default corpus keeps its historical cache name so existing caches
+// and checkpoints stay valid; other corpora get corpus-derived names.
+std::string tokenizer_cache_prefix(const std::string& corpus_path) {
+    if (corpus_path == "data/shakespeare.txt") return "tokenizer";
+    return corpus_path + ".tokenizer";
+}
+
+std::string token_bin_path(const std::string& corpus_path, int vocab_size,
+                           const std::string& split) {
+    return corpus_path + "." + std::to_string(vocab_size) + "." + split + ".bin";
+}
+
+// Pre-tokenize a corpus once: train (or load) the BPE tokenizer, encode the
+// whole text, and write 95/5 train/val token files. Training then memory-
+// maps those files instead of re-encoding the corpus on every run.
+int run_prepare(const std::string& corpus_path, int vocab_size) {
+    std::cout << "\nTransformer Prepare\n" << std::endl;
+
+    try {
+        utils::print_section("Tokenizing corpus");
+        std::string text = read_text_file(corpus_path);
+        BPETokenizer tokenizer(vocab_size);
+        load_tokenizer(text, tokenizer_cache_prefix(corpus_path), vocab_size, tokenizer);
+
+        std::cout << "Encoding text..." << std::flush;
+        auto start = std::chrono::high_resolution_clock::now();
+        std::vector<int> tokens = tokenizer.encode(text);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cout << " " << tokens.size() << " tokens (" << ms << "ms)" << std::endl;
+
+        size_t split = tokens.size() * 95 / 100;
+        std::vector<int> train_tokens(tokens.begin(), tokens.begin() + split);
+        std::vector<int> val_tokens(tokens.begin() + split, tokens.end());
+
+        int vocab = tokenizer.getCurrentVocabSize();
+        std::string train_bin = token_bin_path(corpus_path, vocab_size, "train");
+        std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
+        tokenfile::write(train_bin, train_tokens, vocab);
+        tokenfile::write(val_bin, val_tokens, vocab);
+
+        std::cout << "\nWrote " << train_bin << " (" << train_tokens.size() << " tokens)"
+                  << "\nWrote " << val_bin << " (" << val_tokens.size() << " tokens)"
+                  << "\n\nTrain with: ./build/transformer train " << corpus_path
+                  << std::endl;
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "\nError: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+int run_training(bool fast_mode, const std::string& corpus_path) {
     std::cout << "\nTransformer Training\n" << std::endl;
 
     try {
@@ -266,12 +319,61 @@ int run_training(bool fast_mode) {
         const int num_steps = fast_mode ? 50 : 50000;
         const int seq_length = fast_mode ? 64 : 96;
 
-        std::string text;
         BPETokenizer tokenizer(vocab_size);
-        std::vector<int> tokens;
+        std::shared_ptr<Dataset> dataset;
+        std::shared_ptr<Dataset> val_dataset;
 
-        load_data_and_tokenizer("data/shakespeare.txt", "tokenizer",
-                                vocab_size, text, tokenizer, tokens);
+        std::string train_bin = token_bin_path(corpus_path, vocab_size, "train");
+        std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
+        std::string cache_file = tokenizer_cache_prefix(corpus_path) + "_"
+                               + std::to_string(vocab_size) + ".cache";
+
+        if (tokenfile::exists(train_bin) && tokenfile::exists(val_bin)) {
+            // Pre-tokenized path: memory-map the token files. The corpus
+            // text is never loaded and nothing is re-encoded, so startup
+            // cost and memory use are independent of corpus size.
+            utils::print_section("Loading Data (pre-tokenized)");
+            std::ifstream cache_check(cache_file);
+            if (!cache_check.good()) {
+                throw std::runtime_error("Found token files but no tokenizer cache ("
+                                         + cache_file + "); run: ./build/transformer prepare "
+                                         + corpus_path);
+            }
+            tokenizer.load(cache_file);
+
+            auto mapped_train = std::make_shared<MappedTokenDataset>(train_bin, seq_length);
+            auto mapped_val = std::make_shared<MappedTokenDataset>(val_bin, seq_length,
+                                                                   seq_length);
+            if (mapped_train->vocabSize() != tokenizer.getCurrentVocabSize()) {
+                throw std::runtime_error("Token file vocab does not match tokenizer cache; re-run prepare");
+            }
+            std::cout << "Mapped " << mapped_train->tokenCount() << " train / "
+                      << mapped_val->tokenCount() << " val tokens from "
+                      << train_bin << std::endl;
+            dataset = mapped_train;
+            val_dataset = mapped_val;
+        } else {
+            // In-memory path: read and encode the corpus now. Fine for
+            // small corpora; for anything large, run `prepare` first.
+            std::string text;
+            std::vector<int> tokens;
+            load_data_and_tokenizer(corpus_path, tokenizer_cache_prefix(corpus_path),
+                                    vocab_size, text, tokenizer, tokens);
+
+            // Hold out the last 5% of the corpus for validation. The split
+            // is contiguous, so no training window ever overlaps validation
+            // text - val perplexity measures generalization, not
+            // memorization.
+            size_t split = tokens.size() * 95 / 100;
+            std::vector<int> train_tokens(tokens.begin(), tokens.begin() + split);
+            std::vector<int> val_tokens(tokens.begin() + split, tokens.end());
+
+            dataset = std::make_shared<TextDataset>(train_tokens, seq_length);
+            // Non-overlapping windows: evaluation covers the whole held-out
+            // slice once, deterministically.
+            val_dataset = std::make_shared<TextDataset>(val_tokens, seq_length,
+                                                        seq_length);
+        }
 
         utils::print_section("Initializing Model");
 
@@ -304,20 +406,7 @@ int run_training(bool fast_mode) {
         std::cout << "Model initialized (" << ms << "ms)" << std::endl;
         std::cout << "Parameters: " << (total_params / 1e6f) << "M" << std::endl;
 
-        // Hold out the last 5% of the corpus for validation. The split is
-        // contiguous, so no training window ever overlaps validation text -
-        // val perplexity measures generalization, not memorization.
-        size_t split = tokens.size() * 95 / 100;
-        std::vector<int> train_tokens(tokens.begin(), tokens.begin() + split);
-        std::vector<int> val_tokens(tokens.begin() + split, tokens.end());
-
-        auto dataset = std::make_shared<TextDataset>(train_tokens, config.seq_length);
         DataLoader loader(dataset, config.batch_size, true);
-
-        // Non-overlapping windows: evaluation covers the whole held-out
-        // slice once, deterministically.
-        auto val_dataset = std::make_shared<TextDataset>(val_tokens, config.seq_length,
-                                                         config.seq_length);
         DataLoader val_loader(val_dataset, config.batch_size, false);
 
         std::cout << "Dataset: " << dataset->size() << " train / "
@@ -340,11 +429,21 @@ int run_training(bool fast_mode) {
 int main(int argc, char* argv[]) {
     std::string mode = (argc > 1) ? argv[1] : "";
 
+    std::string default_corpus = "data/shakespeare.txt";
+
     if (mode == "train") {
-        return run_training(false);
+        return run_training(false, (argc > 2) ? argv[2] : default_corpus);
     }
     if (mode == "train-fast") {
-        return run_training(true);
+        return run_training(true, (argc > 2) ? argv[2] : default_corpus);
+    }
+    if (mode == "prepare") {
+        if (argc < 3) {
+            std::cerr << "Usage: " << argv[0] << " prepare <corpus.txt> [vocab_size]" << std::endl;
+            return 1;
+        }
+        int vocab = (argc > 3) ? std::atoi(argv[3]) : 5000;
+        return run_prepare(argv[2], vocab);
     }
     if (mode == "generate") {
         std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
@@ -361,8 +460,9 @@ int main(int argc, char* argv[]) {
     }
 
     std::cerr << "Usage: " << argv[0] << " <mode>\n"
-              << "  train                            full training run on data/shakespeare.txt\n"
-              << "  train-fast                       small config for a quick smoke test\n"
+              << "  prepare <corpus.txt> [vocab]     pre-tokenize a corpus to .bin token files\n"
+              << "  train [corpus.txt]               full training run (uses .bin files if present)\n"
+              << "  train-fast [corpus.txt]          small config for a quick smoke test\n"
               << "  generate [checkpoint] [prompt]   sample from a saved checkpoint\n"
               << "  chat [checkpoint]                interactive prompt/continue REPL\n"
               << "  bench [steps]                    measure training and generation speed\n";

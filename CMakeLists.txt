@@ -23,6 +23,7 @@ add_executable(transformer
     src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
     src/data/dataset.cpp
+    src/data/token_file.cpp
     src/data/dataloader.cpp
     src/utils/training_utils.cpp
     src/utils/metrics.cpp
@@ -48,6 +49,7 @@ add_executable(sanity_tests
     src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
     src/data/dataset.cpp
+    src/data/token_file.cpp
     src/data/dataloader.cpp
     src/utils/training_utils.cpp
     src/utils/metrics.cpp
@@ -186,6 +188,7 @@ if(BUILD_TESTS)
         src/transformer/optimizer.cpp
         src/tokenizer/bpe_tokenizer.cpp
         src/data/dataset.cpp
+        src/data/token_file.cpp
         src/data/dataloader.cpp
     )
 
@@ -208,6 +211,7 @@ if(BUILD_TESTS)
         src/transformer/optimizer.cpp
         src/tokenizer/bpe_tokenizer.cpp
         src/data/dataset.cpp
+        src/data/token_file.cpp
         src/data/dataloader.cpp
     )
 

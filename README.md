@@ -66,9 +66,23 @@ Three modes:
 
 # Reproduce the BENCHMARKS.md numbers
 ./build/transformer bench
+
+# Pre-tokenize a corpus for fast, memory-mapped training (see below)
+./build/transformer prepare my_corpus.txt 5000
 ```
 
 The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.
+
+## Training on your own corpus
+
+Any plain-text file works. For anything beyond toy size, pre-tokenize it once:
+
+```bash
+./build/transformer prepare my_corpus.txt 5000   # writes my_corpus.txt.5000.{train,val}.bin
+./build/transformer train my_corpus.txt          # memory-maps the .bin files
+```
+
+`prepare` trains a BPE tokenizer on the corpus and writes the encoded tokens as binary files (uint16 per token, 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM — the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
 
 Performance across optimization iterations is tracked in [BENCHMARKS.md](BENCHMARKS.md) (`./build/transformer bench` reproduces the numbers).
 
