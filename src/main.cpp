@@ -346,17 +346,16 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
 // Model/training presets. "small" is the original 22M-param Shakespeare
 // config; "fast" is the CI smoke test.
 //
-// "medium" (~70M params) is memory-bound, not compute-bound: the autograd
-// graph holds data + grad for every intermediate, so one step at batch 16
-// / seq 256 peaked past 10GB of phys footprint and took a 16GB machine
-// down (measured 2026-07-18). Batch 8 halves that to a ~6GB peak, and
-// grad_accum 4 buys the optimizer an effective batch of 32 at that same
-// peak (micro-batch graphs are released one at a time). At 40000 steps
-// the run consumes 40000*32*256 = 327M tokens - about one epoch of the
-// TinyStories train split, 4x the tokens of the original batch-8 run.
-// Its logits matmul (50 GFLOP) still crosses the ~10 GFLOP Metal
-// threshold (BENCHMARKS.md #7); the FFN matmuls land just under it,
-// where CPU and GPU tie anyway.
+// "medium" (~70M params) is memory-bound, not compute-bound: one step at
+// batch 16 / seq 256 once peaked past 10GB of phys footprint and took a
+// 16GB machine down (measured 2026-07-18, BENCHMARKS.md #8). Micro-batch
+// 8 with grad_accum 4 gives the optimizer an effective batch of 32 at a
+// ~4GB peak (lazy grads + backward retirement, BENCHMARKS.md #9). The
+// micro-batch is also measured, not assumed: 16 x accum 2 - same
+// effective batch, FFN matmuls above the Metal crossover - ran 32%
+// slower per token and 3GB fatter, with or without the GPU. At 40000
+// steps the run consumes 40000*32*256 = 327M tokens, about one epoch of
+// the TinyStories train split.
 struct Preset {
     const char* name;
     int vocab_size;

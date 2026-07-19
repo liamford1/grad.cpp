@@ -91,7 +91,7 @@ Two model presets are built in:
 | `small` (default) | ~22M | d512 × 6L × 8H, seq 96, batch 8, vocab 5k | Tiny Shakespeare |
 | `medium` | ~70M | d768 × 8L × 12H, seq 256, batch 8×4 accum, vocab 16k | TinyStories-scale corpora |
 
-`medium`'s logits matmul crosses the ~10 GFLOP threshold where the Metal GPU backend engages (BENCHMARKS.md #7); its micro-batch size is set by memory, not compute — one micro-batch peaks at ~5.4GB of footprint, sized to fit a 16GB machine (BENCHMARKS.md #8) — and gradient accumulation gives the optimizer an effective batch of 32 at that same peak. Example end-to-end:
+`medium`'s logits matmul crosses the ~10 GFLOP threshold where the Metal GPU backend engages (BENCHMARKS.md #7); its micro-batch size is set by memory, not compute — one micro-batch peaks at ~4GB of footprint, sized to fit a 16GB machine (BENCHMARKS.md #8–9) — and gradient accumulation gives the optimizer an effective batch of 32 at that same peak. Example end-to-end:
 
 ```bash
 curl -L -o data/tinystories.txt \

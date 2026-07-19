@@ -84,12 +84,13 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
                                logits_weak = std::weak_ptr<Variable>(logits),
                                flat_rows, vocab, d_model_dim]() {
             auto logits = logits_weak.lock();
-            if (!logits) return;
+            if (!logits || !logits->hasGrad()) return;
             const Tensor& grad_logits = logits->getGrad();
             const Tensor& norm_data = normalized_output->getData();
             const Tensor& emb_data = embedding_table->getData();
 
             if (normalized_output->requiresGrad()) {
+                normalized_output->ensureGrad();
                 // dNorm += dLogits @ E, accumulated in place (beta = 1)
                 blas_sgemm_ex(grad_logits.raw(), emb_data.raw(),
                               normalized_output->getGrad().raw(),
@@ -98,6 +99,7 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
             }
 
             if (embedding_table->requiresGrad()) {
+                embedding_table->ensureGrad();
                 // dE += dLogits^T @ Norm, summing over batch*seq via the sgemm
                 blas_sgemm_ex(grad_logits.raw(), norm_data.raw(),
                               embedding_table->getGrad().raw(),

@@ -30,6 +30,15 @@ class Variable : public std::enable_shared_from_this<Variable> {
 
         bool hasGrad() const { return grad.numel() > 0; }
         bool requiresGrad() const { return requires_grad; }
+
+        // Gradients are allocated lazily: construction leaves grad empty,
+        // and backward functions call ensureGrad() (allocate + zero) before
+        // their first write. The forward pass therefore holds only
+        // activations - half the graph's former footprint - and a node
+        // whose grad was never touched signals "no gradient flowed here"
+        // (its backward fn returns early). No-op when the Variable does
+        // not require grad or the grad already exists.
+        void ensureGrad();
         
         std::shared_ptr<Variable> matmul(std::shared_ptr<Variable> other) const;
         std::shared_ptr<Variable> add(std::shared_ptr<Variable> other) const;

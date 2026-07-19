@@ -92,7 +92,10 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                                output_weak = std::weak_ptr<Variable>(output),
                                means, inv_stds, self_d, self_epsilon, total_rows]() {
             auto output = output_weak.lock();
-            if (!output) return;
+            if (!output || !output->hasGrad()) return;
+            self_gamma->ensureGrad();
+            self_beta->ensureGrad();
+            self_input->ensureGrad();
 
             const float* output_grad_data = output->getGrad().raw();
             const float* gamma_data = self_gamma->getData().raw();

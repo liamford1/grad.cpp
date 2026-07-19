@@ -152,7 +152,9 @@ int main() {
         // Set up backward connection manually
         loss->addChild(output);
         loss->setBackwardFn([output, seq_len, d_model]() {
-            // Gradient of sum: all elements get gradient 1.0
+            // Gradient of sum: all elements get gradient 1.0. Grads are
+            // lazily allocated, so writers ensure them first.
+            output->ensureGrad();
             for (int i = 0; i < seq_len; i++) {
                 for (int j = 0; j < d_model; j++) {
                     output->getGrad().setValue(i, j, 1.0f);
@@ -230,7 +232,9 @@ int main() {
         // Set up backward connection manually
         loss->addChild(output);
         loss->setBackwardFn([output, batch_size, seq_len, d_model]() {
-            // Gradient of sum: all elements get gradient 1.0
+            // Gradient of sum: all elements get gradient 1.0. Grads are
+            // lazily allocated, so writers ensure them first.
+            output->ensureGrad();
             for (int b = 0; b < batch_size; b++) {
                 for (int i = 0; i < seq_len; i++) {
                     for (int j = 0; j < d_model; j++) {

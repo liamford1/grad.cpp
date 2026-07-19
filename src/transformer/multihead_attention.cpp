@@ -201,6 +201,12 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                    self_bq, self_bk, self_bv, self_bo,
                                    self_concat, output, self_num_heads,
                                    self_d_model, seq_len, head_size, causal_mask, scale_factor]() {
+                if (!output->hasGrad()) return;
+                self_Wq->ensureGrad(); self_Wk->ensureGrad();
+                self_Wv->ensureGrad(); self_Wo->ensureGrad();
+                self_bq->ensureGrad(); self_bk->ensureGrad();
+                self_bv->ensureGrad(); self_bo->ensureGrad();
+                self_input->ensureGrad();
 
                 self_Wo->getGrad().add_inplace(self_concat->getData().transpose().matmul(output->getGrad()));
 
@@ -486,7 +492,12 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                    batch_size, S, d, H, head_size, flat,
                                    scale_factor, dropout_active]() {
                 auto output = output_weak.lock();
-                if (!output) return;
+                if (!output || !output->hasGrad()) return;
+                self_Wq->ensureGrad(); self_Wk->ensureGrad();
+                self_Wv->ensureGrad(); self_Wo->ensureGrad();
+                self_bq->ensureGrad(); self_bk->ensureGrad();
+                self_bv->ensureGrad(); self_bo->ensureGrad();
+                if (self_input->requiresGrad()) self_input->ensureGrad();
 
                 const float* dOut = output->getGrad().raw();
 

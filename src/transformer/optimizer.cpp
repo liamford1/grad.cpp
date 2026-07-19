@@ -40,7 +40,9 @@ void AdamOptimizer::step() {
     const float b2  = beta2_;
 
     for (auto& param : parameters_) {
-        if (!param->requiresGrad()) continue;
+        // Empty grad = no gradient reached this parameter this step (grads
+        // are lazily allocated), so there is nothing to apply.
+        if (!param->requiresGrad() || !param->hasGrad()) continue;
 
         Tensor& data = param->getData();
         Tensor& grad = param->getGrad();
@@ -95,13 +97,14 @@ void AdamOptimizer::step() {
 void AdamOptimizer::zero_grad() {
     for (auto& param : parameters_) {
         Tensor& grad = param->getGrad();
+        if (grad.numel() == 0) continue;
         std::memset(grad.raw(), 0, grad.numel() * sizeof(float));
     }
 }
 
 void AdamOptimizer::scale_grads(float s) {
     for (auto& param : parameters_) {
-        if (!param->requiresGrad()) continue;
+        if (!param->requiresGrad() || !param->hasGrad()) continue;
         Tensor& grad = param->getGrad();
         vec_scale_inplace(grad.raw(), s, grad.numel());
     }
@@ -168,7 +171,7 @@ bool AdamOptimizer::load_state(std::istream& in) {
 void AdamOptimizer::clip_grad_norm(float max_norm) {
     float total_norm = 0.0f;
     for (auto& param : parameters_) {
-        if (!param->requiresGrad()) continue;
+        if (!param->requiresGrad() || !param->hasGrad()) continue;
         Tensor& grad = param->getGrad();
         total_norm += vec_sum_squares(grad.raw(), grad.numel());
     }
@@ -177,7 +180,7 @@ void AdamOptimizer::clip_grad_norm(float max_norm) {
     if (total_norm > max_norm) {
         float clip_coef = max_norm / (total_norm + 1e-6f);
         for (auto& param : parameters_) {
-            if (!param->requiresGrad()) continue;
+            if (!param->requiresGrad() || !param->hasGrad()) continue;
             Tensor& grad = param->getGrad();
             vec_scale_inplace(grad.raw(), clip_coef, grad.numel());
         }

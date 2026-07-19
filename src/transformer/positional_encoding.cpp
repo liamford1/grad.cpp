@@ -35,12 +35,14 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
             int self_d_model = d_model;
             output->setBackwardFn([embeddings, self_pos_emb, output_weak = std::weak_ptr<Variable>(output), seq_len, self_d_model]() {
                 auto output = output_weak.lock();
-                if (!output) return;
+                if (!output || !output->hasGrad()) return;
                 if (embeddings->requiresGrad()) {
+                    embeddings->ensureGrad();
                     embeddings->getGrad() = embeddings->getGrad().add(output->getGrad());
                 }
                 
                 if (self_pos_emb->requiresGrad()) {
+                    self_pos_emb->ensureGrad();
                     for (int i = 0; i < seq_len; i++) {
                         for (int j = 0; j < self_d_model; j++) {
                             float grad_val = output->getGrad().getValue(i, j);
@@ -82,12 +84,14 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
             int self_d_model = d_model;
             output->setBackwardFn([embeddings, self_pos_emb, output_weak = std::weak_ptr<Variable>(output), batch_size, seq_len, self_d_model]() {
                 auto output = output_weak.lock();
-                if (!output) return;
+                if (!output || !output->hasGrad()) return;
                 if (embeddings->requiresGrad()) {
+                    embeddings->ensureGrad();
                     embeddings->getGrad() = embeddings->getGrad().add(output->getGrad());
                 }
                 
                 if (self_pos_emb->requiresGrad()) {
+                    self_pos_emb->ensureGrad();
                     for (int b = 0; b < batch_size; b++) {
                         for (int i = 0; i < seq_len; i++) {
                             for (int j = 0; j < self_d_model; j++) {

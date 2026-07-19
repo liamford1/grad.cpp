@@ -78,7 +78,8 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
                                output_weak = std::weak_ptr<Variable>(output),
                                ids = std::move(token_ids), scale, dm]() {
             auto output = output_weak.lock();
-            if (!output) return;
+            if (!output || !output->hasGrad()) return;
+            table_var->ensureGrad();
             const float* dOut = output->getGrad().raw();
             float* dTable = table_var->getGrad().raw();
 
