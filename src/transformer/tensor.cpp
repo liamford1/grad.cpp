@@ -655,71 +655,34 @@ Tensor Tensor::transpose() const {
 Tensor Tensor::softmax() const {
     assertValid("softmax(this)");
 
-    if (!this->is_3d) {
-        Tensor result(this->rows, this->cols);
-        const float* input_data = this->raw();
-        float* output_data = result.raw();
+    // Rows are contiguous for both 2D and 3D tensors, so a single loop over
+    // batch*rows covers both. exp goes through vec_exp (SIMD).
+    const size_t total_rows = this->is_3d ? this->batch_size * this->rows
+                                          : this->rows;
+    Tensor result = this->is_3d ? Tensor(this->batch_size, this->rows, this->cols)
+                                : Tensor(this->rows, this->cols);
+    const float* input_data = this->raw();
+    float* output_data = result.raw();
 
-        for (size_t i = 0; i < this->rows; i++) {
-            const float* __restrict__ row_in = input_data + i * this->cols;
-            float* __restrict__ row_out = output_data + i * this->cols;
+    for (size_t i = 0; i < total_rows; i++) {
+        const float* row_in = input_data + i * this->cols;
+        float* row_out = output_data + i * this->cols;
 
-            float max_val = row_in[0];
-            #pragma clang loop vectorize(enable) interleave(enable)
-            for (size_t j = 1; j < this->cols; j++) {
-                if (row_in[j] > max_val) max_val = row_in[j];
-            }
-
-            float sum = 0.0f;
-            #pragma clang loop vectorize(enable)
-            for (size_t j = 0; j < this->cols; j++) {
-                const float val = std::exp(row_in[j] - max_val);
-                row_out[j] = val;
-                sum += val;
-            }
-
-            const float inv_sum = 1.0f / sum;
-            #pragma clang loop vectorize(enable)
-            for (size_t j = 0; j < this->cols; j++) {
-                row_out[j] *= inv_sum;
-            }
+        float max_val = row_in[0];
+        for (size_t j = 1; j < this->cols; j++) {
+            max_val = std::max(max_val, row_in[j]);
         }
-        return result;
-    } else {
-        Tensor result(this->batch_size, this->rows, this->cols);
-        const float* input_data = this->raw();
-        float* output_data = result.raw();
-
-        for (size_t b = 0; b < this->batch_size; b++) {
-            size_t batch_offset = b * this->rows * this->cols;
-
-            for (size_t i = 0; i < this->rows; i++) {
-                const float* __restrict__ row_in = input_data + batch_offset + i * this->cols;
-                float* __restrict__ row_out = output_data + batch_offset + i * this->cols;
-
-                float max_val = row_in[0];
-                #pragma clang loop vectorize(enable) interleave(enable)
-                for (size_t j = 1; j < this->cols; j++) {
-                    if (row_in[j] > max_val) max_val = row_in[j];
-                }
-
-                float sum = 0.0f;
-                #pragma clang loop vectorize(enable)
-                for (size_t j = 0; j < this->cols; j++) {
-                    const float val = std::exp(row_in[j] - max_val);
-                    row_out[j] = val;
-                    sum += val;
-                }
-
-                const float inv_sum = 1.0f / sum;
-                #pragma clang loop vectorize(enable)
-                for (size_t j = 0; j < this->cols; j++) {
-                    row_out[j] *= inv_sum;
-                }
-            }
+        for (size_t j = 0; j < this->cols; j++) {
+            row_out[j] = row_in[j] - max_val;
         }
-        return result;
+        vec_exp(row_out, row_out, static_cast<int>(this->cols));
+
+        const float inv_sum = 1.0f / vec_sum(row_out, static_cast<int>(this->cols));
+        for (size_t j = 0; j < this->cols; j++) {
+            row_out[j] *= inv_sum;
+        }
     }
+    return result;
 }
 
 void Tensor::fill(float value) {

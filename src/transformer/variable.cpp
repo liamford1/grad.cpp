@@ -1,10 +1,11 @@
 #include "transformer/variable.h"
+#include "transformer/activations.h"
 #include "transformer/blas_wrapper.h"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
-#include <random>
 #include <stdexcept>
+#include <vector>
 
 Variable::Variable(const Tensor& data, bool requires_grad) 
     : data(data), requires_grad(requires_grad) {
@@ -512,13 +513,27 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
 std::shared_ptr<Variable> Variable::gelu() const {
     data.assertValid("Variable::gelu(x)");
 
-    Tensor result = this->data;
-    for (size_t i = 0; i < result.numel(); i++) {
-        float x = result.raw()[i];
-        float cube = x * x * x;
-        float gelu_val = 0.5f * x * (1.0f + std::tanh(0.79788456f * (x + 0.044715f * cube)));
-        result.raw()[i] = gelu_val;
+    // tanh approximation: gelu(x) = 0.5x(1 + tanh(k(x + a*x^3))).
+    // The tanh runs through vec_tanh (SIMD); the polynomial loops
+    // auto-vectorize.
+    constexpr float k = 0.79788456f;
+    constexpr float a = 0.044715f;
+    const size_t n = data.numel();
+    const float* x = data.raw();
+
+    Tensor result = data.getIs3D()
+        ? Tensor(data.getBatchSize(), data.getRows(), data.getCols())
+        : Tensor(data.getRows(), data.getCols());
+    float* out = result.raw();
+
+    for (size_t i = 0; i < n; i++) {
+        out[i] = k * (x[i] + a * x[i] * x[i] * x[i]);
     }
+    vec_tanh(out, out, static_cast<int>(n));
+    for (size_t i = 0; i < n; i++) {
+        out[i] = 0.5f * x[i] * (1.0f + out[i]);
+    }
+
     auto output = createOutput(result, this->requires_grad);
 
     if (this->requires_grad) {
@@ -528,20 +543,25 @@ std::shared_ptr<Variable> Variable::gelu() const {
             auto output = output_weak.lock();
             if (!output) return;
             output->grad.assertValid("Variable::gelu(dOut)");
+            if (!self_ptr->requires_grad) return;
 
-            if (self_ptr->requires_grad) {
-                Tensor grad_tensor = self_ptr->data.getIs3D() ? Tensor(self_ptr->data.getBatchSize(), self_ptr->data.getRows(), self_ptr->data.getCols()) : Tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
+            const size_t n = self_ptr->data.numel();
+            const float* x = self_ptr->data.raw();
+            const float* dY = output->grad.raw();
+            float* dX = self_ptr->grad.raw();
 
-                grad_tensor.fill(0.0f);
-                for (size_t i = 0; i < self_ptr->data.numel(); i++) {
-                    float x = self_ptr->data.raw()[i];
-                    float cube = x * x * x;
-                    float tanh_val = std::tanh(0.79788456f * (x + 0.044715f * cube));
-                    float sech_sq = 1.0f - tanh_val * tanh_val;
-                    float grad_val = 0.5f * (1.0f + tanh_val + x * sech_sq * 0.79788456f * (1.0f + 3.0f * 0.044715f * x * x));
-                    grad_tensor.raw()[i] = grad_val * output->grad.raw()[i];
-                }
-                self_ptr->grad.add_inplace(grad_tensor);
+            std::vector<float> t(n);
+            for (size_t i = 0; i < n; i++) {
+                t[i] = k * (x[i] + a * x[i] * x[i] * x[i]);
+            }
+            vec_tanh(t.data(), t.data(), static_cast<int>(n));
+
+            for (size_t i = 0; i < n; i++) {
+                float tv = t[i];
+                float sech_sq = 1.0f - tv * tv;
+                float dgelu = 0.5f * (1.0f + tv
+                    + x[i] * sech_sq * k * (1.0f + 3.0f * a * x[i] * x[i]));
+                dX[i] += dgelu * dY[i];
             }
         });
     }
@@ -557,13 +577,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
     float scale = 1.0f / (1.0f - dropout_rate);
     Tensor mask = data.getIs3D() ? Tensor(data.getBatchSize(), data.getRows(), data.getCols()) : Tensor(data.getRows(), data.getCols());
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-
-    for (size_t i = 0; i < mask.numel(); i++) {
-        mask.raw()[i] = (dis(gen) < dropout_rate) ? 0.0f : scale;
-    }
+    fill_dropout_mask(mask.raw(), mask.numel(), dropout_rate, scale);
 
     Tensor result = this->data.elementwise(mask);
     auto output = createOutput(result, this->requires_grad);
@@ -585,117 +599,68 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
 }
 
 std::shared_ptr<Variable> Variable::log_softmax() const {
-    Tensor result = this->data;
-    
-    if (!result.getIs3D()) {
-        const float* input_data = this->data.raw();
-        float* result_data = result.raw();
+    // Rows are contiguous whether the tensor is 2D or 3D, so both cases are
+    // one loop over batch*rows. The exp goes through vec_exp (SIMD).
+    const size_t cols = data.getCols();
+    const size_t total_rows = data.getIs3D()
+        ? data.getBatchSize() * data.getRows()
+        : data.getRows();
 
-        for (size_t i = 0; i < result.getRows(); i++) {
-            const float* row_in = input_data + i * result.getCols();
-            float* row_out = result_data + i * result.getCols();
+    Tensor result = data.getIs3D()
+        ? Tensor(data.getBatchSize(), data.getRows(), data.getCols())
+        : Tensor(data.getRows(), data.getCols());
 
-            float max_val = row_in[0];
-            for (size_t j = 1; j < result.getCols(); j++) {
-                max_val = std::max(max_val, row_in[j]);
-            }
+    const float* in = data.raw();
+    float* out = result.raw();
+    std::vector<float> exps(cols);
 
-            float sum_exp = 0.0f;
-            for (size_t j = 0; j < result.getCols(); j++) {
-                sum_exp += std::exp(row_in[j] - max_val);
-            }
-            float log_sum = std::log(sum_exp) + max_val;
+    for (size_t i = 0; i < total_rows; i++) {
+        const float* row_in = in + i * cols;
+        float* row_out = out + i * cols;
 
-            for (size_t j = 0; j < result.getCols(); j++) {
-                row_out[j] = row_in[j] - log_sum;
-            }
+        float max_val = row_in[0];
+        for (size_t j = 1; j < cols; j++) {
+            max_val = std::max(max_val, row_in[j]);
         }
-    } else {
-        const float* input_data = this->data.raw();
-        float* result_data = result.raw();
-
-        for (size_t b = 0; b < result.getBatchSize(); b++) {
-            const size_t batch_offset = b * result.getRows() * result.getCols();
-
-            for (size_t i = 0; i < result.getRows(); i++) {
-                const float* row_in = input_data + batch_offset + i * result.getCols();
-                float* row_out = result_data + batch_offset + i * result.getCols();
-
-                float max_val = row_in[0];
-                for (size_t j = 1; j < result.getCols(); j++) {
-                    max_val = std::max(max_val, row_in[j]);
-                }
-
-                float sum_exp = 0.0f;
-                for (size_t j = 0; j < result.getCols(); j++) {
-                    sum_exp += std::exp(row_in[j] - max_val);
-                }
-                float log_sum = std::log(sum_exp) + max_val;
-
-                for (size_t j = 0; j < result.getCols(); j++) {
-                    row_out[j] = row_in[j] - log_sum;
-                }
-            }
+        for (size_t j = 0; j < cols; j++) {
+            row_out[j] = row_in[j] - max_val;
+        }
+        vec_exp(row_out, exps.data(), static_cast<int>(cols));
+        float log_sum = std::log(vec_sum(exps.data(), static_cast<int>(cols)));
+        for (size_t j = 0; j < cols; j++) {
+            row_out[j] -= log_sum;
         }
     }
-    
+
     auto output = createOutput(result, this->requires_grad);
-    
+
     if (this->requires_grad) {
         auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
         output->addChild(self_ptr);
-        
-        output->setBackwardFn([self_ptr, result, output_weak = std::weak_ptr<Variable>(output)]() {
+
+        output->setBackwardFn([self_ptr, result, total_rows, cols,
+                               output_weak = std::weak_ptr<Variable>(output)]() {
             auto output = output_weak.lock();
             if (!output) return;
-            if (!result.getIs3D()) {
-                Tensor grad(result.getRows(), result.getCols());
-                const float* result_data = result.raw();
-                const float* grad_output_data = output->grad.raw();
-                float* grad_data = grad.raw();
 
-                for (size_t i = 0; i < result.getRows(); i++) {
-                    const float* row_result = result_data + i * result.getCols();
-                    const float* row_grad_out = grad_output_data + i * result.getCols();
-                    float* row_grad = grad_data + i * result.getCols();
+            // d/dx log_softmax: dX = dY - softmax(x) * sum(dY) per row,
+            // where softmax(x) = exp(result). Accumulates into the grad
+            // tensor directly.
+            const float* res = result.raw();
+            const float* dY = output->grad.raw();
+            float* dX = self_ptr->grad.raw();
+            std::vector<float> soft(cols);
 
-                    float sum = 0.0f;
-                    for (size_t j = 0; j < result.getCols(); j++) {
-                        sum += row_grad_out[j];
-                    }
+            for (size_t i = 0; i < total_rows; i++) {
+                const float* row_res = res + i * cols;
+                const float* row_dY = dY + i * cols;
+                float* row_dX = dX + i * cols;
 
-                    for (size_t j = 0; j < result.getCols(); j++) {
-                        float softmax_val = std::exp(row_result[j]);
-                        row_grad[j] = row_grad_out[j] - softmax_val * sum;
-                    }
+                float sum = vec_sum(row_dY, static_cast<int>(cols));
+                vec_exp(row_res, soft.data(), static_cast<int>(cols));
+                for (size_t j = 0; j < cols; j++) {
+                    row_dX[j] += row_dY[j] - soft[j] * sum;
                 }
-                self_ptr->grad.add_inplace(grad);
-            } else {
-                Tensor grad(result.getBatchSize(), result.getRows(), result.getCols());
-                const float* result_data = result.raw();
-                const float* grad_output_data = output->grad.raw();
-                float* grad_data = grad.raw();
-
-                for (size_t b = 0; b < result.getBatchSize(); b++) {
-                    const size_t batch_offset = b * result.getRows() * result.getCols();
-
-                    for (size_t i = 0; i < result.getRows(); i++) {
-                        const float* row_result = result_data + batch_offset + i * result.getCols();
-                        const float* row_grad_out = grad_output_data + batch_offset + i * result.getCols();
-                        float* row_grad = grad_data + batch_offset + i * result.getCols();
-
-                        float sum = 0.0f;
-                        for (size_t j = 0; j < result.getCols(); j++) {
-                            sum += row_grad_out[j];
-                        }
-
-                        for (size_t j = 0; j < result.getCols(); j++) {
-                            float softmax_val = std::exp(row_result[j]);
-                            row_grad[j] = row_grad_out[j] - softmax_val * sum;
-                        }
-                    }
-                }
-                self_ptr->grad.add_inplace(grad);
             }
         });
     }
