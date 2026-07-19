@@ -175,7 +175,8 @@ int main() {
 
             float analytical_grad = input->getGrad().getValue(i, j);
             float numerical_grad = numerical_gradient_2d(attention, input, i, j);
-            float rel_error = std::abs(analytical_grad - numerical_grad) /
+            float abs_error = std::abs(analytical_grad - numerical_grad);
+            float rel_error = abs_error /
                              (std::abs(analytical_grad) + std::abs(numerical_grad) + 1e-8f);
 
             std::cout << "Input gradient [" << i << "," << j << "]:" << std::endl;
@@ -184,7 +185,12 @@ int main() {
             std::cout << "  Rel Error:  " << rel_error << std::endl;
 
             tests_total++;
-            if (rel_error < 3e-2f) {  // 3% tolerance for complex attention gradients
+            // The numerical gradient's noise floor is ~1e-3 absolute (float
+            // forward passes summed over 512 outputs), so gradients near
+            // that magnitude are judged by absolute error, larger ones by
+            // relative error - same combined criterion as gradcheck-style
+            // tools.
+            if (rel_error < 3e-2f || abs_error < 2e-3f) {
                 std::cout << "  ✓ PASS" << std::endl;
                 tests_passed++;
             } else {
@@ -266,13 +272,15 @@ int main() {
                 float numerical_grad = numerical_gradient_3d(attention, input, b, i, j);
                 std::cout << "  Numerical gradient:  " << numerical_grad << std::endl;
 
-                float rel_error = std::abs(analytical_grad - numerical_grad) /
+                float abs_error = std::abs(analytical_grad - numerical_grad);
+                float rel_error = abs_error /
                                  (std::abs(analytical_grad) + std::abs(numerical_grad) + 1e-8f);
 
                 std::cout << "  Relative Error:  " << rel_error << std::endl;
 
                 tests_total++;
-                if (rel_error < 3e-2f) {  // 3% tolerance for complex attention gradients
+                // Combined criterion - see the 2D case above.
+                if (rel_error < 3e-2f || abs_error < 2e-3f) {
                     std::cout << "  ✓ PASS" << std::endl;
                     tests_passed++;
                 } else {
