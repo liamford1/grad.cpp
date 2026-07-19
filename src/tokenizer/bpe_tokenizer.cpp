@@ -175,10 +175,14 @@ std::vector<int> BPETokenizer::encode(const std::string& text) {
     size_t total_words = words.size();
     size_t cache_hits = 0;
 
+    // Progress output only makes sense for corpus-scale encodes; stay
+    // silent for interactive prompts.
+    const bool show_progress = total_words > 20000;
+
     for (size_t word_idx = 0; word_idx < words.size(); word_idx++) {
         const std::string& word = words[word_idx];
 
-        if (word_idx % 5000 == 0) {
+        if (show_progress && word_idx % 5000 == 0) {
             float progress = 100.0f * word_idx / total_words;
             std::cout << "\r  Encoding: [" << word_idx << "/" << total_words << "] "
                       << std::fixed << std::setprecision(1) << progress << "% "
@@ -239,9 +243,9 @@ std::vector<int> BPETokenizer::encode(const std::string& text) {
         token_ids.insert(token_ids.end(), word_token_ids.begin(), word_token_ids.end());
     }
 
-    if (total_words > 0) {
+    if (show_progress) {
         std::cout << "\r  Encoding: [" << total_words << "/" << total_words << "] 100.0% "
-                  << "cache_hits=" << cache_hits << "     " << std::flush;
+                  << "cache_hits=" << cache_hits << "     " << std::endl;
     }
 
     return token_ids;

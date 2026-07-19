@@ -86,6 +86,35 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
     return tokens_to_string(tokens);
 }
 
+int TextGen::generate_stream(const std::vector<int>& prompt_tokens,
+                             const std::function<void(const std::string&)>& on_text,
+                             float temperature, int max_tokens,
+                             float repetition_penalty, int top_k, float top_p) {
+    std::vector<int> tokens = prompt_tokens;
+    if (tokens.empty()) return 0;
+
+    InferenceSession session(model);
+    const float* logits = nullptr;
+    for (int t : tokens) {
+        logits = session.step(t);
+    }
+
+    int generated = 0;
+    for (int i = 0; i < max_tokens; i++) {
+        Tensor last_token_logits = logits_with_penalty(
+            logits, session.vocabSize(), tokens, repetition_penalty);
+
+        int next_token = sample_from_logits(last_token_logits, temperature, top_k, top_p);
+        tokens.push_back(next_token);
+        generated++;
+        on_text(tokens_to_string({next_token}));
+
+        if (session.position() >= session.capacity()) break;
+        logits = session.step(next_token);
+    }
+    return generated;
+}
+
 std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
     if (tokenizer != nullptr) {
         return tokenizer->decode(tokens);

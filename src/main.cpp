@@ -138,6 +138,49 @@ int run_generation(const std::string& checkpoint_path, const std::string& prompt
     }
 }
 
+// Interactive REPL: type a prompt, watch the model continue it token by
+// token. Note this is a base language model, not an instruction-tuned
+// assistant: it continues text in the style of its training corpus rather
+// than answering questions.
+int run_chat(const std::string& checkpoint_path) {
+    std::cout << "\nTransformer Chat\n" << std::endl;
+
+    try {
+        const int vocab_size = 5000;
+
+        BPETokenizer tokenizer(vocab_size);
+        std::string text = read_text_file("data/shakespeare.txt");
+        load_tokenizer(text, "tokenizer", vocab_size, tokenizer);
+
+        utils::print_section("Loading Model");
+        GPTModel model = GPTModel::load(checkpoint_path);
+        TextGen generator(model, &tokenizer);
+
+        std::cout << "\nThis model continues text in the style of its training data"
+                  << " (Shakespeare).\nTry a prompt like \"ROMEO:\" or"
+                  << " \"First Citizen:\". Empty line or 'exit' quits.\n" << std::endl;
+
+        std::string line;
+        while (true) {
+            std::cout << "> " << std::flush;
+            if (!std::getline(std::cin, line)) break;
+            if (line.empty() || line == "exit" || line == "quit") break;
+
+            auto prompt = tokenizer.encode(line + "\n");
+            std::cout << line << std::flush;
+            generator.generate_stream(
+                prompt,
+                [](const std::string& piece) { std::cout << piece << std::flush; },
+                0.8f, 200);
+            std::cout << "\n" << std::endl;
+        }
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "\nError: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
 // Repeatable performance benchmark: times raw training steps and token
 // generation at the full model config, without writing checkpoints.
 int run_benchmark(int bench_steps) {
@@ -312,11 +355,16 @@ int main(int argc, char* argv[]) {
         int steps = (argc > 2) ? std::atoi(argv[2]) : 20;
         return run_benchmark(steps);
     }
+    if (mode == "chat") {
+        std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
+        return run_chat(checkpoint);
+    }
 
     std::cerr << "Usage: " << argv[0] << " <mode>\n"
               << "  train                            full training run on data/shakespeare.txt\n"
               << "  train-fast                       small config for a quick smoke test\n"
               << "  generate [checkpoint] [prompt]   sample from a saved checkpoint\n"
+              << "  chat [checkpoint]                interactive prompt/continue REPL\n"
               << "  bench [steps]                    measure training and generation speed\n";
     return 1;
 }
