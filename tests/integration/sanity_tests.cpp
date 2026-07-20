@@ -24,7 +24,7 @@ void test_overfit_tiny_sequence() {
     const int max_len = 10;
     const int seq_length = 5;
 
-    GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len);
+    GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.0f);
     auto params = model.getAllParameters();
     AdamOptimizer optimizer(params, 0.001f, 0.9f, 0.999f, 1e-8f, 0.0f);
 
@@ -65,8 +65,7 @@ void test_overfit_tiny_sequence() {
         }
 
         if (step == 0 && grad_norm < 1e-6f) {
-            std::cout << "Gradients are zero!" << std::endl;
-            return;
+            throw std::runtime_error("Overfit test produced zero gradients");
         }
     }
 
@@ -84,7 +83,10 @@ void test_overfit_tiny_sequence() {
 
     float acc = 100.0f * correct / seq_length;
     std::cout << "\nAccuracy: " << acc << "%" << std::endl;
-    std::cout << (acc >= 80.0f ? "SUCCESS" : "FAILED") << std::endl;
+    if (acc < 80.0f) {
+        throw std::runtime_error("Overfit test failed to reach 80% accuracy");
+    }
+    std::cout << "SUCCESS" << std::endl;
 }
 
 void test_dataloader() {
@@ -301,9 +303,14 @@ int main(int argc, char* argv[]) {
                 test_dataloader();
             } else if (test_name == "benchmark") {
                 benchmark_training_speed();
+            } else if (test_name == "parity-gpt2") {
+                test_inference_parity(GPTArch::GPT2);
+            } else if (test_name == "parity-modern") {
+                test_inference_parity(GPTArch::Modern);
             } else {
                 std::cerr << "Unknown test: " << test_name << std::endl;
-                std::cerr << "Available tests: overfit, dataloader, benchmark" << std::endl;
+                std::cerr << "Available tests: overfit, dataloader, parity-gpt2, "
+                             "parity-modern, benchmark" << std::endl;
                 return 1;
             }
         } else {

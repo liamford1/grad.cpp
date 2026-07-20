@@ -4,11 +4,22 @@ One row per optimization iteration, so the performance story is readable at a gl
 
 **Machine:** Apple M2 Pro (arm64), macOS. Release build (`-O3 -march=native`), Apple Accelerate BLAS, single process.
 
-**Workload:** `./build/grad bench 20`
-- *Training:* full model config — d_model 512, 6 layers, 8 heads, seq 96, batch 8, vocab 5000 (~22M params). 3 warmup steps, then 20 timed steps.
+**Historical workload (#0-11):** `./build/grad bench 20`
+- *Training:* full model config — d_model 512, 6 layers, 8 heads, seq 96, batch 8, vocab 5000 (~22M params). 3 warmup steps, then one 20-step timed window.
 - *Generation:* 64 tokens sampled at temperature 0.8 from a short prompt, same model config.
 
-| # | Date | Change | Train steps/s | Train tok/s | Gen tok/s | Peak RSS |
+The v0.1 benchmark protocol uses repeated windows and machine-readable provenance:
+
+```bash
+./build/grad bench --steps 20 --warmup 3 --trials 5 --json grad-benchmark.json
+.venv/bin/python benchmarks/pytorch_baseline.py \
+  --preset small --device cpu --steps 20 --warmup 3 --trials 5 \
+  --json pytorch-cpu-benchmark.json
+```
+
+Run benchmarks on an otherwise idle machine. The JSON includes every trial, the median, exact model configuration, git/build/compiler/system metadata, backend availability, and true peak RSS.
+
+| # | Date | Change | Train steps/s | Train tok/s | Gen tok/s | Reported RSS* |
 |---|------------|-----------------------------------------------|------:|------:|------:|---------:|
 | 0 | 2026-07-18 | Baseline: clean CPU implementation after removing the broken CUDA port (BLAS matmul, everything else naive single-threaded loops) | 1.2 | 934 | 86.7 | 1695 MB |
 | 1 | 2026-07-18 | Batched 3D attention (was: batch flattened into one long sequence) + backward passes rewritten as single BLAS accumulations + embedding-gradient fix | 2.2 | 1668 | 87.6 | 1600 MB |
@@ -23,22 +34,25 @@ One row per optimization iteration, so the performance story is readable at a gl
 | 10 | 2026-07-19 | Overhead round, driven by a live-training profile (see note): 4-lane dropout RNG, strided per-head attention (gather/scatter copies eliminated), uninitialized allocation for fully-written outputs, move semantics for op results (was: one full activation copy per op, three for the logits) | 7.9 | 6074 | 358.9 | 1085 MB |
 | 11 | 2026-07-19 | fp16 GPU operands (fp32 accumulate), opt-in via `TRANSFORMER_METAL_FP16=1`. **Another honest null at this scale** (see note): modern-preset training identical at 0.28 it/s, and lowering the GPU threshold to feed it more matmuls ran 14% *slower* | 7.9 | 6074 | — | 1085 MB |
 
+\* Historical rows recorded resident memory at the end of the benchmark, not a high-water mark. The v0.1 JSON protocol reports `getrusage` peak RSS; the old values remain here unchanged as historical observations.
+
 ## Head-to-head: PyTorch (2026-07-19)
 
-Same machine, same session, runs interleaved minutes apart. The PyTorch side is [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py): identical model configs (parameter parity verified: 22.0M / 69.8M / 68.9M), same optimizer settings, dropout placement, and loss — but written as idiomatic PyTorch (fused QKV projection, `scaled_dot_product_attention`), torch 2.13, not a transliteration of this repo's internals. Training throughput, fp32 unless noted.
+Same machine, same session, runs interleaved minutes apart. The PyTorch side is [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py): the identical 22.0M-parameter config, optimizer settings, dropout placement, and loss, but written as idiomatic PyTorch with fused QKV and `scaled_dot_product_attention`. Training throughput is fp32.
 
 | training config | grad.cpp (CPU) | PyTorch (CPU) | PyTorch (MPS GPU) |
 |---|---:|---:|---:|
 | 22M · d512 L6 · seq 96 · batch 8 | **5,418 tok/s** | 3,685 | 8,112 |
-| 70M GPT-2 · d768 L8 · seq 256 · batch 8×4 | **3,650 tok/s** | 1,489 | 6,135 |
-| 70M Llama-style (RMSNorm/RoPE/SwiGLU) | **3,490 tok/s** | — | 5,099 |
 
 Readings:
 
-- **grad.cpp beats PyTorch-CPU 1.5× at 22M and 2.5× at 70M** — and the lead *grows* with scale: per-op framework overhead is a constant tax PyTorch pays per kernel launch, while this codebase's overhead rounds (#9, #10) cut most of ours away.
-- **PyTorch-MPS leads by 1.5–1.7×.** That gap is the roadmap, and it is a GPU-utilization gap, not a kernel-quality gap: this repo's Metal backend already wins per-matmul at these shapes (#7's sweep) but dispatches synchronously while the CPU idles. Async dispatch overlapping CPU work, then a fused attention kernel, are the levers.
-- **PyTorch's bf16 autocast on MPS measured 4,062 tok/s at 70M — 34% slower than its own fp32.** The same verdict as #11's fp16 experiment: at this scale, precision-conversion overhead eats the bandwidth win. Two independent implementations, one conclusion.
-- Conditions: grad.cpp 70M numbers are medians from training-run CSVs on an otherwise idle machine (medium: fresh warm-start probe; modern: steps 1850–1925 of the live run). The 22M number re-measured this session at 7.1 steps/s vs #11's 7.9 (ambient variance — iCloud was syncing checkpoint backups); both sides ran under the same conditions, so the ratios stand.
+- **grad.cpp beats PyTorch CPU by 1.5× on this config.** Specialization and lower per-op overhead are useful here; this does not imply general PyTorch API or workload superiority.
+- **PyTorch MPS leads by 1.5×.** The current Metal backend dispatches synchronously while the CPU waits. Persistent device execution and fused kernels are the next architectural work.
+- Conditions: the 22M number re-measured at 7.1 steps/s vs optimization round #11's 7.9 due to ambient variance; both sides of the head-to-head ran interleaved under the same conditions.
+
+### Audit correction: withdrawn 70M comparison
+
+The first version of this section reported 3,650 tok/s for the 70M GPT-2 config and 3,490 tok/s for the 69M modern config. A v0.1 source audit found that the cited modern CSV window (steps 1850-1925) has a median around **2,344 tok/s**, consistent with the 0.28 optimizer-step/s observation in note #11, not 3,490 tok/s. The 70M rows and scale-dependent speedup claim are withdrawn until both engines are rerun from the new repeated-trial JSON protocol. Component-level memory and kernel experiments below remain historical engineering notes, not head-to-head framework claims.
 
 ## Notes
 

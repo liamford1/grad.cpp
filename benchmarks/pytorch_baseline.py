@@ -3,8 +3,8 @@
 
 Builds the same model configs as the C++ presets (`small` mirrors what
 `./build/grad bench` times; `medium`/`modern` mirror the training
-presets) in idiomatic PyTorch, and times training the same way: a few
-warmup steps, then a timed window, reporting steps/s and tokens/s.
+presets) in idiomatic PyTorch, and times training the same way: warmup,
+repeated timed windows, and median steps/s and tokens/s.
 
 The point is a fair fight, so the PyTorch side is written the way a
 competent PyTorch user would write it — fused QKV projection,
@@ -26,8 +26,12 @@ checking parity against the C++ side (22.0M / 69.8M / 69.0M).
 """
 
 import argparse
+import datetime
+import json
 import math
+import platform
 import resource
+import statistics
 import sys
 import time
 
@@ -167,7 +171,8 @@ class GPT(nn.Module):
 
 
 def peak_rss_mb() -> float:
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1 << 20)  # bytes on macOS
+    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return rss / (1 << 20) if sys.platform == "darwin" else rss / 1024
 
 
 def main() -> int:
@@ -177,12 +182,18 @@ def main() -> int:
     ap.add_argument("--steps", type=int, default=20,
                     help="timed optimizer steps (default 20, like C++ bench)")
     ap.add_argument("--warmup", type=int, default=3)
+    ap.add_argument("--trials", type=int, default=5,
+                    help="independent timed windows; report their median")
+    ap.add_argument("--json", type=str, default=None,
+                    help="write machine-readable benchmark results")
     ap.add_argument("--amp", choices=["bf16", "fp16"], default=None,
                     help="autocast dtype (C++ side is fp32; this is 'PyTorch at its best')")
     ap.add_argument("--compile", action="store_true", help="torch.compile the model")
     ap.add_argument("--threads", type=int, default=None, help="torch.set_num_threads")
     ap.add_argument("--dry-run", action="store_true", help="build model, print params, exit")
     args = ap.parse_args()
+    if args.steps < 1 or args.warmup < 0 or args.trials < 1:
+        ap.error("steps/trials must be positive and warmup non-negative")
 
     cfg = PRESETS[args.preset]
     if args.threads:
@@ -245,20 +256,62 @@ def main() -> int:
         opt_step(s)
     sync()
 
-    start = time.perf_counter()
-    for s in range(args.steps):
-        opt_step(args.warmup + s)
-    sync()
-    elapsed = time.perf_counter() - start
+    steps_per_s_trials = []
+    tokens_per_s_trials = []
+    print(f"protocol={args.warmup} warmup, {args.trials} trials x {args.steps} steps")
+    for trial in range(args.trials):
+        sync()
+        start = time.perf_counter()
+        for s in range(args.steps):
+            opt_step(args.warmup + trial * args.steps + s)
+        sync()
+        elapsed = time.perf_counter() - start
+        steps_per_s = args.steps / elapsed
+        tokens_per_s = steps_per_s * cfg["accum"] * B * T
+        steps_per_s_trials.append(steps_per_s)
+        tokens_per_s_trials.append(tokens_per_s)
+        print(f"  trial {trial + 1}: {elapsed:.3f}s, {steps_per_s:.2f} steps/s, "
+              f"{tokens_per_s:.0f} tok/s")
 
-    steps_per_s = args.steps / elapsed
-    tokens_per_s = steps_per_s * cfg["accum"] * B * T
-    print(f"{args.steps} optimizer steps ({cfg['accum']} micro-batch each) in {elapsed:.2f}s")
-    print(f"  {steps_per_s:.2f} steps/s")
-    print(f"  {tokens_per_s:.0f} tokens/s")
-    print(f"  peak RSS {peak_rss_mb():.0f} MB"
-          + (f", MPS driver {torch.mps.driver_allocated_memory() / (1 << 20):.0f} MB"
-             if device.type == "mps" else ""))
+    median_steps = statistics.median(steps_per_s_trials)
+    median_tokens = statistics.median(tokens_per_s_trials)
+    rss_mb = peak_rss_mb()
+    mps_mb = (torch.mps.driver_allocated_memory() / (1 << 20)
+              if device.type == "mps" else None)
+    print(f"  median: {median_steps:.2f} steps/s, {median_tokens:.0f} tok/s")
+    print(f"  peak RSS {rss_mb:.0f} MB"
+          + (f", MPS driver {mps_mb:.0f} MB" if mps_mb is not None else ""))
+
+    if args.json:
+        result = {
+            "schema_version": 1,
+            "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "engine": "pytorch",
+            "torch_version": torch.__version__,
+            "python_version": platform.python_version(),
+            "system": platform.platform(),
+            "device": device.type,
+            "amp": args.amp,
+            "compiled": args.compile,
+            "threads": torch.get_num_threads(),
+            "parameters": n_params,
+            "config": cfg,
+            "protocol": {
+                "warmup_steps": args.warmup,
+                "steps_per_trial": args.steps,
+                "trials": args.trials,
+            },
+            "training_steps_per_second": steps_per_s_trials,
+            "training_tokens_per_second": tokens_per_s_trials,
+            "median_training_steps_per_second": median_steps,
+            "median_training_tokens_per_second": median_tokens,
+            "peak_rss_mb": rss_mb,
+            "mps_driver_mb": mps_mb,
+        }
+        with open(args.json, "w", encoding="utf-8") as out:
+            json.dump(result, out, indent=2)
+            out.write("\n")
+        print(f"benchmark JSON: {args.json}")
     return 0
 
 

@@ -1,6 +1,10 @@
 #include "utils/training_utils.h"
 #include <cmath>
 
+#if defined(__APPLE__) || defined(__linux__)
+    #include <sys/resource.h>
+#endif
+
 #ifdef __APPLE__
     #include <mach/mach.h>
 #elif defined(__linux__)
@@ -40,6 +44,20 @@ size_t get_memory_mb() {
     return 0L;
 #else
     return 0L;
+#endif
+}
+
+size_t get_peak_memory_mb() {
+#if defined(__APPLE__) || defined(__linux__)
+    struct rusage usage {};
+    if (getrusage(RUSAGE_SELF, &usage) != 0) return 0;
+#ifdef __APPLE__
+    return static_cast<size_t>(usage.ru_maxrss) / (1024 * 1024);
+#else
+    return static_cast<size_t>(usage.ru_maxrss) / 1024;
+#endif
+#else
+    return 0;
 #endif
 }
 

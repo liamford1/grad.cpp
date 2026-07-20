@@ -49,7 +49,7 @@ cmake -S . -B build -DBUILD_TESTS=ON
 cmake --build build -j
 ```
 
-Three modes:
+Common commands:
 
 ```bash
 # Quick end-to-end smoke test: trains a tiny model for 50 steps (~1 min)
@@ -64,14 +64,22 @@ Three modes:
 # Interactive REPL: type a prompt, watch it stream a continuation
 ./build/grad chat shakespeare_final.bin
 
-# Reproduce the BENCHMARKS.md numbers
-./build/grad bench
+# Reproduce the benchmark with repeated trials and a machine-readable record
+./build/grad bench --steps 20 --trials 5 --json grad-benchmark.json
 
 # Pre-tokenize a corpus for fast, memory-mapped training (see below)
 ./build/grad prepare my_corpus.txt 5000
 ```
 
 The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.
+
+The build also produces an installable `grad::core` CMake target:
+
+```bash
+cmake --install build --prefix ./dist
+```
+
+Downstream CMake projects can use `find_package(grad CONFIG REQUIRED)` and link `grad::core` after adding `dist` to `CMAKE_PREFIX_PATH`.
 
 ## Training on your own corpus
 
@@ -84,7 +92,7 @@ Any plain-text file works. For anything beyond toy size, pre-tokenize it once:
 
 `prepare` trains a BPE tokenizer on the corpus (sampling the first 32MB for merge learning on large corpora — frequencies converge long before that) and writes the encoded tokens as binary files (uint16 per token, 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM — the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
 
-Two model presets are built in:
+Three model presets are built in:
 
 | preset | params | config | intended for |
 |---|---|---|---|
@@ -124,17 +132,15 @@ A resumed or warm-started run reseeds the data loader (by step position and chec
 
 ## Performance
 
-Training throughput vs PyTorch 2.13 on the same machine (M2 Pro, fp32). The PyTorch side ([`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py)) builds the identical model configs — parameter counts match — written as idiomatic PyTorch with fused QKV and `scaled_dot_product_attention`:
+Training throughput for the 22M benchmark config vs PyTorch 2.13 on the same M2 Pro (fp32). The PyTorch side ([`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py)) builds the identical model with idiomatic fused QKV and `scaled_dot_product_attention`:
 
 | training config | grad.cpp (CPU) | PyTorch (CPU) | PyTorch (MPS GPU) |
 |---|---:|---:|---:|
 | 22M · d512 L6 · seq 96 | **5,418 tok/s** | 3,685 | 8,112 |
-| 70M GPT-2 · d768 L8 · seq 256 | **3,650 tok/s** | 1,489 | 6,135 |
-| 70M Llama-style (RoPE/SwiGLU) | **3,490 tok/s** | — | 5,099 |
 
-On CPU, grad.cpp outruns PyTorch by 1.5× at 22M and 2.5× at 70M — the lead grows with scale. PyTorch's Metal backend is 1.5–1.7× ahead, and that gap is the roadmap: asynchronous GPU dispatch that overlaps CPU work, then a fused attention kernel. (PyTorch's bf16 autocast on MPS measured *slower* than its own fp32 at this scale — the same null result as this repo's fp16 experiment, BENCHMARKS.md #11.)
+On this specific CPU workload, grad.cpp is 1.5× faster than PyTorch; PyTorch MPS is 1.5× faster than grad.cpp. This is a specialized workload result, not a claim of general framework superiority. The 70M comparison previously shown here was withdrawn after a source-metrics audit found an inconsistent throughput calculation; [BENCHMARKS.md](BENCHMARKS.md) records the correction.
 
-The full optimization history — 1.2 → 7.9 steps/s across 11 measured rounds, including the honest nulls — is in [BENCHMARKS.md](BENCHMARKS.md); `./build/grad bench` reproduces the 22M numbers.
+The full optimization history — 1.2 → 7.9 steps/s across 11 measured rounds, including null results — is in [BENCHMARKS.md](BENCHMARKS.md). Current benchmark commands run repeated trials, report the median, identify dirty builds, record the compiler/system/backend, and optionally write JSON.
 
 ## Tests
 
@@ -146,7 +152,8 @@ The test suite checks the parts that are easiest to get silently wrong:
 
 - **Gradient checking** — analytical gradients from the autograd engine compared against central-difference numerical gradients, for individual ops through full attention blocks
 - **Attention bias, weight tying, dropout** — verification of specific architectural behaviors
-- `tests/integration/sanity_tests.cpp` — end-to-end training runs that must show decreasing loss
+- **Integration checks** — tiny-sequence overfitting plus parity between full-sequence and KV-cached inference for both architectures
+- **Hardware-aware results** — Metal parity is reported as skipped, not passed, when no Metal device is exposed
 
 CI runs the full suite plus a training smoke test on macOS and Linux.
 

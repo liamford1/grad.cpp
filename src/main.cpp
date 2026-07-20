@@ -1,4 +1,5 @@
 #include "transformer/gpt_model.h"
+#include "transformer/metal_backend.h"
 #include "transformer/text_gen.h"
 #include "tokenizer/bpe_tokenizer.h"
 #include "data/dataset.h"
@@ -9,12 +10,32 @@
 #include "utils/metrics.h"
 #include "utils/training_utils.h"
 #include <cstdlib>
+#include <algorithm>
+#include <ctime>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <vector>
 #include <string>
 #include <chrono>
+
+#ifndef GRAD_VERSION
+#define GRAD_VERSION "dev"
+#endif
+#ifndef GRAD_GIT_SHA
+#define GRAD_GIT_SHA "unknown"
+#endif
+#ifndef GRAD_BUILD_TYPE
+#define GRAD_BUILD_TYPE "unknown"
+#endif
+#ifndef GRAD_COMPILER
+#define GRAD_COMPILER "unknown"
+#endif
+#ifndef GRAD_SYSTEM
+#define GRAD_SYSTEM "unknown"
+#endif
 
 std::string read_text_file(const std::string& data_path) {
     std::cout << "Reading " << data_path << "..." << std::flush;
@@ -210,14 +231,93 @@ int run_chat(const std::string& checkpoint_path,
     }
 }
 
-// Repeatable performance benchmark: times raw training steps and token
-// generation at the full model config, without writing checkpoints.
-int run_benchmark(int bench_steps) {
+struct BenchmarkOptions {
+    int steps = 20;
+    int warmup = 3;
+    int trials = 5;
+    std::string json_path;
+};
+
+double median(std::vector<double> values) {
+    std::sort(values.begin(), values.end());
+    const size_t mid = values.size() / 2;
+    return values.size() % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2.0;
+}
+
+std::string benchmark_timestamp() {
+    std::time_t now = std::time(nullptr);
+    std::tm utc {};
+#ifdef _WIN32
+    gmtime_s(&utc, &now);
+#else
+    gmtime_r(&now, &utc);
+#endif
+    std::ostringstream out;
+    out << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
+    return out.str();
+}
+
+void write_benchmark_json(const BenchmarkOptions& options,
+                          const std::vector<double>& train_steps_per_s,
+                          const std::vector<double>& train_tokens_per_s,
+                          const std::vector<double>& generation_tokens_per_s,
+                          size_t parameter_count,
+                          size_t peak_memory_mb) {
+    if (options.json_path.empty()) return;
+    std::ofstream out(options.json_path);
+    if (!out) throw std::runtime_error("Cannot write benchmark JSON: " + options.json_path);
+
+    auto array = [&](const std::vector<double>& values) {
+        out << "[";
+        for (size_t i = 0; i < values.size(); ++i) {
+            if (i) out << ", ";
+            out << std::fixed << std::setprecision(6) << values[i];
+        }
+        out << "]";
+    };
+
+    out << "{\n"
+        << "  \"schema_version\": 1,\n"
+        << "  \"timestamp_utc\": \"" << benchmark_timestamp() << "\",\n"
+        << "  \"engine\": \"grad.cpp\",\n"
+        << "  \"version\": \"" << GRAD_VERSION << "\",\n"
+        << "  \"git_sha\": \"" << GRAD_GIT_SHA << "\",\n"
+        << "  \"build_type\": \"" << GRAD_BUILD_TYPE << "\",\n"
+        << "  \"compiler\": \"" << GRAD_COMPILER << "\",\n"
+        << "  \"system\": \"" << GRAD_SYSTEM << "\",\n"
+        << "  \"metal_available\": " << (metalgpu::available() ? "true" : "false") << ",\n"
+        << "  \"metal_fp16\": " << (metalgpu::fp16_active() ? "true" : "false") << ",\n"
+        << "  \"parameters\": " << parameter_count << ",\n"
+        << "  \"config\": {\"vocab\": 5000, \"d_model\": 512, "
+           "\"layers\": 6, \"heads\": 8, \"sequence\": 96, \"batch\": 8},\n"
+        << "  \"protocol\": {\"warmup_steps\": " << options.warmup
+        << ", \"steps_per_trial\": " << options.steps
+        << ", \"trials\": " << options.trials << "},\n"
+        << "  \"training_steps_per_second\": ";
+    array(train_steps_per_s);
+    out << ",\n  \"training_tokens_per_second\": ";
+    array(train_tokens_per_s);
+    out << ",\n  \"generation_tokens_per_second\": ";
+    array(generation_tokens_per_s);
+    out << ",\n"
+        << "  \"median_training_steps_per_second\": " << median(train_steps_per_s) << ",\n"
+        << "  \"median_training_tokens_per_second\": " << median(train_tokens_per_s) << ",\n"
+        << "  \"median_generation_tokens_per_second\": " << median(generation_tokens_per_s) << ",\n"
+        << "  \"peak_rss_mb\": " << peak_memory_mb << "\n"
+        << "}\n";
+    if (!out.good()) throw std::runtime_error("Failed while writing benchmark JSON: " + options.json_path);
+}
+
+// Repeatable performance benchmark: initialization and tokenization stay
+// outside the timed region; each reported number is the median of trials.
+int run_benchmark(const BenchmarkOptions& options) {
     std::cout << "\nTransformer Benchmark\n" << std::endl;
 
     try {
         const int vocab_size = 5000;
-        const int warmup_steps = 3;
+        if (options.steps < 1 || options.warmup < 0 || options.trials < 1) {
+            throw std::invalid_argument("bench steps/trials must be positive and warmup non-negative");
+        }
 
         BPETokenizer tokenizer(vocab_size);
         std::string text = read_text_file("data/shakespeare.txt");
@@ -229,6 +329,8 @@ int run_benchmark(int bench_steps) {
 
         GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.1f);
         auto params = model.getAllParameters();
+        size_t parameter_count = 0;
+        for (const auto& param : params) parameter_count += param->getData().numel();
         AdamOptimizer optimizer(params, 3e-4f, 0.9f, 0.999f, 1e-8f, 0.0f);
 
         auto dataset = std::make_shared<TextDataset>(tokens, seq_length);
@@ -237,7 +339,7 @@ int run_benchmark(int bench_steps) {
         utils::print_section("Training throughput");
         std::cout << "Config: d_model=" << d_model << " layers=" << num_layers
                   << " heads=" << num_heads << " seq=" << seq_length
-                  << " batch=" << batch_size << std::endl;
+                  << " batch=" << batch_size << " params=" << parameter_count << std::endl;
 
         auto run_step = [&]() {
             if (!loader.has_next()) loader.reset();
@@ -253,32 +355,59 @@ int run_benchmark(int bench_steps) {
             optimizer.step();
         };
 
-        for (int i = 0; i < warmup_steps; i++) run_step();
+        std::cout << "Protocol: " << options.warmup << " warmup, " << options.trials
+                  << " trials x " << options.steps << " steps\n"
+                  << "Build: grad.cpp " << GRAD_VERSION << " (" << GRAD_GIT_SHA << "), "
+                  << GRAD_BUILD_TYPE << ", " << GRAD_COMPILER << std::endl;
 
-        auto start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < bench_steps; i++) run_step();
-        auto end = std::chrono::high_resolution_clock::now();
-        double train_s = std::chrono::duration<double>(end - start).count();
+        for (int i = 0; i < options.warmup; i++) run_step();
 
-        double steps_per_s = bench_steps / train_s;
-        double tokens_per_s = steps_per_s * batch_size * seq_length;
-        std::cout << bench_steps << " steps in " << train_s << "s" << std::endl;
-        std::cout << "  " << steps_per_s << " steps/s" << std::endl;
-        std::cout << "  " << tokens_per_s << " tokens/s" << std::endl;
+        std::vector<double> train_steps_per_s;
+        std::vector<double> train_tokens_per_s;
+        for (int trial = 0; trial < options.trials; ++trial) {
+            auto start = std::chrono::steady_clock::now();
+            for (int i = 0; i < options.steps; i++) run_step();
+            auto end = std::chrono::steady_clock::now();
+            double train_s = std::chrono::duration<double>(end - start).count();
+            double steps_per_s = options.steps / train_s;
+            double tokens_per_s = steps_per_s * batch_size * seq_length;
+            train_steps_per_s.push_back(steps_per_s);
+            train_tokens_per_s.push_back(tokens_per_s);
+            std::cout << "  trial " << (trial + 1) << ": " << std::fixed << std::setprecision(3)
+                      << train_s << "s, " << std::setprecision(2) << steps_per_s
+                      << " steps/s, " << std::setprecision(0) << tokens_per_s << " tok/s"
+                      << std::endl;
+        }
+        std::cout << "  median: " << std::fixed << std::setprecision(2)
+                  << median(train_steps_per_s) << " steps/s, " << std::setprecision(0)
+                  << median(train_tokens_per_s) << " tok/s" << std::endl;
 
         utils::print_section("Generation throughput");
         const int gen_tokens = 64;
         TextGen generator(model, &tokenizer);
         auto prompt = tokenizer.encode("ROMEO:\n");
 
-        start = std::chrono::high_resolution_clock::now();
-        generator.generate_sample(prompt, 0.8f, gen_tokens);
-        end = std::chrono::high_resolution_clock::now();
-        double gen_s = std::chrono::duration<double>(end - start).count();
-        std::cout << gen_tokens << " tokens in " << gen_s << "s ("
-                  << (gen_tokens / gen_s) << " tok/s)" << std::endl;
+        std::vector<double> generation_tokens_per_s;
+        for (int trial = 0; trial < options.trials; ++trial) {
+            auto start = std::chrono::steady_clock::now();
+            generator.generate_sample(prompt, 0.8f, gen_tokens);
+            auto end = std::chrono::steady_clock::now();
+            double gen_s = std::chrono::duration<double>(end - start).count();
+            double tokens_per_s = gen_tokens / gen_s;
+            generation_tokens_per_s.push_back(tokens_per_s);
+            std::cout << "  trial " << (trial + 1) << ": " << std::fixed << std::setprecision(1)
+                      << tokens_per_s << " tok/s" << std::endl;
+        }
+        std::cout << "  median: " << std::fixed << std::setprecision(1)
+                  << median(generation_tokens_per_s) << " tok/s" << std::endl;
 
-        std::cout << "\nPeak memory: " << utils::get_memory_mb() << " MB" << std::endl;
+        size_t peak_memory_mb = utils::get_peak_memory_mb();
+        std::cout << "\nPeak RSS: " << peak_memory_mb << " MB" << std::endl;
+        write_benchmark_json(options, train_steps_per_s, train_tokens_per_s,
+                             generation_tokens_per_s, parameter_count, peak_memory_mb);
+        if (!options.json_path.empty()) {
+            std::cout << "Benchmark JSON: " << options.json_path << std::endl;
+        }
         return 0;
 
     } catch (const std::exception& e) {
@@ -622,8 +751,31 @@ int main(int argc, char* argv[]) {
         return run_generation(checkpoint, prompt, corpus, vocab);
     }
     if (mode == "bench") {
-        int steps = (argc > 2) ? std::atoi(argv[2]) : 20;
-        return run_benchmark(steps);
+        BenchmarkOptions options;
+        bool positional_steps_seen = false;
+        for (int i = 2; i < argc; ++i) {
+            std::string arg = argv[i];
+            auto require_value = [&](const char* flag) -> std::string {
+                if (++i >= argc) throw std::invalid_argument(std::string("Missing value for ") + flag);
+                return argv[i];
+            };
+            try {
+                if (arg == "--steps") options.steps = std::stoi(require_value("--steps"));
+                else if (arg == "--warmup") options.warmup = std::stoi(require_value("--warmup"));
+                else if (arg == "--trials") options.trials = std::stoi(require_value("--trials"));
+                else if (arg == "--json") options.json_path = require_value("--json");
+                else if (!positional_steps_seen && !arg.empty() && arg[0] != '-') {
+                    options.steps = std::stoi(arg);
+                    positional_steps_seen = true;
+                } else {
+                    throw std::invalid_argument("Unknown bench argument: " + arg);
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Benchmark argument error: " << e.what() << std::endl;
+                return 1;
+            }
+        }
+        return run_benchmark(options);
     }
     if (mode == "watch") {
         // Argument is a run prefix ("tinystories_modern"), a metrics path,
@@ -664,7 +816,8 @@ int main(int argc, char* argv[]) {
               << "  train-fast [corpus.txt] [ckpt.bin|resume]   tiny config for a quick smoke test\n"
               << "  generate [ckpt] [prompt] [corpus] [vocab]   sample from a saved checkpoint\n"
               << "  chat [ckpt] [corpus] [vocab]                interactive prompt/continue REPL\n"
-              << "  bench [steps]                        measure training and generation speed\n"
+              << "  bench [steps] [--warmup N] [--trials N] [--json path]\n"
+              << "                                      benchmark with repeated median trials\n"
               << "  watch [run-prefix]                   live terminal dashboard for a training\n"
               << "      run (loss curves, val track, throughput); defaults to the most recent\n"
               << "      run in this directory - open it in a second terminal while training\n";

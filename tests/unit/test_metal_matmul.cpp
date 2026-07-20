@@ -94,8 +94,8 @@ int main() {
     std::printf("=== METAL MATMUL VS CPU BLAS ===\n");
 
     if (!metalgpu::available()) {
-        std::printf("No Metal device available - skipping (this is a pass).\n");
-        return 0;
+        std::printf("No Metal device available - skipping.\n");
+        return 77;
     }
     std::printf("Operand precision: %s\n", metalgpu::fp16_active() ? "fp16" : "fp32");
 
