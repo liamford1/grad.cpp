@@ -496,6 +496,7 @@ struct Preset {
     int d_model, num_layers, num_heads;
     int max_len, seq_length, batch_size, grad_accum;
     float learning_rate;
+    float dropout;
     int warmup_steps, num_steps;
     int checkpoint_interval, eval_interval;
     int max_eval_batches;  // 0 = evaluate the whole val set
@@ -506,12 +507,19 @@ struct Preset {
 // corpus, val perplexity bottoms around step 6000 and rises after (a 22M
 // model memorizes a corpus that small). 8000 steps lets the cosine
 // schedule finish near the minimum instead of training 8x past it.
+//
+// Dropout is per preset because it answers a per-corpus question. small
+// repeats its 254K-token corpus many times over and memorizes it, so 0.1
+// earns its keep. medium/modern see 327M tokens of a 363M-token corpus,
+// under one epoch: there is no repeated exposure to regularize against,
+// and the mask generation was the largest non-BLAS cost in the profile
+// (13% of compute). Single-epoch pretraining runs use 0 for this reason.
 const Preset kPresets[] = {
-    {"fast",        500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 10,   50,    2500, 25,  0,  false},
-    {"fast-modern", 500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 10,   50,    2500, 25,  0,  true},
-    {"small",       5000,  512, 6,  8,  1024, 96,  8, 1,  3e-4f, 500,  8000,  2500, 250, 0,  false},
-    {"medium",      16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 1000, 40000, 4000, 500, 32, false},
-    {"modern",      16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 1000, 40000, 4000, 500, 32, true},
+    {"fast",        500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 0.1f, 10,   50,    2500, 25,  0,  false},
+    {"fast-modern", 500,   128, 2,  4,  1024, 64,  4, 1,  3e-4f, 0.1f, 10,   50,    2500, 25,  0,  true},
+    {"small",       5000,  512, 6,  8,  1024, 96,  8, 1,  3e-4f, 0.1f, 500,  8000,  2500, 250, 0,  false},
+    {"medium",      16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 0.0f, 1000, 40000, 4000, 500, 32, false},
+    {"modern",      16000, 768, 8,  12, 1024, 256, 8, 4,  3e-4f, 0.0f, 1000, 40000, 4000, 500, 32, true},
 };
 
 const Preset* find_preset(const std::string& name) {
@@ -634,7 +642,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         config.batch_size = preset.batch_size;
         config.grad_accum = preset.grad_accum;
         config.learning_rate = preset.learning_rate;
-        config.dropout = 0.1f;
+        config.dropout = preset.dropout;
         config.warmup_steps = preset.warmup_steps;
         config.num_steps = num_steps;
         config.checkpoint_interval = preset.checkpoint_interval;
