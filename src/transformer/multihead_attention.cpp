@@ -232,9 +232,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
             output->setBackwardFn([self_input, self_Q, self_K, self_V, self_Wq, self_Wk, self_Wv, self_Wo,
                                    self_bq, self_bk, self_bv, self_bo,
-                                   self_concat, output, self_num_heads,
+                                   self_concat, output_weak = std::weak_ptr<Variable>(output),
+                                   self_num_heads,
                                    self_d_model, seq_len, head_size, causal_mask, scale_factor]() {
-                if (!output->hasGrad()) return;
+                auto output = output_weak.lock();
+                if (!output || !output->hasGrad()) return;
                 self_Wq->ensureGrad(); self_Wk->ensureGrad();
                 self_Wv->ensureGrad(); self_Wo->ensureGrad();
                 self_bq->ensureGrad(); self_bk->ensureGrad();
