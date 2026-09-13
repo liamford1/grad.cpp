@@ -31,3 +31,7 @@ __pycache__/
 # Downloaded/derived corpora (only the small Shakespeare corpus is tracked)
 data/tinystories*
 data/ts_slice*
+
+# Supervisor runtime state (train_supervised.sh): per-run log and single-instance lock
+*_supervisor.log
+.*.lock/
