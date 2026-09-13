@@ -7,13 +7,13 @@ presets) in idiomatic PyTorch, and times training the same way: warmup,
 repeated timed windows, and median steps/s and tokens/s.
 
 The point is a fair fight, so the PyTorch side is written the way a
-competent PyTorch user would write it — fused QKV projection,
-F.scaled_dot_product_attention, optional torch.compile and autocast —
+competent PyTorch user would write it: fused QKV projection,
+F.scaled_dot_product_attention, optional torch.compile and autocast,
 not a transliteration of the C++ internals. Architecture, parameter
 count, optimizer settings, dropout placement, and loss match the C++
 implementation exactly.
 
-Take numbers on an idle machine (no training run in the background —
+Take numbers on an idle machine (no training run in the background,
 the C++ numbers in BENCHMARKS.md are measured that way too):
 
   .venv/bin/python benchmarks/pytorch_baseline.py --preset small  --device cpu
@@ -51,7 +51,7 @@ PRESETS = {
 
 DROPOUT = 0.1
 GRAD_CLIP = 5.0
-LR = 3e-4  # Adam, betas (0.9, 0.999), eps 1e-8, wd 0 — same as C++ bench mode
+LR = 3e-4  # Adam, betas (0.9, 0.999), eps 1e-8, wd 0, same as C++ bench mode
 
 
 def swiglu_hidden(d_model: int) -> int:
