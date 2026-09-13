@@ -30,8 +30,8 @@ private:
 public:
     DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle = true, unsigned int seed = 42);
     
-    bool has_next() const;
-    Batch next_batch();
+    [[nodiscard]] bool has_next() const;
+    [[nodiscard]] Batch next_batch();
     void reset();
     
     size_t num_batches() const {

@@ -1,5 +1,4 @@
-#ifndef BPE_TOKENIZER_H
-#define BPE_TOKENIZER_H
+#pragma once
 
 #include <vector>
 #include <string>
@@ -8,7 +7,11 @@
 
 struct PairHash {
     size_t operator()(const std::pair<std::string, std::string>& p) const {
-        return std::hash<std::string>()(p.first) ^ (std::hash<std::string>()(p.second) << 1);
+        // hash_combine (Boost / N3876): mixes both halves so (a,b) and
+        // (b,a) no longer collide and equal halves no longer cancel.
+        const size_t h1 = std::hash<std::string>{}(p.first);
+        const size_t h2 = std::hash<std::string>{}(p.second);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
     }
 };
 
@@ -38,7 +41,7 @@ class BPETokenizer {
 
         std::unordered_map<std::pair<std::string, std::string>, int, PairHash> countPairs(const std::vector<std::vector<std::string>>& word_tokens);
     public:
-        BPETokenizer(int vocab_size);
+        explicit BPETokenizer(int vocab_size);
         void train(const std::string& training_text);
         std::vector<int> encode(const std::string& text);
         std::string decode(const std::vector<int>& tokens) const;
@@ -49,5 +52,3 @@ class BPETokenizer {
         int getCurrentVocabSize() const;
         int getVocabSize() const;
 };
-
-#endif

@@ -3,9 +3,11 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdlib>
+#include <exception>
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 // A minimal persistent thread pool exposing one primitive:
@@ -22,6 +24,11 @@
 //
 // Callers must ensure different indices touch disjoint data: the pool does
 // no synchronization beyond the completion barrier at the end of each call.
+//
+// An exception thrown by fn on any thread is captured, the remaining chunks
+// are abandoned, and it is rethrown on the calling thread once every worker
+// has returned - so a throw inside a parallel body behaves like a throw from
+// a plain loop rather than taking the process down with std::terminate.
 class ThreadPool {
 public:
     static ThreadPool& instance() {
@@ -58,6 +65,7 @@ public:
             std::lock_guard<std::mutex> lk(wake_mutex_);
             job_id_++;
             workers_done_ = 0;
+            first_error_ = nullptr;
         }
         wake_cv_.notify_all();
 
@@ -66,6 +74,9 @@ public:
         std::unique_lock<std::mutex> lk(wake_mutex_);
         done_cv_.wait(lk, [this] { return workers_done_ == num_threads_ - 1; });
         body_ = nullptr;
+        if (first_error_) {
+            std::rethrow_exception(std::exchange(first_error_, nullptr));
+        }
     }
 
     ~ThreadPool() {
@@ -117,7 +128,14 @@ private:
             if (begin >= total_) break;
             size_t end = begin + chunk_size_;
             if (end > total_) end = total_;
-            (*fn)(begin, end);
+            try {
+                (*fn)(begin, end);
+            } catch (...) {
+                std::lock_guard<std::mutex> lk(wake_mutex_);
+                if (!first_error_) first_error_ = std::current_exception();
+                // Drain the range so every thread exits its loop promptly.
+                next_chunk_.store(total_, std::memory_order_relaxed);
+            }
         }
     }
 
@@ -131,6 +149,7 @@ private:
     uint64_t job_id_ = 0;
     int workers_done_ = 0;
     bool shutdown_ = false;
+    std::exception_ptr first_error_;  // guarded by wake_mutex_
 
     const std::function<void(size_t, size_t)>* body_ = nullptr;
     std::atomic<size_t> next_chunk_{0};

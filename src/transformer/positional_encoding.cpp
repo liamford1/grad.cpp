@@ -10,7 +10,6 @@ PositionalEncoding::PositionalEncoding(int max_len, int d_model) :
     position_embeddings = Variable::create(pos_emb, true);
 }
 
-PositionalEncoding::~PositionalEncoding() {}
 
 std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> embeddings) const {
     const Tensor& emb_tensor = embeddings->getData();

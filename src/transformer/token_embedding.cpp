@@ -12,7 +12,6 @@ TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
     embedding_table = Variable::create(table, true);
 }
 
-TokenEmbedding::~TokenEmbedding() {}
 
 // Accepts token IDs in any of three layouts, all contiguous row-major:
 //   (batch, seq, 1) 3D -> (batch, seq, d_model)

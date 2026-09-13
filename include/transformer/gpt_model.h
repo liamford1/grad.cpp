@@ -40,9 +40,9 @@ class GPTModel {
                  float dropout_rate = 0.1f, GPTArch arch = GPTArch::GPT2);
         ~GPTModel() = default;
 
-        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> token_ids, bool training = false) const;
+        [[nodiscard]] std::shared_ptr<Variable> forward(std::shared_ptr<Variable> token_ids, bool training = false) const;
 
-        std::vector<std::shared_ptr<Variable>> getAllParameters() const;
+        [[nodiscard]] std::vector<std::shared_ptr<Variable>> getAllParameters() const;
 
         int getVocabSize() const { return vocab_size; }
         int getDModel() const { return d_model; }
@@ -59,8 +59,8 @@ class GPTModel {
         // quiet suppresses the success print - used for the periodic
         // resume-state writes, which would otherwise log a .tmp filename
         // every eval interval.
-        bool save(const std::string& filepath, bool quiet = false) const;
-        static GPTModel load(const std::string& filepath);
+        [[nodiscard]] bool save(const std::string& filepath, bool quiet = false) const;
+        [[nodiscard]] static GPTModel load(const std::string& filepath);
 
         GPTModel(const GPTModel&) = delete;
         GPTModel& operator=(const GPTModel&) = delete;

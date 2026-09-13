@@ -19,7 +19,6 @@ LayerNorm::LayerNorm(int d_model, bool rms) :
     beta = Variable::create(beta_tensor, true);
 }
 
-LayerNorm::~LayerNorm() {}
 
 // Rows are contiguous whether the input is 2D (rows, d) or 3D
 // (batch, seq, d), so both cases are one loop over batch*rows.

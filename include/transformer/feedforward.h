@@ -24,7 +24,7 @@ class FeedForward {
             return ((8 * d_model / 3) + 63) / 64 * 64;
         }
     public:
-        FeedForward(int d_model, int hidden_dim = -1, float dropout_rate = 0.1f,
+        explicit FeedForward(int d_model, int hidden_dim = -1, float dropout_rate = 0.1f,
                     bool gated = false);
         std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
 

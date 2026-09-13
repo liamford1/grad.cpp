@@ -18,7 +18,7 @@ public:
     // Appends token_id to the context and returns the logits for the next
     // token: vocab_size floats, valid until the next step() call.
     // Throws if the context would exceed the model's max_len.
-    const float* step(int token_id);
+    [[nodiscard]] const float* step(int token_id);
 
     int position() const { return pos_; }
     int capacity() const { return max_len_; }

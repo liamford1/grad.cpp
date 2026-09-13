@@ -35,7 +35,7 @@ private:
 
 class TrainingMetrics {
 public:
-    TrainingMetrics(int total_steps);
+    explicit TrainingMetrics(int total_steps);
 
     // start_step > 0 marks a resumed run: speed and ETA are computed from
     // steps done this session, not from step numbers (a run resumed at

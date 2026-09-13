@@ -115,7 +115,6 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout
     b_o = Variable::create(bo_tensor, true);
 }
 
-MultiHeadAttention::~MultiHeadAttention() {}
 
 std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> input, bool training) const {
     const Tensor& input_tensor = input->getData();

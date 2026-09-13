@@ -18,6 +18,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <optional>
 #include <string>
 #include <chrono>
 
@@ -560,14 +561,14 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         const bool resume = (init_arg == "resume");
         const std::string warm_start_path = resume ? "" : init_arg;
 
-        int resume_next_step = -1;
+        std::optional<int> resume_next_step;
         if (resume) {
             resume_next_step = training::peek_resume_step(prefix + "_resume_state.bin");
-            if (resume_next_step < 0) {
+            if (!resume_next_step) {
                 throw std::runtime_error("No resume state found ("
                     + prefix + "_resume_state.bin); start a run first");
             }
-            if (resume_next_step >= num_steps) {
+            if (*resume_next_step >= num_steps) {
                 std::cout << "Run already completed all " << num_steps
                           << " steps; nothing to resume." << std::endl;
                 return 0;
@@ -687,7 +688,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         // their step position, warm starts by the checkpoint path.
         unsigned int loader_seed = 42;
         if (resume) {
-            loader_seed = 42u + static_cast<unsigned int>(resume_next_step);
+            loader_seed = 42u + static_cast<unsigned int>(*resume_next_step);
         } else if (!warm_start_path.empty()) {
             loader_seed = static_cast<unsigned int>(
                 std::hash<std::string>{}(warm_start_path));

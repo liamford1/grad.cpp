@@ -31,15 +31,15 @@ void request_stop(int) {
 
 }  // namespace
 
-int peek_resume_step(const std::string& state_path) {
+std::optional<int> peek_resume_step(const std::string& state_path) {
     std::ifstream in(state_path, std::ios::binary);
-    if (!in.is_open()) return -1;
+    if (!in.is_open()) return std::nullopt;
     uint32_t magic, version;
     int32_t next_step;
     in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
     in.read(reinterpret_cast<char*>(&version), sizeof(version));
     in.read(reinterpret_cast<char*>(&next_step), sizeof(next_step));
-    if (!in.good() || magic != kResumeMagic || version != kResumeVersion) return -1;
+    if (!in.good() || magic != kResumeMagic || version != kResumeVersion) return std::nullopt;
     return next_step;
 }
 
@@ -317,7 +317,9 @@ void Trainer::training_step(int step) {
 }
 
 void Trainer::save_checkpoint(const std::string& path) {
-    model_.save(path);
+    if (!model_.save(path)) {
+        std::cerr << "Warning: failed to write checkpoint " << path << std::endl;
+    }
 }
 
 } // namespace training

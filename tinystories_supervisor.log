@@ -1,0 +1,38 @@
+[2026-09-13T20:59:30Z] supervising: preset=medium prefix=tinystories corpus=data/tinystories.txt
+[2026-09-13T20:59:30Z] attempt 1/500 (init='scratch')
+
+Transformer Training (medium)
+
+
+=== Loading Data (pre-tokenized) ===
+Mapped 363068075 train / 19108847 val tokens from data/tinystories.txt.16000.train.bin
+
+=== Initializing Model ===
+  Initializing 8 transformer layers...
+    Layer [0/8] 0.0%         Layer [1/8] 12.5%         Layer [2/8] 25.0%         Layer [3/8] 37.5%         Layer [4/8] 50.0%         Layer [5/8] 62.5%         Layer [6/8] 75.0%         Layer [7/8] 87.5%         Layer [8/8] 100.0%     
+Model initialized (222ms)
+Parameters: 69.7789M
+Created DataLoader with 45383478 batches of size 8
+Created DataLoader with 9331 batches of size 8
+Dataset: 363067819 train / 74643 val sequences
+
+
+============================================================
+  Training Started
+============================================================
+
+Config:
+  Vocab size: 16000
+  Model: d_model=768 layers=8 heads=12
+  Sequence length: 256
+  Batch size: 8 x 4 accum (effective 32)
+  Learning rate: 0.0003
+  Training steps: 40000
+
+      Step           Loss      Grad Norm
+----------------------------------------
+         0       9.708923         3.2809  (4s) [1191MB]
+[1/40000] 0.0% loss=9.7089 speed=0.20it/s eta=3331m35s     [11/40000] 0.0% loss=9.5485 speed=0.26it/s eta=2543m47s     [21/40000] 0.1% loss=9.2708 speed=0.26it/s eta=2537m22s     [31/40000] 0.1% loss=9.0627 speed=0.27it/s eta=2470m17s     [41/40000] 0.1% loss=8.9083 speed=0.27it/s eta=2451m51s     [51/40000] 0.1% loss=8.7337 speed=0.27it/s eta=2427m23s     [61/40000] 0.2% loss=8.6203 speed=0.27it/s eta=2454m21s     [71/40000] 0.2% loss=8.4196 speed=0.27it/s eta=2454m49s     [81/40000] 0.2% loss=8.2222 speed=0.27it/s eta=2446m48s     [91/40000] 0.2% loss=8.0035 speed=0.27it/s eta=2447m43s            100       7.803771         2.0661  (372s) [1733MB]
+[101/40000] 0.3% loss=7.8038 speed=0.27it/s eta=2454m55s     [111/40000] 0.3% loss=7.6347 speed=0.27it/s eta=2448m44s     [121/40000] 0.3% loss=7.3448 speed=0.27it/s eta=2465m25s     [131/40000] 0.3% loss=7.1451 speed=0.27it/s eta=2454m7s     [141/40000] 0.4% loss=6.9994 speed=0.27it/s eta=2463m10s     [151/40000] 0.4% loss=6.8815 speed=0.27it/s eta=2462m9s     [161/40000] 0.4% loss=6.8239 speed=0.27it/s eta=2452m56s     [171/40000] 0.4% loss=6.7830 speed=0.27it/s eta=2444m44s     [181/40000] 0.5% loss=6.7016 speed=0.27it/s eta=2444m42s     [191/40000] 0.5% loss=6.6440 speed=0.27it/s eta=2437m39s            200       6.603238         0.4606  (737s) [1742MB]
+[201/40000] 0.5% loss=6.6032 speed=0.27it/s eta=2434m34s     [211/40000] 0.5% loss=6.6572 speed=0.27it/s eta=2428m33s     [221/40000] 0.6% loss=6.6537 speed=0.27it/s eta=2423m3s     [231/40000] 0.6% loss=6.6100 speed=0.27it/s eta=2429m26s     [241/40000] 0.6% loss=6.6517 speed=0.27it/s eta=2424m14s     [251/40000] 0.6% loss=6.5243 speed=0.27it/s eta=2419m25s     [261/40000] 0.7% loss=6.5264 speed=0.27it/s eta=2425m4s     [271/40000] 0.7% loss=6.4278 speed=0.27it/s eta=2425m21s     [281/40000] 0.7% loss=6.4005 speed=0.27it/s eta=2425m35s     [291/40000] 0.7% loss=6.1286 speed=0.27it/s eta=2423m29s            300       6.137378         0.8803  (1100s) [1747MB]
+[301/40000] 0.8% loss=6.1374 speed=0.27it/s eta=2419m18s     

@@ -10,16 +10,16 @@
 
 // Grads stay empty until ensureGrad() - see the header note on lazy
 // gradient allocation.
-Variable::Variable(const Tensor& data, bool requires_grad)
+Variable::Variable(Private, const Tensor& data, bool requires_grad)
     : data(data), requires_grad(requires_grad) {}
 
-Variable::Variable(Tensor&& data, bool requires_grad)
+Variable::Variable(Private, Tensor&& data, bool requires_grad)
     : data(std::move(data)), requires_grad(requires_grad) {}
 
-Variable::Variable(int rows, int cols, bool requires_grad)
+Variable::Variable(Private, int rows, int cols, bool requires_grad)
     : data(rows, cols), requires_grad(requires_grad) {}
 
-Variable::Variable(int batch_size, int rows, int cols, bool requires_grad)
+Variable::Variable(Private, int batch_size, int rows, int cols, bool requires_grad)
     : data(batch_size, rows, cols), requires_grad(requires_grad) {}
 
 void Variable::ensureGrad() {
@@ -31,26 +31,26 @@ void Variable::ensureGrad() {
 }
 
 std::shared_ptr<Variable> Variable::create(const Tensor& data, bool requires_grad) {
-    return std::make_shared<Variable>(data, requires_grad);
+    return std::make_shared<Variable>(Private{}, data, requires_grad);
 }
 
 std::shared_ptr<Variable> Variable::create(Tensor&& data, bool requires_grad) {
-    return std::make_shared<Variable>(std::move(data), requires_grad);
+    return std::make_shared<Variable>(Private{}, std::move(data), requires_grad);
 }
 
 std::shared_ptr<Variable> Variable::create(int rows, int cols, bool requires_grad) {
-    return std::make_shared<Variable>(rows, cols, requires_grad);
+    return std::make_shared<Variable>(Private{}, rows, cols, requires_grad);
 }
 
 std::shared_ptr<Variable> Variable::create(int batch_size, int rows, int cols, bool requires_grad) {
-    return std::make_shared<Variable>(batch_size, rows, cols, requires_grad);
+    return std::make_shared<Variable>(Private{}, batch_size, rows, cols, requires_grad);
 }
 
-std::shared_ptr<Variable> Variable::createOutput(Tensor&& result, bool needs_grad) const {
-    return std::make_shared<Variable>(std::move(result), needs_grad);
+std::shared_ptr<Variable> Variable::createOutput(Tensor&& result, bool needs_grad) {
+    return std::make_shared<Variable>(Private{}, std::move(result), needs_grad);
 }
 
-std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) const {
+std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
     data.assertValid("Variable::matmul(lhs)");
     other->data.assertValid("Variable::matmul(rhs)");
 
@@ -60,9 +60,7 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
     auto output = createOutput(std::move(result), needs_grad);
     
     if (needs_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(
-            std::static_pointer_cast<const Variable>(shared_from_this())
-        );
+        auto self_ptr = shared_from_this();
         
         output->addChild(self_ptr);
         output->addChild(other);
@@ -115,7 +113,7 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) cons
     return output;
 }
 
-std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
+std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
     data.assertValid("Variable::add(lhs)");
     other->data.assertValid("Variable::add(rhs)");
 
@@ -124,9 +122,7 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
     auto output = createOutput(std::move(result), needs_grad);
 
     if (needs_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(
-            std::static_pointer_cast<const Variable>(shared_from_this())
-        );
+        auto self_ptr = shared_from_this();
 
         output->addChild(self_ptr);
         output->addChild(other);
@@ -319,16 +315,14 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) const {
 }
 
 
-std::shared_ptr<Variable> Variable::scale(float factor) const {
+std::shared_ptr<Variable> Variable::scale(float factor) {
     data.assertValid("Variable::scale(x)");
 
     Tensor result = this->data.scale(factor);
     auto output = createOutput(std::move(result), this->requires_grad);
     
     if (this->requires_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(
-            std::static_pointer_cast<const Variable>(shared_from_this())
-        );
+        auto self_ptr = shared_from_this();
         
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, factor, output_weak = std::weak_ptr<Variable>(output)]() {
@@ -344,16 +338,14 @@ std::shared_ptr<Variable> Variable::scale(float factor) const {
     return output;
 }
 
-std::shared_ptr<Variable> Variable::softmax() const {
+std::shared_ptr<Variable> Variable::softmax() {
     data.assertValid("Variable::softmax(x)");
 
     Tensor result = this->data.softmax();
     auto output = createOutput(std::move(result), this->requires_grad);
     
     if (this->requires_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(
-            std::static_pointer_cast<const Variable>(shared_from_this())
-        );
+        auto self_ptr = shared_from_this();
         
         output->addChild(self_ptr);
         // The softmax output needed by backward IS this node's data; the
@@ -420,7 +412,7 @@ std::shared_ptr<Variable> Variable::softmax() const {
     return output;
 }
 
-std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable> targets) const {
+std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable> targets) {
     data.assertValid("Variable::cross_entropy_loss(input)");
     targets->data.assertValid("Variable::cross_entropy_loss(targets)");
     
@@ -451,7 +443,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
         auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
         
         if (output->requires_grad) {
-            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+            auto self_ptr = shared_from_this();
             output->addChild(self_ptr);
             output->addChild(targets);
             output->setBackwardFn([self_ptr, targets, output_weak = std::weak_ptr<Variable>(output)]() {
@@ -510,7 +502,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
         auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
         
         if (output->requires_grad) {
-            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+            auto self_ptr = shared_from_this();
             output->addChild(self_ptr);
             output->addChild(targets);
             
@@ -548,7 +540,7 @@ std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable>
     }
 }
 
-std::shared_ptr<Variable> Variable::gelu() const {
+std::shared_ptr<Variable> Variable::gelu() {
     data.assertValid("Variable::gelu(x)");
 
     // tanh approximation: gelu(x) = 0.5x(1 + tanh(k(x + a*x^3))).
@@ -577,7 +569,7 @@ std::shared_ptr<Variable> Variable::gelu() const {
     auto output = createOutput(std::move(result), this->requires_grad);
 
     if (this->requires_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
             auto output = output_weak.lock();
@@ -613,7 +605,7 @@ std::shared_ptr<Variable> Variable::gelu() const {
     return output;
 }
 
-std::shared_ptr<Variable> Variable::silu() const {
+std::shared_ptr<Variable> Variable::silu() {
     data.assertValid("Variable::silu(x)");
 
     // silu(x) = x * sigmoid(x), with sigmoid computed as 1/(1 + e^-x)
@@ -639,7 +631,7 @@ std::shared_ptr<Variable> Variable::silu() const {
     auto output = createOutput(std::move(result), this->requires_grad);
 
     if (this->requires_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
             auto output = output_weak.lock();
@@ -673,7 +665,7 @@ std::shared_ptr<Variable> Variable::silu() const {
     return output;
 }
 
-std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) const {
+std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) {
     data.assertValid("Variable::mul(lhs)");
     other->data.assertValid("Variable::mul(rhs)");
 
@@ -682,7 +674,7 @@ std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) const {
     auto output = createOutput(std::move(result), needs_grad);
 
     if (needs_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         output->addChild(other);
 
@@ -705,9 +697,9 @@ std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) const {
     return output;
 }
 
-std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) const {
+std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
     if (!training || dropout_rate == 0.0f) {
-        return std::const_pointer_cast<Variable>(shared_from_this());
+        return shared_from_this();
     }
 
     data.assertValid("Variable::dropout(x)");
@@ -722,7 +714,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
     auto output = createOutput(std::move(result), this->requires_grad);
     
     if (this->requires_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         auto mask_ptr = std::make_shared<Tensor>(std::move(mask));
         output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output), mask_ptr]() {
@@ -738,7 +730,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) c
     return output;
 }
 
-std::shared_ptr<Variable> Variable::log_softmax() const {
+std::shared_ptr<Variable> Variable::log_softmax() {
     // Rows are contiguous whether the tensor is 2D or 3D, so both cases are
     // one loop over batch*rows. The exp goes through vec_exp (SIMD).
     const size_t cols = data.getCols();
@@ -777,7 +769,7 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
     auto output = createOutput(std::move(result), this->requires_grad);
 
     if (this->requires_grad) {
-        auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+        auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
 
         output->setBackwardFn([self_ptr, total_rows, cols,
@@ -814,7 +806,7 @@ std::shared_ptr<Variable> Variable::log_softmax() const {
     return output;
 }
 
-std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) const {
+std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) {
     if (!this->data.getIs3D()) {
         float total_loss = 0.0f;
         int n = this->data.getRows();
@@ -835,7 +827,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
         auto output = createOutput(std::move(loss_tensor), this->requires_grad);
         
         if (this->requires_grad) {
-            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+            auto self_ptr = shared_from_this();
             output->addChild(self_ptr);
             output->addChild(targets);
             
@@ -894,7 +886,7 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
         auto output = createOutput(std::move(loss_tensor), this->requires_grad);
         
         if (this->requires_grad) {
-            auto self_ptr = std::const_pointer_cast<Variable>(shared_from_this());
+            auto self_ptr = shared_from_this();
             output->addChild(self_ptr);
             output->addChild(targets);
             
@@ -931,20 +923,18 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
     }
 }
 
-void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) const {
-    if (visited.find(const_cast<Variable*>(this)) != visited.end()) {
+void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) {
+    if (visited.find(this) != visited.end()) {
         return;
     }
     
-    visited.insert(const_cast<Variable*>(this));
+    visited.insert(this);
     
     for (const auto& child : children) {
         child->topologicalSort(sorted, visited);
     }
     
-    sorted.push_back(std::const_pointer_cast<Variable>(
-        std::static_pointer_cast<const Variable>(shared_from_this())
-    ));
+    sorted.push_back(shared_from_this());
 }
 
 void Variable::backward() {

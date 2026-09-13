@@ -42,7 +42,6 @@ endif()
 set(GRAD_CORE_SOURCES
     src/transformer/tensor.cpp
     ${METAL_BACKEND_SRC}
-    src/transformer/attention.cpp
     src/transformer/multihead_attention.cpp
     src/transformer/layer_norm.cpp
     src/transformer/linear.cpp

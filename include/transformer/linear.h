@@ -1,10 +1,9 @@
 #pragma once
-#include "module.h"
 #include "tensor.h"
 #include "variable.h"
 #include <memory>
 
-class Linear : public Module {
+class Linear {
     private:
         std::shared_ptr<Variable> weights;
         std::shared_ptr<Variable> bias;

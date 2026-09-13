@@ -7,13 +7,11 @@ Linear::Linear(int input_dim, int output_dim, bool use_bias) :
     Tensor w_tensor(input_dim, output_dim);
     w_tensor.xavier(input_dim, output_dim);
     weights = Variable::create(w_tensor, true);
-    registerParameter(weights);
 
     if (use_bias) { 
         Tensor b_tensor(1, output_dim);
         b_tensor.fill(0.0f);
         bias = Variable::create(b_tensor, true);
-        registerParameter(bias);
     }
 }
 

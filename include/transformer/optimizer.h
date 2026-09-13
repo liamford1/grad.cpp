@@ -14,46 +14,6 @@ class Optimizer {
         virtual void zero_grad() = 0;
 };
 
-class SGDOptimizer : public Optimizer {
-    private:
-        float learning_rate;
-        std::vector<std::shared_ptr<Variable>> parameters;
-    public:
-        explicit SGDOptimizer(float lr) : learning_rate(lr) {}
-
-        void add_parameter(const std::shared_ptr<Variable>& param) {
-            parameters.push_back(param);
-        }
-
-        void step() override {
-            for (auto& param : parameters) {
-                if (!param->requiresGrad()) continue;
-
-                Tensor& data = param->getData();
-                Tensor& grad = param->getGrad();
-
-                int n = data.numel();  
-                float* dptr = data.raw();
-                float* gptr = grad.raw();
-
-                for (int i = 0; i < n; i++) {
-                    dptr[i] -= learning_rate * gptr[i];
-                }
-            }
-        }
-
-        void zero_grad() override {
-            for (auto& param : parameters) {
-                Tensor& grad = param->getGrad();
-                int n = grad.numel();
-                float* gptr = grad.raw();
-                for (int i = 0; i < n; i++) {
-                    gptr[i] = 0.0f;
-                }
-            }
-        }
-};
-
 // AdamW: weight decay is applied directly to the weights (decoupled from
 // the adaptive gradient scaling), not folded into the gradient as L2. Only
 // weight matrices decay - biases and norm parameters (1-row tensors) are
@@ -77,7 +37,7 @@ class AdamOptimizer : public Optimizer {
 
         float scheduled_lr() const;
     public:
-        AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr = 3e-4, float beta1 = 0.9, float beta2 = 0.999, float epsilon = 1e-8, float weight_decay = 0.01);
+        explicit AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr = 3e-4, float beta1 = 0.9, float beta2 = 0.999, float epsilon = 1e-8, float weight_decay = 0.01);
 
         void step() override;
         void zero_grad() override;
@@ -97,8 +57,8 @@ class AdamOptimizer : public Optimizer {
         // always walks the model in construction order. load_state
         // returns false on any mismatch (count or shape) rather than
         // resuming with misassigned moments.
-        bool save_state(std::ostream& out) const;
-        bool load_state(std::istream& in);
+        [[nodiscard]] bool save_state(std::ostream& out) const;
+        [[nodiscard]] bool load_state(std::istream& in);
         int step_count() const { return step_count_; }
 
         // Linear warmup to base lr, then cosine decay to min_lr at

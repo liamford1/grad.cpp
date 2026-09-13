@@ -7,6 +7,7 @@
 #include "utils/metrics.h"
 #include <string>
 #include <memory>
+#include <optional>
 
 namespace training {
 
@@ -48,19 +49,19 @@ public:
 
     // Returns false when the run was interrupted (SIGINT/SIGTERM): resume
     // state has been saved and the caller should skip end-of-run work.
-    bool train();
+    [[nodiscard]] bool train();
     void save_checkpoint(const std::string& path);
 
     // Mean loss over the whole validation set (forward-only, no dropout).
     // Perplexity is exp of this. Returns -1 if there is no val loader.
-    float evaluate();
+    [[nodiscard]] float evaluate();
 
     // Restores the state written by save_resume_state: optimizer moments,
     // step position, and best val loss. The model weights themselves come
     // from the companion <prefix>_resume_model.bin, which the caller loads
     // before constructing the Trainer. Returns false if the state file is
     // missing or does not match the current model.
-    bool load_resume_state();
+    [[nodiscard]] bool load_resume_state();
 
 private:
     TrainingConfig config_;
@@ -83,7 +84,7 @@ private:
 
 // Reads just the step position from a resume state file, so callers can
 // derive run parameters (e.g. the data loader seed) before the Trainer
-// exists. Returns -1 if the file is missing or not a resume state file.
-int peek_resume_step(const std::string& state_path);
+// exists. Empty if the file is missing or is not a resume state file.
+[[nodiscard]] std::optional<int> peek_resume_step(const std::string& state_path);
 
 } // namespace training

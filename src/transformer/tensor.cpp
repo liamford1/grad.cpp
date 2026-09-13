@@ -13,6 +13,7 @@
 #include <utility>
 #include <cassert>
 #include <string>
+#include <type_traits>
 
 namespace {
 
@@ -31,176 +32,108 @@ namespace {
 constexpr size_t kPageBytes = 16384;
 constexpr size_t kAlignThresholdBytes = 256 * 1024;
 
-// The element count decides which allocator was used, so free recomputes
-// the same rule. Tensor dimensions are immutable after construction, which
-// makes this sound.
-float* alloc_floats(size_t n) {
-    const size_t raw_bytes = n * sizeof(float);
-    if (raw_bytes >= kAlignThresholdBytes) {
-        size_t bytes = ((raw_bytes + kPageBytes - 1) / kPageBytes) * kPageBytes;
-        void* p = nullptr;
-        if (posix_memalign(&p, kPageBytes, bytes) != 0) {
-            throw std::bad_alloc();
-        }
-        return static_cast<float*>(p);
+void check_dims(size_t batch_size, size_t rows, size_t cols) {
+    if (rows == 0 || cols == 0 || batch_size == 0) {
+        throw std::invalid_argument("Tensor dimensions must be positive");
     }
-    return new float[n];
-}
-
-void free_floats(float* p, size_t n) {
-    if (!p) return;
-    if (n * sizeof(float) >= kAlignThresholdBytes) {
-        std::free(p);
-    } else {
-        delete[] p;
+    const size_t total = batch_size * rows * cols;
+    if (total > MAX_TENSOR_ELEMENTS) {
+        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
+                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
     }
 }
 
 }  // namespace
 
-Tensor::Tensor() {
-    this->rows = 0;
-    this->cols = 0;
-    this->batch_size = 0;
-    this->is_3d = false;
-    this->data = nullptr;
+// std::vector<Tensor> and the optimizer's moment maps only move (rather
+// than deep-copy) on reallocation if these hold; assert them instead of
+// trusting that a future member never quietly breaks them.
+static_assert(std::is_nothrow_default_constructible_v<Tensor>);
+static_assert(std::is_nothrow_move_constructible_v<Tensor>);
+static_assert(std::is_nothrow_move_assignable_v<Tensor>);
+static_assert(std::is_nothrow_swappable_v<Tensor>);
+
+// The allocator choice is made exactly once, here, and stamped into the
+// deleter that travels with the pointer. There is no second copy of the
+// size rule for the release path to drift away from.
+Tensor::Storage Tensor::alloc_floats(size_t n) {
+    const size_t raw_bytes = n * sizeof(float);
+    if (raw_bytes >= kAlignThresholdBytes) {
+        const size_t bytes = ((raw_bytes + kPageBytes - 1) / kPageBytes) * kPageBytes;
+        void* p = nullptr;
+        if (posix_memalign(&p, kPageBytes, bytes) != 0) {
+            throw std::bad_alloc();
+        }
+        return Storage(static_cast<float*>(p), Deleter{true});
+    }
+    return Storage(new float[n], Deleter{false});
 }
 
-Tensor::Tensor(size_t rows, size_t cols) {
-    if (rows == 0 || cols == 0) {
-        throw std::invalid_argument("Tensor dimensions must be positive");
-    }
-
-    this->rows = rows;
-    this->cols = cols;
-    this->batch_size = 1;
-    this->is_3d = false;
-
-    size_t total = batch_size * rows * cols;
-
-    if (total > MAX_TENSOR_ELEMENTS) {
-        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
-                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
-    }
-
-    this->data = alloc_floats(total);
-    std::memset(this->data, 0, total * sizeof(float));
+Tensor::Tensor(size_t rows, size_t cols)
+    : rows(rows), cols(cols), batch_size(1), is_3d(false) {
+    check_dims(1, rows, cols);
+    data = alloc_floats(numel());
+    std::memset(data.get(), 0, numel() * sizeof(float));
 }
 
-Tensor::Tensor(size_t batch_size, size_t rows, size_t cols) {
-    if (rows == 0 || cols == 0 || batch_size == 0) {
-        throw std::invalid_argument("Tensor dimensions must be positive");
-    }
-
-    this->rows = rows;
-    this->cols = cols;
-    this->batch_size = batch_size;
-    this->is_3d = true;
-
-    size_t total = batch_size * rows * cols;
-
-    if (total > MAX_TENSOR_ELEMENTS) {
-        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
-                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
-    }
-
-    this->data = alloc_floats(total);
-    std::memset(this->data, 0, total * sizeof(float));
+Tensor::Tensor(size_t batch_size, size_t rows, size_t cols)
+    : rows(rows), cols(cols), batch_size(batch_size), is_3d(true) {
+    check_dims(batch_size, rows, cols);
+    data = alloc_floats(numel());
+    std::memset(data.get(), 0, numel() * sizeof(float));
 }
 
 Tensor Tensor::uninitialized(size_t rows, size_t cols) {
-    if (rows == 0 || cols == 0) {
-        throw std::invalid_argument("Tensor dimensions must be positive");
-    }
+    check_dims(1, rows, cols);
     Tensor t;
-    t.rows = rows;
-    t.cols = cols;
-    t.batch_size = 1;
-    t.is_3d = false;
-    size_t total = rows * cols;
-    if (total > MAX_TENSOR_ELEMENTS) {
-        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
-                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
-    }
-    t.data = alloc_floats(total);
+    t.rows = rows; t.cols = cols; t.batch_size = 1; t.is_3d = false;
+    t.data = alloc_floats(t.numel());
     return t;
 }
 
 Tensor Tensor::uninitialized(size_t batch_size, size_t rows, size_t cols) {
-    if (rows == 0 || cols == 0 || batch_size == 0) {
-        throw std::invalid_argument("Tensor dimensions must be positive");
-    }
+    check_dims(batch_size, rows, cols);
     Tensor t;
-    t.rows = rows;
-    t.cols = cols;
-    t.batch_size = batch_size;
-    t.is_3d = true;
-    size_t total = batch_size * rows * cols;
-    if (total > MAX_TENSOR_ELEMENTS) {
-        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
-                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
-    }
-    t.data = alloc_floats(total);
+    t.rows = rows; t.cols = cols; t.batch_size = batch_size; t.is_3d = true;
+    t.data = alloc_floats(t.numel());
     return t;
 }
 
-Tensor::Tensor(const Tensor& other) {
-    this->rows = other.rows;
-    this->cols = other.cols;
-    this->batch_size = other.batch_size;
-    this->is_3d = other.is_3d;
-
-    size_t total = batch_size * rows * cols;
-
-    if (total > MAX_TENSOR_ELEMENTS) {
-        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
-                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
+Tensor::Tensor(const Tensor& other)
+    : rows(other.rows), cols(other.cols), batch_size(other.batch_size), is_3d(other.is_3d) {
+    if (const size_t total = numel(); total > 0) {
+        data = alloc_floats(total);
+        std::memcpy(data.get(), other.data.get(), total * sizeof(float));
     }
-
-    this->data = alloc_floats(total);
-    std::memcpy(this->data, other.data, total * sizeof(float));
 }
 
-Tensor::Tensor(Tensor&& other) noexcept :
-    data(other.data),
-    rows(other.rows),
-    cols(other.cols),
-    batch_size(other.batch_size),
-    is_3d(other.is_3d) 
-{
-    other.data = nullptr;
-    other.rows = other.cols = other.batch_size = 0;
-    other.is_3d = false;
-}
+Tensor::Tensor(Tensor&& other) noexcept
+    : data(std::move(other.data)),
+      rows(std::exchange(other.rows, 0)),
+      cols(std::exchange(other.cols, 0)),
+      batch_size(std::exchange(other.batch_size, 0)),
+      is_3d(std::exchange(other.is_3d, false)) {}
 
+// Copy-and-swap: the copy may throw, but *this is not touched until it has
+// succeeded, so assignment is strongly exception-safe. The temporary takes
+// the old storage with it when it dies.
 Tensor& Tensor::operator=(const Tensor& other) {
-    if (this == &other) return *this;
-    Tensor tmp(other);
-    
-    std::swap(data, tmp.data);
-    std::swap(rows, tmp.rows);
-    std::swap(cols, tmp.cols);
-    std::swap(batch_size, tmp.batch_size);
-    std::swap(is_3d, tmp.is_3d);
+    if (this != &other) Tensor(other).swap(*this);
     return *this;
 }
 
 Tensor& Tensor::operator=(Tensor&& other) noexcept {
-    if (this == &other) return *this;
-    free_floats(data, batch_size * rows * cols);
-    data = other.data;
-    rows = other.rows;
-    cols = other.cols;
-    batch_size = other.batch_size;
-    is_3d = other.is_3d;
-    other.data = nullptr;
-    other.rows = other.cols = other.batch_size = 0;
-    other.is_3d = false;
+    if (this != &other) Tensor(std::move(other)).swap(*this);
     return *this;
 }
 
-Tensor::~Tensor() {
-    free_floats(data, batch_size * rows * cols);
+void Tensor::swap(Tensor& other) noexcept {
+    using std::swap;
+    swap(data, other.data);
+    swap(rows, other.rows);
+    swap(cols, other.cols);
+    swap(batch_size, other.batch_size);
+    swap(is_3d, other.is_3d);
 }
 
 //2D Tensor methods
@@ -233,24 +166,6 @@ void Tensor::setValue(size_t batch, size_t row, size_t col, float value) {
     data[batch * rows * cols + row * cols + col] = value;
 }
 
-void Tensor::display() const {
-    assertValid("display(this)");
-    if (is_3d) {
-        std::cout << "[display] showing batch 0 of " << batch_size << "\n";
-        for (size_t i = 0; i < rows; ++i) {
-            for (size_t j = 0; j < cols; ++j) {
-                std::cout << getValue(0, i, j) << " ";
-            }
-            std::cout << "\n";
-        }
-        return;
-    }
-    for (size_t i = 0; i < rows; ++i) {
-        for (size_t j = 0; j < cols; ++j) std::cout << getValue(i, j) << " ";
-        std::cout << "\n";
-    }
-}
-
 Tensor Tensor::matmul(const Tensor& other) const {
     assertValid("matmul(lhs)");
     other.assertValid("matmul(rhs)");
@@ -269,10 +184,10 @@ Tensor Tensor::matmul(const Tensor& other) const {
         cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                     M, N, K,
                     1.0f,
-                    this->data, K,
-                    other.data, N,
+                    this->data.get(), K,
+                    other.data.get(), N,
                     0.0f,
-                    result.data, N);
+                    result.data.get(), N);
 
         return result;
         
@@ -289,14 +204,14 @@ Tensor Tensor::matmul(const Tensor& other) const {
         Tensor result = Tensor::uninitialized(batch_count, M, N);
 
         for (size_t b = 0; b < batch_count; ++b) {
-            const float* A = this->data + b * M * K;
-            float* C = result.data + b * M * N;
+            const float* A = this->data.get() + b * M * K;
+            float* C = result.data.get() + b * M * N;
             
             cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                         M, N, K,
                         1.0f,
                         A, K,
-                        other.data, N,
+                        other.data.get(), N,
                         0.0f,
                         C, N);
         }
@@ -316,9 +231,9 @@ Tensor Tensor::matmul(const Tensor& other) const {
         Tensor result = Tensor::uninitialized(batch_count, M, N);
 
         for (size_t b = 0; b < batch_count; ++b) {
-            const float* A = this->data + b * M * K;
-            const float* B = other.data + b * K * N;
-            float* C = result.data + b * M * N;
+            const float* A = this->data.get() + b * M * K;
+            const float* B = other.data.get() + b * K * N;
+            float* C = result.data.get() + b * M * N;
             
             cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                         M, N, K,
@@ -350,8 +265,8 @@ Tensor Tensor::add(const Tensor& other) const {
         const size_t C = std::max(cols, other.cols);
         Tensor result = Tensor::uninitialized(R, C);
 
-        const float* A = this->data;
-        const float* B = other.data;
+        const float* A = this->data.get();
+        const float* B = other.data.get();
         float* Out = result.raw();
 
         const bool a_row_bcast = (rows == 1);
@@ -462,7 +377,7 @@ Tensor Tensor::subtract(const Tensor& other) const {
         Tensor result = Tensor::uninitialized(this->rows, this->cols);
         const size_t total = this->rows * this->cols;
 
-        blas_vsub(data, other.data, result.data, total);
+        blas_vsub(data.get(), other.data.get(), result.data.get(), total);
         
         return result;
     } else if (this->is_3d && other.is_3d) {
@@ -472,7 +387,7 @@ Tensor Tensor::subtract(const Tensor& other) const {
         Tensor result = Tensor::uninitialized(this->batch_size, this->rows, this->cols);
         const size_t total = this->batch_size * this->rows * this->cols;
 
-        blas_vsub(data, other.data, result.data, total);
+        blas_vsub(data.get(), other.data.get(), result.data.get(), total);
 
         return result;
     } else {
@@ -491,7 +406,7 @@ Tensor Tensor::elementwise(const Tensor& other) const {
         Tensor result = Tensor::uninitialized(this->rows, this->cols);
         const size_t total = this->rows * this->cols;
 
-        blas_vmul(data, other.data, result.data, total);
+        blas_vmul(data.get(), other.data.get(), result.data.get(), total);
         
         return result;
         
@@ -502,7 +417,7 @@ Tensor Tensor::elementwise(const Tensor& other) const {
         Tensor result = Tensor::uninitialized(this->batch_size, this->rows, this->cols);
         const size_t total = this->batch_size * this->rows * this->cols;
 
-        blas_vmul(data, other.data, result.data, total);
+        blas_vmul(data.get(), other.data.get(), result.data.get(), total);
         return result;
     } else {
         throw std::invalid_argument("Cannot perform elementwise multiply on tensors with different dimensionalities");
@@ -601,7 +516,7 @@ Tensor Tensor::softmax() const {
 void Tensor::fill(float value) {
     assertValid("fill(this)");
     const size_t total = batch_size * rows * cols;
-    blas_vfill(value, data, total);
+    blas_vfill(value, data.get(), total);
 }
 
 Tensor Tensor::scale(float scaler) const {
@@ -634,7 +549,7 @@ Tensor Tensor::reshape(size_t new_rows, size_t new_cols) const {
     }
     Tensor result = Tensor::uninitialized(new_rows, new_cols);
     float* out = result.raw();
-    const float* in = data;
+    const float* in = data.get();
     for (size_t i = 0; i < new_rows * new_cols; ++i) out[i] = in[i];
     return result;
 }
@@ -656,57 +571,6 @@ Tensor Tensor::slice(size_t start_row, size_t num_rows, size_t start_col, size_t
     }
 
     return result;
-}
-
-Tensor Tensor::concatenate(const Tensor& other, int axis) const {
-    assertValid("concatenate(lhs)");
-    other.assertValid("concatenate(rhs)");
-    if (is_3d || other.is_3d) {
-        throw std::invalid_argument("concatenate: 3D not supported yet");
-    }
-    if (axis == 0 && this->cols != other.cols) {
-        throw std::invalid_argument("Columns do not match for axis=0 concatenation");
-    } 
-    if (axis == 1 && this->rows != other.rows) {
-        throw std::invalid_argument("Rows do not match for axis=1 concatenation");
-    }
-    if (axis != 0 && axis != 1) {
-        throw std::invalid_argument("Invalid axis: must be 0 or 1");
-    }
-
-    if (axis == 0) {
-        Tensor result(this->rows + other.rows, this->cols);
-
-        for (size_t i = 0; i < this->rows; i++) {
-            for (size_t j = 0; j < this->cols; j++) {
-                result.setValue(i, j, this->getValue(i, j));
-            }
-        }
-
-        for (size_t i = 0; i < other.rows; i++) {
-            for (size_t j = 0; j < other.cols; j++) {
-                result.setValue(this->rows + i, j, other.getValue(i, j));
-            }
-        }
-
-        return result;
-    } else {
-        Tensor result(this->rows, this->cols + other.cols);
-
-        for (size_t i = 0; i < this->rows; i++) {
-            for (size_t j = 0; j < this->cols; j++) {
-                result.setValue(i, j, this->getValue(i, j));
-            }
-        }
-
-        for (size_t i = 0; i < other.rows; i++) {
-            for (size_t j = 0; j < other.cols; j++) {
-                result.setValue(i, this->cols + j, other.getValue(i, j));
-            }
-        }
-
-        return result;
-    }
 }
 
 void Tensor::xavier(size_t fan_in, size_t fan_out) {
@@ -754,8 +618,8 @@ Tensor Tensor::create_causal_mask_batch(size_t batch_size, size_t seq_len) {
 }
 
 void Tensor::assertValid(const std::string& context) const {
-    if (data == nullptr) {
-        throw std::runtime_error("Tensor error [" + context + "]: data pointer is null");
+    if (!data.get()) {
+        throw std::runtime_error("Tensor error [" + context + "]: data.get() pointer is null");
     }
     if (rows == 0 || cols == 0) {
         throw std::runtime_error("Tensor error [" + context + "]: invalid shape (" +
@@ -770,7 +634,7 @@ void Tensor::assertValid(const std::string& context) const {
 void Tensor::scale_inplace(float scalar) {
     assertValid("scale_inplace");
     const size_t total = batch_size * rows * cols;
-    blas_vsmul(data, scalar, data, total);
+    blas_vsmul(data.get(), scalar, data.get(), total);
 }
 
 void Tensor::add_inplace(const Tensor& other) {
@@ -784,7 +648,7 @@ void Tensor::add_inplace(const Tensor& other) {
 
         const size_t total = rows * cols;
         const float* other_data = other.raw();
-        blas_vadd(data, other_data, data, total);
+        blas_vadd(data.get(), other_data, data.get(), total);
 
     } else if (is_3d && other.is_3d) {
         if (batch_size != other.batch_size || rows != other.rows || cols != other.cols) {
@@ -793,7 +657,7 @@ void Tensor::add_inplace(const Tensor& other) {
 
         const size_t total = batch_size * rows * cols;
         const float* other_data = other.raw();
-        blas_vadd(data, other_data, data, total);
+        blas_vadd(data.get(), other_data, data.get(), total);
 
     } else {
         throw std::invalid_argument("Cannot add 2D and 3D tensors in-place");
@@ -810,11 +674,11 @@ void Tensor::multiply_inplace(const Tensor& other) {
 
     const size_t total = (is_3d ? batch_size : 1) * rows * cols;
     const float* other_data = other.raw();
-    blas_vmul(data, other_data, data, total);
+    blas_vmul(data.get(), other_data, data.get(), total);
 
 }
 
 void Tensor::zero() {
     const size_t total = (is_3d ? batch_size : 1) * rows * cols;
-    std::memset(data, 0, total * sizeof(float));
+    std::memset(data.get(), 0, total * sizeof(float));
 }

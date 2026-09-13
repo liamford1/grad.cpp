@@ -11,7 +11,6 @@ class PositionalEncoding {
         std::shared_ptr<Variable> position_embeddings;
     public:
         PositionalEncoding(int max_len, int d_model);
-        ~PositionalEncoding();
 
         std::shared_ptr<Variable> forward(std::shared_ptr<Variable> embeddings) const;
 

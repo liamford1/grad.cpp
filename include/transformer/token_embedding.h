@@ -11,7 +11,6 @@ class TokenEmbedding {
         std::shared_ptr<Variable> embedding_table;
     public:
         TokenEmbedding(int vocab_size, int d_model);
-        ~TokenEmbedding();
         std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input_ids) const;
 
         int getVocabSize() const { return vocab_size; }

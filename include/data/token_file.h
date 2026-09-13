@@ -18,7 +18,7 @@ inline void write(const std::string& path, const std::vector<int>& tokens, int v
     write(path, tokens.data(), tokens.size(), vocab_size);
 }
 
-bool exists(const std::string& path);
+[[nodiscard]] bool exists(const std::string& path);
 
 }  // namespace tokenfile
 

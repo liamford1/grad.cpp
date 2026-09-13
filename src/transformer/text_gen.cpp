@@ -131,7 +131,7 @@ std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
 int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top_k, float top_p) {
     Tensor scaled_logits = logits.scale(1.0f / temperature);
 
-    if (top_k > 0 && top_k < (int)scaled_logits.getCols()) {
+    if (top_k > 0 && top_k < static_cast<int>(scaled_logits.getCols())) {
         std::vector<std::pair<float, int>> logit_pairs;
         for (size_t i = 0; i < scaled_logits.getCols(); i++) {
             logit_pairs.push_back({scaled_logits.getValue(0, i), i});

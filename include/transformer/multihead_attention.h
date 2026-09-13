@@ -26,7 +26,6 @@ class MultiHeadAttention {
     public:
         MultiHeadAttention(int d_model, int num_heads, float dropout_rate = 0.1f,
                            bool rope = false);
-        ~MultiHeadAttention();
         bool usesRope() const { return rope_; }
         std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
 

@@ -79,8 +79,8 @@ void TrainingMetrics::print_progress(int step, float loss) {
     auto now = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
     float progress = 100.0f * (step + 1) / total_steps_;
-    float steps_per_sec = (step + 1 - start_step_) / (float)(elapsed + 1);
-    int eta_sec = (int)((total_steps_ - step - 1) / (steps_per_sec + 0.0001f));
+    float steps_per_sec = (step + 1 - start_step_) / static_cast<float>(elapsed + 1);
+    int eta_sec = static_cast<int>((total_steps_ - step - 1) / (steps_per_sec + 0.0001f));
 
     std::cout << "\r[" << (step + 1) << "/" << total_steps_ << "] "
               << std::fixed << std::setprecision(1) << progress << "% "
@@ -98,7 +98,7 @@ void TrainingMetrics::print_summary() {
     std::cout << "Total time: " << total_time << "s" << std::endl;
     std::cout << "Average loss: " << std::fixed << std::setprecision(4) << avg_loss << std::endl;
     std::cout << "Speed: " << std::fixed << std::setprecision(2)
-              << ((total_steps_ - start_step_) / (float)total_time) << " steps/s" << std::endl;
+              << ((total_steps_ - start_step_) / static_cast<float>(total_time)) << " steps/s" << std::endl;
 }
 
 void print_header(const std::string& title) {

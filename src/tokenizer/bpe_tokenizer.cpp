@@ -96,8 +96,8 @@ void BPETokenizer::train(const std::string& training_text) {
             auto now = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
             float progress = 100.0f * merge_count / total_merges;
-            float merges_per_sec = merge_count / (float)(elapsed + 1);
-            int eta_sec = (int)((total_merges - merge_count) / (merges_per_sec + 0.001f));
+            float merges_per_sec = merge_count / static_cast<float>(elapsed + 1);
+            int eta_sec = static_cast<int>((total_merges - merge_count) / (merges_per_sec + 0.001f));
 
             std::cout << "\r  Training tokenizer: [" << merge_count << "/" << total_merges << "] "
                       << std::fixed << std::setprecision(1) << progress << "% "

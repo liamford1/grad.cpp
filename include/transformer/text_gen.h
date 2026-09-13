@@ -1,5 +1,4 @@
-#ifndef TEXT_GEN_H
-#define TEXT_GEN_H
+#pragma once
 
 #include "tensor.h"
 #include "gpt_model.h"
@@ -29,6 +28,3 @@ class TextGen {
                             float temperature = 1.0f, int max_tokens = 50,
                             float repetition_penalty = 1.2f, int top_k = 0, float top_p = 1.0f);
 };
-
-
-#endif
