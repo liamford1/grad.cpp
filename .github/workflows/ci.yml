@@ -13,7 +13,7 @@ jobs:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install BLAS (Linux)
         if: runner.os == 'Linux'
@@ -37,7 +37,7 @@ jobs:
   sanitizers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install BLAS
         run: sudo apt-get update && sudo apt-get install -y libopenblas-dev

@@ -9,13 +9,23 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# -march=native bakes in the build machine's ISA, so a binary or an installed
+# grad::core built with it will SIGILL on an older CPU. It is on by default
+# because every number in BENCHMARKS.md was measured with it; turn it off
+# (-DGRAD_NATIVE_ARCH=OFF) for anything you intend to ship or distribute.
+option(GRAD_NATIVE_ARCH "Tune the build for this machine's CPU (-march=native)" ON)
+set(GRAD_ARCH_FLAGS "")
+if(GRAD_NATIVE_ARCH AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(GRAD_ARCH_FLAGS "-march=native")
+endif()
+
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -DDEBUG")
 if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops -fno-math-errno")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wall -Wextra ${GRAD_ARCH_FLAGS} -funroll-loops -fno-math-errno")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops -fno-math-errno -flto")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wall -Wextra ${GRAD_ARCH_FLAGS} -funroll-loops -fno-math-errno -flto")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Oi /Ot /GL /DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Oi /Ot /GL /DNDEBUG /W4")
 endif()
 
 if(APPLE)

@@ -23,7 +23,7 @@ Not going to win a Pulitzer, but every gradient that trained it was derived and 
 - **Training stack** — AdamW (decoupled weight decay, matrices only) with linear warmup + cosine LR decay, gradient clipping, dropout, a shuffling DataLoader, checkpoint save/load, live loss/grad-norm metrics, and held-out validation perplexity every 250 steps
 - **Text generation** — KV-cached incremental decoding (`inference.h`), greedy or sampled with temperature, top-k, top-p, and a repetition penalty
 
-About 5,400 lines of implementation and 1,200 lines of tests.
+About 8,300 lines of implementation and 1,500 lines of tests.
 
 ## Model architecture
 
@@ -38,7 +38,7 @@ The trained checkpoint uses a standard GPT-style decoder-only configuration:
 | FFN width | 2048 (GELU) |
 | Vocabulary | 5,000 BPE tokens |
 | Context length | 96 tokens at training time (1,024 max) |
-| Optimizer | Adam, lr 3e-4, 500 warmup steps, grad clip 5.0 |
+| Optimizer | AdamW, lr 3e-4, 500 warmup steps, grad clip 5.0 |
 
 ## Build and run
 
@@ -80,6 +80,8 @@ cmake --install build --prefix ./dist
 ```
 
 Downstream CMake projects can use `find_package(grad CONFIG REQUIRED)` and link `grad::core` after adding `dist` to `CMAKE_PREFIX_PATH`.
+
+Release builds are tuned for the build machine with `-march=native` (that is how every number in [BENCHMARKS.md](BENCHMARKS.md) was measured). For a binary you intend to run on another CPU, configure with `-DGRAD_NATIVE_ARCH=OFF`.
 
 ## Training on your own corpus
 
