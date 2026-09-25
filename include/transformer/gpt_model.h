@@ -8,8 +8,6 @@
 
 #include <vector>
 #include <memory>
-#include <fstream>
-#include <iostream>
 #include <string>
 
 // GPT2: LayerNorm, learned absolute positional embeddings, GELU FFN with

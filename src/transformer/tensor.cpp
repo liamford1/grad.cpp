@@ -2,7 +2,6 @@
 #include "transformer/blas_wrapper.h"
 #include "transformer/parallel.h"
 
-#include <iostream>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>

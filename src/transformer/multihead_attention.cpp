@@ -118,20 +118,11 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout
     W_v = Variable::create(wv_tensor, true);
     W_o = Variable::create(wo_tensor, true);
 
-    Tensor bq_tensor(1, d_model);
-    Tensor bk_tensor(1, d_model);
-    Tensor bv_tensor(1, d_model);
-    Tensor bo_tensor(1, d_model);
-
-    bq_tensor.fill(0.0f);
-    bk_tensor.fill(0.0f);
-    bv_tensor.fill(0.0f);
-    bo_tensor.fill(0.0f);
-
-    b_q = Variable::create(bq_tensor, true);
-    b_k = Variable::create(bk_tensor, true);
-    b_v = Variable::create(bv_tensor, true);
-    b_o = Variable::create(bo_tensor, true);
+    // Biases start at the constructor's zeros.
+    b_q = Variable::create(Tensor(1, d_model), true);
+    b_k = Variable::create(Tensor(1, d_model), true);
+    b_v = Variable::create(Tensor(1, d_model), true);
+    b_o = Variable::create(Tensor(1, d_model), true);
 }
 
 
@@ -163,8 +154,8 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     // batch*heads independent (seq, head_size) problems, executed in
     // parallel with per-task scratch. The softmax output (and the
     // attention-dropout mask, when active) are cached for the backward
-    // pass, which both avoids recomputing them and makes the dropout
-    // gradient exact instead of ignoring the mask.
+    // pass, so it recomputes nothing and differentiates through exactly
+    // the mask the forward applied.
     const int batch_size = input_tensor.getBatchSize();
     const int seq_len = input_tensor.getRows();
     const int head_size = d_model / num_heads;

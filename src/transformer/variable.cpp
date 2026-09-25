@@ -145,7 +145,6 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
                 }
 
                 Tensor out(R, C);
-                out.fill(0.0f);
                 const int GR = g.getRows();
                 const int GC = g.getCols();
                 
@@ -188,7 +187,6 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
 
             auto reduce3Dfrom2D = [](const Tensor& g3, int R, int C, bool br, bool bc) -> Tensor {
                 Tensor out(R, C);
-                out.fill(0.0f);
                 const int B  = g3.getBatchSize();
                 const int GR = g3.getRows();
                 const int GC = g3.getCols();

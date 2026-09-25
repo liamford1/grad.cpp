@@ -4,7 +4,6 @@
 #include "transformer/feedforward.h"
 #include "transformer/activations.h"
 #include "transformer/transformer_block.h"
-#include <iostream>
 
 TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim,
                                    float dropout_rate, bool modern) :

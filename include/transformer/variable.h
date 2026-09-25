@@ -49,7 +49,7 @@ class Variable : public std::enable_shared_from_this<Variable> {
         // Gradients are allocated lazily: construction leaves grad empty,
         // and backward functions call ensureGrad() (allocate + zero) before
         // their first write. The forward pass therefore holds only
-        // activations - half the graph's former footprint - and a node
+        // activations, about half of what eager grads would cost, and a node
         // whose grad was never touched signals "no gradient flowed here"
         // (its backward fn returns early). No-op when the Variable does
         // not require grad or the grad already exists.
@@ -58,9 +58,7 @@ class Variable : public std::enable_shared_from_this<Variable> {
         // Ops are non-const: each registers *this as a child of its output
         // and hands the backward closure a mutable handle to it, so the
         // graph edge is a real mutation of this node's ownership, not a
-        // read. (An earlier version declared them const and laundered
-        // the pointer back through const_pointer_cast, which lied about
-        // exactly this.)
+        // read.
         [[nodiscard]] std::shared_ptr<Variable> matmul(std::shared_ptr<Variable> other);
         [[nodiscard]] std::shared_ptr<Variable> add(std::shared_ptr<Variable> other);
         [[nodiscard]] std::shared_ptr<Variable> scale(float factor);
