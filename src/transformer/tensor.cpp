@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <new>
 #include <random>
 #include <stdexcept>
@@ -41,6 +42,21 @@ void check_dims(size_t batch_size, size_t rows, size_t cols) {
         throw std::overflow_error("Tensor too large: " + std::to_string(total) +
                                   " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
     }
+}
+
+// Parameter initialization stream. Guarded because nothing stops two
+// threads from constructing models at once; xavier runs once per parameter
+// at construction, so the lock is never on a hot path. A function-local
+// static so a Tensor built during another file's static initialization
+// still finds it constructed.
+struct InitStream {
+    std::mutex mutex;
+    std::mt19937 gen;  // default-constructed: std::mt19937's fixed seed 5489
+};
+
+InitStream& init_stream() {
+    static InitStream s;
+    return s;
 }
 
 }  // namespace
@@ -575,16 +591,23 @@ Tensor Tensor::slice(size_t start_row, size_t num_rows, size_t start_col, size_t
 
 void Tensor::xavier(size_t fan_in, size_t fan_out) {
     assertValid("xavier(target)");
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
 
     float limit = std::sqrt(6.0f / (fan_in + fan_out));
     std::uniform_real_distribution<float> dis(-limit, limit);
 
-    size_t total = batch_size * rows * cols;
+    InitStream& stream = init_stream();
+    std::lock_guard<std::mutex> lk(stream.mutex);
+    const size_t total = numel();
     for (size_t i = 0; i < total; i++) {
-        data[i] = dis(gen);
+        data[i] = dis(stream.gen);
     }
+}
+
+void Tensor::set_init_seed(uint64_t seed) {
+    InitStream& stream = init_stream();
+    std::lock_guard<std::mutex> lk(stream.mutex);
+    // mt19937 takes a 32-bit seed; fold the high half in rather than drop it.
+    stream.gen.seed(static_cast<std::mt19937::result_type>(seed ^ (seed >> 32)));
 }
 
 Tensor Tensor::create_causal_mask(size_t seq_len) {

@@ -454,6 +454,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         float* concat_data = concat->raw();
         float* attn_data_all = attn_cache->data();
         float* mask_all = drop_mask ? drop_mask->data() : nullptr;
+        // One dropout stream per (batch, head) unit, reserved before the
+        // parallel loop so each unit's mask is fixed by its index rather
+        // than by which thread reached the RNG first.
+        const uint64_t stream_base = use_attn_dropout
+            ? reserve_dropout_streams(static_cast<uint64_t>(batch_size) * H) : 0;
 
         // Heads are column slices of the (rows, d_model) projections; BLAS
         // takes them as strided views (lda = d_model), so no per-head
@@ -507,7 +512,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                 if (use_attn_dropout) {
                     float* m = mask_all + unit * S * S;
                     fill_dropout_mask(m, static_cast<size_t>(S) * S,
-                                      dropout_rate, keep_scale);
+                                      dropout_rate, keep_scale, stream_base + unit);
                     dropped = Tensor::uninitialized(S, S);
                     float* w = dropped.raw();
                     for (int i = 0; i < S * S; i++) {

@@ -162,6 +162,7 @@ if(BUILD_TESTS)
     add_grad_test(test_weight_tying tests/unit/test_weight_tying.cpp WeightTyingVerification)
     add_grad_test(test_attention_gradients tests/unit/test_attention_gradients.cpp AttentionGradientChecking)
     add_grad_test(test_subtract tests/unit/test_subtract.cpp TensorSubtraction)
+    add_grad_test(test_core_regressions tests/unit/test_core_regressions.cpp CoreRegressions)
 
     if(MSVC)
         target_compile_options(test_subtract PRIVATE /UNDEBUG)
