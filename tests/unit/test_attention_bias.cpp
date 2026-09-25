@@ -1,7 +1,9 @@
+#include <cmath>
 #include <iostream>
 #include "transformer/multihead_attention.h"
 #include "transformer/variable.h"
 #include "transformer/tensor.h"
+#include "../test_util.h"
 
 int main() {
     std::cout << "=== MultiHeadAttention Bias Verification ===" << std::endl;
@@ -13,12 +15,21 @@ int main() {
     
     auto params = attn.parameters();
     std::cout << "Total parameters: " << params.size() << " (expected: 8)" << std::endl;
+    CHECK(params.size() == 8);
     
     std::cout << "\nParameter shapes:" << std::endl;
     std::cout << "W_q: " << attn.getW_q()->getData().getRows() << "x" << attn.getW_q()->getData().getCols() << std::endl;
     std::cout << "W_k: " << attn.getW_k()->getData().getRows() << "x" << attn.getW_k()->getData().getCols() << std::endl;
     std::cout << "W_v: " << attn.getW_v()->getData().getRows() << "x" << attn.getW_v()->getData().getCols() << std::endl;
     std::cout << "W_o: " << attn.getW_o()->getData().getRows() << "x" << attn.getW_o()->getData().getCols() << std::endl;
+
+    const size_t d = static_cast<size_t>(d_model);
+    for (const auto& w : {attn.getW_q(), attn.getW_k(), attn.getW_v(), attn.getW_o()}) {
+        CHECK(w->getData().getRows() == d && w->getData().getCols() == d);
+    }
+    for (const auto& b : {attn.getB_q(), attn.getB_k(), attn.getB_v(), attn.getB_o()}) {
+        CHECK(b != nullptr && b->getData().numel() == d);
+    }
     
     auto input = Variable::create(Tensor(10, d_model), true);
     for (size_t i = 0; i < input->getData().numel(); i++) {
@@ -31,8 +42,23 @@ int main() {
     std::cout << "Input shape: (" << input->getData().getRows() << ", " << input->getData().getCols() << ")" << std::endl;
     std::cout << "Output shape: (" << output->getData().getRows() << ", " << output->getData().getCols() << ")" << std::endl;
     
-    std::cout << "\n✓ Bias terms added successfully!" << std::endl;
-    std::cout << "✓ Forward pass works with bias!" << std::endl;
-    
-    return 0;
+    CHECK(output->getData().getRows() == 10);
+    CHECK(output->getData().getCols() == d);
+
+    // The bias must reach the output: with zero input every projection is
+    // bias-only, and with b_v = 0 the attended values are zero, so the
+    // output is exactly b_o on every row.
+    auto zeros = Variable::create(Tensor(10, d_model), false);
+    for (size_t i = 0; i < d; i++) {
+        attn.getB_v()->getData().raw()[i] = 0.0f;
+        attn.getB_o()->getData().raw()[i] = 0.5f;
+    }
+    auto biased = attn.forward(zeros, false);
+    bool bias_reaches_output = true;
+    for (size_t i = 0; i < biased->getData().numel(); i++) {
+        if (std::abs(biased->getData().raw()[i] - 0.5f) > 1e-5f) bias_reaches_output = false;
+    }
+    CHECK(bias_reaches_output);
+
+    return test_util::exit_code();
 }

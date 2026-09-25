@@ -4,15 +4,13 @@
 
 A from-scratch autograd engine and the GPT-style language models it trains, implemented in C++17: tensors, reverse-mode automatic differentiation with hand-derived backward passes, multi-head attention, AdamW, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
 
-A ~22M-parameter model trained with this code on the Tiny Shakespeare corpus produces text like this (sampled at temperature 0.8; line breaks added at speaker changes for readability, text otherwise unedited):
+The largest model trained with it so far is a **70M-parameter GPT trained from scratch on TinyStories**: 40,000 optimizer steps, 328M tokens and 37 hours on a single M2 Pro. It reaches a held-out loss of 1.693 (perplexity 5.44). Here is a sample from it, at temperature 0.8, the first draw, unedited:
 
-> **JULIET:** me, will find in my heart my friends, And I say it is be a rap o' not the gravly up the sacance show it be lot, But thou wastenes.
-> **ISABELLA:** Not him all women With common.
-> **CORIOLANUS:** Thou didst: Then say forth to helps; but I know and honour of's lave you; whether sir!
-> **LUCIO:** She that hath made buriedion.
-> **QUEEN ELIZABETH:** Falive a cup in A matchly wash'd by his soul!
+> **Once upon a time, there was a little dragon who** wanted to meet someone else. He flew around and saw an old lady. She smiled at the dragon, and said, "Hello! My name is Frank." The big queen thought this sounded like fun, so she asked Frank if he would join her for some fun. Then, they became best friends. They went on adventures together, learning to be as friendly with one another.
 
-Every gradient that trained it was derived and implemented by hand.
+Every gradient that trained it was derived and implemented by hand. The [run report](docs/runs/2026-09-tinystories-70m/README.md) has the full configuration, loss curves, a checkpoint evaluation, more samples, and an audit finding: the trainer's in-loop validation read 0.25 nats optimistic, and that has since been fixed.
+
+![70M TinyStories training run](docs/runs/2026-09-tinystories-70m/loss.svg)
 
 ## What's inside
 
@@ -20,25 +18,26 @@ Every gradient that trained it was derived and implemented by hand.
 - **Reverse-mode autograd** (`variable.h/cpp`): dynamic computation graph with hand-derived backward passes for every op, validated against numerical gradients
 - **Transformer components**: multi-head self-attention with causal masking, pre-LayerNorm residual blocks, GELU feed-forward, learned positional embeddings, and weight tying between the token embedding and the output projection
 - **BPE tokenizer**: byte-pair encoding trained on the corpus, with caching so repeat runs start instantly
-- **Training stack**: AdamW (decoupled weight decay, matrices only) with linear warmup + cosine LR decay, gradient clipping, dropout, a shuffling DataLoader, checkpoint save/load, live loss/grad-norm metrics, and held-out validation perplexity every 250 steps
-- **Text generation**: KV-cached incremental decoding (`inference.h`), greedy or sampled with temperature, top-k, top-p, and a repetition penalty
+- **Training stack**: AdamW (decoupled weight decay, matrices only) with linear warmup + cosine LR decay, gradient accumulation, gradient clipping, seeded dropout (each mask is a pure function of seed, stream and position, so it does not depend on thread scheduling), a memory-mapped data pipeline for multi-GB corpora, resumable validated checkpoints written atomically, per-step metrics, and held-out validation during training
+- **Text generation and evaluation**: KV-cached incremental decoding (`inference.h`), greedy or sampled with temperature, top-k, top-p, and a repetition penalty; `grad eval` scores a checkpoint on sampled or full held-out data
+- **Tooling**: a live terminal training dashboard (`grad watch`), a self-resuming training supervisor, a benchmark harness with repeated trials and JSON provenance, and a PyTorch baseline for head-to-head comparisons
 
-About 8,300 lines of implementation and 1,500 lines of tests.
+About 8,300 lines of implementation and 2,300 lines of tests.
 
-## Model architecture
+## Trained models
 
-The trained checkpoint uses a standard GPT-style decoder-only configuration:
+| | Tiny Shakespeare | TinyStories |
+|---|---|---|
+| Preset | `small` | `medium` |
+| Parameters | ~22M | 69.8M |
+| Shape | d512 × 6 layers × 8 heads, FFN 2048 | d768 × 8 layers × 12 heads, FFN 3072 |
+| Vocabulary | 5,000 BPE tokens | 16,000 BPE tokens |
+| Context at training time | 96 tokens | 256 tokens |
+| Batch | 8 sequences | 8 × 4 accumulation = 32 sequences |
+| Optimizer | AdamW, lr 3e-4, 500 warmup, dropout 0.1 | AdamW, lr 3e-4, 1,000 warmup, no dropout |
+| Held-out loss | n/a | 1.693 (perplexity 5.44), [run report](docs/runs/2026-09-tinystories-70m/README.md) |
 
-| | |
-|---|---|
-| Parameters | ~22M |
-| Layers | 6 (pre-LN residual blocks) |
-| Model width | 512 |
-| Attention heads | 8 |
-| FFN width | 2048 (GELU) |
-| Vocabulary | 5,000 BPE tokens |
-| Context length | 96 tokens at training time (1,024 max) |
-| Optimizer | AdamW, lr 3e-4, 500 warmup steps, grad clip 5.0 |
+Both are standard GPT-2-style decoder-only transformers: pre-LayerNorm residual blocks, GELU feed-forward, learned positional embeddings, and weight tying between the token embedding and the output projection. A `modern` preset swaps in the Llama-style block (see below).
 
 ## Build and run
 
@@ -58,8 +57,11 @@ Common commands:
 # Full training run on Tiny Shakespeare (produces shakespeare_final.bin)
 ./build/grad train
 
-# Sample from a trained checkpoint
+# Sample from a trained checkpoint (vocab is read from the checkpoint)
 ./build/grad generate shakespeare_final.bin "ROMEO:"
+
+# Score a checkpoint on 500 sampled batches of held-out and training windows
+./build/grad eval tinystories_best.bin data/tinystories.txt 16000 256 500
 
 # Interactive REPL: type a prompt, watch it stream a continuation
 ./build/grad chat shakespeare_final.bin
@@ -111,7 +113,7 @@ curl -L -o data/tinystories.txt \
   "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt"
 ./build/grad prepare data/tinystories.txt 16000
 ./build/grad train data/tinystories.txt medium     # writes tinystories_final.bin
-./build/grad chat tinystories_final.bin data/tinystories.txt 16000
+./build/grad chat tinystories_final.bin data/tinystories.txt
 ```
 
 Every run logs per-step metrics to `<prefix>_metrics.csv`, and a live terminal dashboard renders them: loss curves on a braille canvas (raw + EMA), the validation track with running best, gradient-norm and step-time sparklines, progress and ETA. Open it in a second terminal while training:
@@ -142,6 +144,8 @@ Training throughput for the 22M benchmark config vs PyTorch 2.13 on the same M2 
 
 On this specific CPU workload, grad.cpp is 1.5× faster than PyTorch; PyTorch MPS is 1.5× faster than grad.cpp. This is a specialized workload result, not a claim of general framework superiority. The 70M comparison previously shown here was withdrawn after a source-metrics audit found an inconsistent throughput calculation; [BENCHMARKS.md](BENCHMARKS.md) records the correction.
 
+At 70M parameters, training over the full 40,000-step run held a median of **2,540 tokens/s** (3.23s per 8,192-token optimizer step, 10th to 90th percentile 3.20 to 3.44s) with flat memory. See the [run report](docs/runs/2026-09-tinystories-70m/README.md#how-the-run-went). A PyTorch comparison at that scale is pending a rerun under the repeated-trial protocol.
+
 The full optimization history, 1.2 → 7.9 steps/s across 11 measured rounds including null results, is in [BENCHMARKS.md](BENCHMARKS.md). Current benchmark commands run repeated trials, report the median, identify dirty builds, record the compiler/system/backend, and optionally write JSON.
 
 ## Tests
@@ -150,21 +154,22 @@ The full optimization history, 1.2 → 7.9 steps/s across 11 measured rounds inc
 ctest --test-dir build --output-on-failure
 ```
 
-The test suite checks the parts that are easiest to get silently wrong:
+The test suite checks the parts that are easiest to get silently wrong. Every check counts failures and fails the process; nothing only prints.
 
-- **Gradient checking**: analytical gradients from the autograd engine compared against central-difference numerical gradients, for individual ops through full attention blocks
-- **Attention bias, weight tying, dropout**: verification of specific architectural behaviors
-- **Integration checks**: tiny-sequence overfitting plus parity between full-sequence and KV-cached inference for both architectures
+- **Gradient checking**: analytical gradients from the autograd engine compared against central-difference numerical gradients, for individual ops through full attention blocks and the whole model, including attention with dropout active
+- **Architecture behaviors**: attention bias, weight tying, dropout statistics and mask independence across threads
+- **Integration checks**: tiny-sequence overfitting, parity between full-sequence and KV-cached inference for both architectures, the data loader, and rejection of truncated or corrupt checkpoints, token files and tokenizer caches
+- **Packaging**: CI builds a small consumer project against the installed `grad::core` CMake package
 - **Hardware-aware results**: Metal parity is reported as skipped, not passed, when no Metal device is exposed
 
-CI runs the full suite plus a training smoke test on macOS and Linux.
+CI builds with warnings as errors (`-Wall -Wextra -Wpedantic`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer.
 
 ## Design notes
 
 - **Explicitness over abstraction.** Every forward and backward pass is readable C++, with no expression templates and no code generation. The autograd graph is a DAG of `Variable` nodes holding closures for their backward functions; `backward()` topologically sorts and walks it.
 - **Numerics matter.** Softmax and log-softmax use the max-subtraction trick; the loss path computes log-softmax + NLL rather than softmax + log; gradient checks catch regressions.
 - **Performance where it counts.** Profiling showed matmul dominating, so it delegates to BLAS (`blas_wrapper.h`); everything else stays simple. The BPE tokenizer caches merges to make encoding runs fast.
-- **The training loop is honest.** Loss decreases because the math is right, not because a framework fixed it. A full training run on an M2 Pro takes hours, and produced the sample above.
+- **The training loop is honest.** Loss decreases because the math is right, not because a framework fixed it. The 70M run above took 37 hours on an M2 Pro, and its complete per-step record is [committed](docs/runs/2026-09-tinystories-70m/metrics.csv).
 
 ## Repository layout
 
@@ -172,20 +177,27 @@ CI runs the full suite plus a training smoke test on macOS and Linux.
 include/, src/
   transformer/   tensor, variable (autograd), attention, layer_norm,
                  feedforward, embeddings, transformer_block, gpt_model,
-                 optimizer, text_gen
+                 optimizer, inference (KV cache), text_gen, Metal backend
   tokenizer/     BPE tokenizer
-  data/          dataset + batching dataloader
-  training/      trainer (loop, checkpointing)
-  utils/         metrics, training helpers
+  data/          datasets, memory-mapped token files, batching dataloader
+  training/      trainer (loop, evaluation, checkpointing, resume)
+  utils/         metrics log, terminal dashboard, training helpers
 tests/
   unit/          gradient checks and component tests
-  integration/   end-to-end sanity tests
+  integration/   end-to-end sanity and file-format tests
+  package/       consumer project for the installed CMake package
+benchmarks/      PyTorch baseline for head-to-head comparisons
+docs/runs/       run reports with their full metrics
+tools/           plot_run.py (metrics CSV to SVG)
+train_supervised.sh, training_health.sh   self-resuming run supervisor + health monitor
 data/            Tiny Shakespeare corpus (~1.1MB)
 ```
 
 ## Limitations and roadmap
 
-- A Metal (MPS) backend routes matmuls above ~10 GFLOPs to the GPU via zero-copy unified memory. At the current 22M-param scale that threshold is never crossed, since measurement showed Apple's AMX (CPU) winning below it (see BENCHMARKS.md #7), but it engages automatically at larger model/batch/context sizes. A CUDA port was attempted earlier and rolled back (see git history).
+- **The tokenizer drops whitespace structure.** Pre-tokenization splits on whitespace, so newlines and runs of spaces never reach the model, and `_` doubles as the space marker. A byte-level, lossless tokenizer v2 with round-trip tests is next. It is a versioned format change, because existing checkpoints depend on the v1 vocabulary.
+- **The Metal backend dispatches synchronously.** It routes matmuls above ~10 GFLOPs to the GPU via zero-copy unified memory. At 22M parameters that threshold is never crossed, since Apple's AMX (CPU) wins below it (BENCHMARKS.md #7). At 70M only the logits matmul crosses it. PyTorch MPS is 1.5× faster at 22M, and closing that gap needs asynchronous command buffers and fused kernels. A CUDA port was attempted earlier and rolled back (see git history).
+- **The `Tensor` type special-cases 2D and 3D** instead of carrying a general shape and strides, and evaluation still builds an autograd graph that it immediately discards (no no-grad mode yet).
 - Scope: this is a training and inference stack built to be read and measured, not a production serving engine.
 
 ## License

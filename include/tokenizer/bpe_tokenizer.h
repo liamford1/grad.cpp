@@ -3,7 +3,6 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include <queue>
 
 struct PairHash {
     size_t operator()(const std::pair<std::string, std::string>& p) const {
@@ -12,15 +11,6 @@ struct PairHash {
         const size_t h1 = std::hash<std::string>{}(p.first);
         const size_t h2 = std::hash<std::string>{}(p.second);
         return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-    }
-};
-
-struct PairFreq {
-    std::pair<std::string, std::string> pair;
-    int freq;
-
-    bool operator<(const PairFreq& other) const {
-        return freq < other.freq;
     }
 };
 
@@ -38,15 +28,16 @@ class BPETokenizer {
         std::string pad_token = "<pad>";
         std::string eos_token = "<eos>";
         std::string unk_token = "<unk>";
-
-        std::unordered_map<std::pair<std::string, std::string>, int, PairHash> countPairs(const std::vector<std::vector<std::string>>& word_tokens);
     public:
         explicit BPETokenizer(int vocab_size);
         void train(const std::string& training_text);
-        std::vector<int> encode(const std::string& text);
+        std::vector<int> encode(const std::string& text) const;
         std::string decode(const std::vector<int>& tokens) const;
 
         void save(const std::string& filepath) const;
+        // Throws on a missing, truncated, or implausible cache (a corrupt
+        // length field would otherwise become a multi-gigabyte allocation).
+        // On failure the tokenizer is left unchanged.
         void load(const std::string& filepath);
 
         int getCurrentVocabSize() const;

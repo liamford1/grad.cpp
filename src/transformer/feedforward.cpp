@@ -2,7 +2,6 @@
 #include "transformer/linear.h"
 #include "transformer/activations.h"
 #include "transformer/feedforward.h"
-#include <iostream>
 
 FeedForward::FeedForward(int d_model, int hidden_dim, float dropout_rate, bool gated) :
     layer1(d_model, resolve_hidden(d_model, hidden_dim, gated), !gated),

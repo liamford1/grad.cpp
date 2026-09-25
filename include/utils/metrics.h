@@ -41,6 +41,8 @@ public:
     // steps done this session, not from step numbers (a run resumed at
     // step 20000 has not done 20000 steps in 10 seconds).
     void start_training(int start_step = 0);
+    // Call once per step: accumulates the summary's mean loss and prints a
+    // table row every 100th step.
     void record_step(int step, float loss, float grad_norm);
     void print_progress(int step, float loss);
     void print_summary();
@@ -48,8 +50,8 @@ public:
 private:
     int total_steps_;
     int start_step_;
-    std::chrono::high_resolution_clock::time_point start_time_;
-    float running_loss_;
+    std::chrono::steady_clock::time_point start_time_;
+    double running_loss_;
     int step_count_;
 };
 

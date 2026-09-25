@@ -51,11 +51,11 @@ void MetricsLog::maybe_flush(bool force) {
 }
 
 TrainingMetrics::TrainingMetrics(int total_steps)
-    : total_steps_(total_steps), start_step_(0), running_loss_(0.0f), step_count_(0) {}
+    : total_steps_(total_steps), start_step_(0), running_loss_(0.0), step_count_(0) {}
 
 void TrainingMetrics::start_training(int start_step) {
     start_step_ = start_step;
-    start_time_ = std::chrono::high_resolution_clock::now();
+    start_time_ = std::chrono::steady_clock::now();
 }
 
 void TrainingMetrics::record_step(int step, float loss, float grad_norm) {
@@ -63,7 +63,7 @@ void TrainingMetrics::record_step(int step, float loss, float grad_norm) {
     step_count_++;
 
     if (step % 100 == 0) {
-        auto now = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
 
         std::cout << std::setw(10) << step
@@ -76,7 +76,7 @@ void TrainingMetrics::record_step(int step, float loss, float grad_norm) {
 }
 
 void TrainingMetrics::print_progress(int step, float loss) {
-    auto now = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
     float progress = 100.0f * (step + 1) / total_steps_;
     float steps_per_sec = (step + 1 - start_step_) / static_cast<float>(elapsed + 1);
@@ -90,15 +90,30 @@ void TrainingMetrics::print_progress(int step, float loss) {
 }
 
 void TrainingMetrics::print_summary() {
-    auto end = std::chrono::high_resolution_clock::now();
-    auto total_time = std::chrono::duration_cast<std::chrono::seconds>(end - start_time_).count();
-    float avg_loss = running_loss_ / step_count_;
+    const auto end = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(end - start_time_).count();
 
+    // Everything here covers this process only. A resumed run's earlier
+    // segments live in the metrics CSV (`grad watch` sums them).
     std::cout << "\n\n=== Training Complete ===" << std::endl;
-    std::cout << "Total time: " << total_time << "s" << std::endl;
-    std::cout << "Average loss: " << std::fixed << std::setprecision(4) << avg_loss << std::endl;
-    std::cout << "Speed: " << std::fixed << std::setprecision(2)
-              << ((total_steps_ - start_step_) / static_cast<float>(total_time)) << " steps/s" << std::endl;
+    if (start_step_ > 0) {
+        std::cout << "Time this session: " << std::fixed << std::setprecision(0) << seconds
+                  << "s (steps " << start_step_ << "-" << total_steps_ - 1
+                  << "; earlier sessions not included)" << std::endl;
+    } else {
+        std::cout << "Total time: " << std::fixed << std::setprecision(0) << seconds << "s"
+                  << std::endl;
+    }
+    if (step_count_ > 0) {
+        std::cout << "Average loss: " << std::fixed << std::setprecision(4)
+                  << running_loss_ / step_count_ << " over " << step_count_ << " steps"
+                  << std::endl;
+    }
+    if (seconds > 0.0 && step_count_ > 0) {
+        std::cout << "Speed: " << std::fixed << std::setprecision(2)
+                  << step_count_ / seconds << " steps/s" << std::endl;
+    }
+    std::cout << std::defaultfloat;
 }
 
 void print_header(const std::string& title) {

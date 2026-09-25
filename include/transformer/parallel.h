@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <functional>
@@ -17,7 +18,13 @@
 // The range [0, n) is split into chunks that workers (plus the calling
 // thread) claim from an atomic counter, so uneven chunks self-balance.
 // Falls back to running inline when n <= grain or the pool has one thread -
-// spawning threads for tiny loops costs more than it saves.
+// spawning threads for tiny loops costs more than it saves. A grain of 0 is
+// treated as 1.
+//
+// Nested calls (a parallel_for issued from inside a body, on a worker or on
+// the calling thread) run inline: the outer loop already has every core
+// busy, and the calling thread already holds the job lock, so trying to
+// take it again would be undefined behavior rather than a clean refusal.
 //
 // The pool is created on first use with hardware_concurrency() threads
 // (override with the TRANSFORMER_THREADS environment variable).
@@ -41,15 +48,15 @@ public:
     void parallel_for(size_t n, size_t grain,
                       const std::function<void(size_t, size_t)>& fn) {
         if (n == 0) return;
-        if (num_threads_ <= 1 || n <= grain) {
+        if (grain == 0) grain = 1;
+        if (num_threads_ <= 1 || n <= grain || in_parallel_region()) {
             fn(0, n);
             return;
         }
 
-        // Only one parallel job runs at a time. If one is already active
-        // (including a parallel_for issued from inside a worker), run this
-        // one inline instead of deadlocking on the job lock - the outer
-        // loop already has every core busy.
+        // Only one parallel job runs at a time. A job started by another
+        // (non-pool) thread holds the lock; run this one inline rather
+        // than wait, since that job already has every core busy.
         std::unique_lock<std::mutex> job_lock(job_mutex_, std::try_to_lock);
         if (!job_lock.owns_lock()) {
             fn(0, n);
@@ -120,9 +127,25 @@ private:
         }
     }
 
+    // True while this thread is executing a parallel_for body; read by
+    // parallel_for to run nested calls inline.
+    static bool& in_parallel_region() {
+        static thread_local bool flag = false;
+        return flag;
+    }
+
+    struct RegionGuard {
+        bool previous;
+        RegionGuard() : previous(std::exchange(in_parallel_region(), true)) {}
+        ~RegionGuard() { in_parallel_region() = previous; }
+        RegionGuard(const RegionGuard&) = delete;
+        RegionGuard& operator=(const RegionGuard&) = delete;
+    };
+
     void work() {
         const auto* fn = body_;
         if (!fn) return;
+        RegionGuard region;
         while (true) {
             size_t begin = next_chunk_.fetch_add(chunk_size_, std::memory_order_relaxed);
             if (begin >= total_) break;

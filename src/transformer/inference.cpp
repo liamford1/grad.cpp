@@ -1,8 +1,10 @@
 #include "transformer/inference.h"
 #include "transformer/blas_wrapper.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 

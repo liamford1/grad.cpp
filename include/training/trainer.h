@@ -3,7 +3,6 @@
 #include "transformer/gpt_model.h"
 #include "transformer/optimizer.h"
 #include "data/dataloader.h"
-#include "tokenizer/bpe_tokenizer.h"
 #include "utils/metrics.h"
 #include <string>
 #include <memory>
@@ -34,8 +33,8 @@ struct TrainingConfig {
     float weight_decay = 0.1f;  // AdamW decay on weight matrices
     // Cap on batches per validation pass (0 = whole val set). At large
     // corpus scale the 5% holdout is tens of millions of tokens; a fixed
-    // sample of the (unshuffled) val loader gives a stable perplexity
-    // estimate in bounded time.
+    // set of windows spread evenly across it (SpreadSubset) gives a stable,
+    // representative perplexity estimate in bounded time.
     int max_eval_batches = 0;
 };
 
@@ -44,16 +43,20 @@ public:
     Trainer(const TrainingConfig& config,
             GPTModel& model,
             DataLoader& loader,
-            BPETokenizer& tokenizer,
             DataLoader* val_loader = nullptr);
 
     // Returns false when the run was interrupted (SIGINT/SIGTERM): resume
     // state has been saved and the caller should skip end-of-run work.
     [[nodiscard]] bool train();
-    void save_checkpoint(const std::string& path);
+    // Writes the model to path via a temp file and rename, so an existing
+    // checkpoint is only ever replaced by a complete one. False on failure
+    // (after a warning); the previous file, if any, is left untouched.
+    [[nodiscard]] bool save_checkpoint(const std::string& path);
 
-    // Mean loss over the whole validation set (forward-only, no dropout).
-    // Perplexity is exp of this. Returns -1 if there is no val loader.
+    // Mean loss over the validation set, or with max_eval_batches > 0 over
+    // that many batches of windows spread evenly across it, the same ones
+    // on every call (forward-only, no dropout). Perplexity is exp of this.
+    // Returns -1 if there is no val loader.
     [[nodiscard]] float evaluate();
 
     // Restores the state written by save_resume_state: optimizer moments,
@@ -67,8 +70,10 @@ private:
     TrainingConfig config_;
     GPTModel& model_;
     DataLoader& loader_;
-    BPETokenizer& tokenizer_;
     DataLoader* val_loader_;
+    // Capped-eval view of val_loader_'s dataset; null when evaluating the
+    // whole split.
+    std::unique_ptr<DataLoader> eval_loader_;
     std::unique_ptr<AdamOptimizer> optimizer_;
     std::unique_ptr<utils::TrainingMetrics> metrics_;
     std::unique_ptr<utils::MetricsLog> mlog_;
@@ -78,9 +83,16 @@ private:
     void training_step(int step);
     std::string resume_model_path() const;
     std::string resume_state_path() const;
-    void save_resume_state(int next_step, float best_val_loss);
-    void log_performance_breakdown();
+    // False (after a warning) if either file of the pair failed to write.
+    [[nodiscard]] bool save_resume_state(int next_step, float best_val_loss);
 };
+
+// Mean next-token cross-entropy (nats) over up to max_batches batches of
+// loader, from its current position (0 = until the loader is exhausted).
+// Forward-only with dropout off; each batch's graph is released before the
+// next is built. Batches are weighted by row count, so a short final batch
+// does not skew the mean. Returns -1 if the loader yields nothing.
+[[nodiscard]] double mean_loss(GPTModel& model, DataLoader& loader, int max_batches = 0);
 
 // Reads just the step position from a resume state file, so callers can
 // derive run parameters (e.g. the data loader seed) before the Trainer

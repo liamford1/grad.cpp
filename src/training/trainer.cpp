@@ -1,14 +1,18 @@
 #include "training/trainer.h"
 #include "utils/training_utils.h"
 #include "transformer/variable.h"
+#include <cerrno>
 #include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <limits>
+#include <stdexcept>
+#include <signal.h>
 
 namespace training {
 
@@ -19,14 +23,51 @@ constexpr uint32_t kResumeVersion = 1;
 
 // SIGINT/SIGTERM request a stop; the training loop honors it at the next
 // step boundary so the resume state is always written from a consistent
-// point. The handlers are restored after the first request, so a second
-// Ctrl-C force-kills as usual.
+// point. SA_RESETHAND restores the default action once a signal has been
+// delivered, so a second Ctrl-C force-kills as usual. The handler only sets
+// a flag; C++17 lets a handler call std::signal only for the signal being
+// handled, so it cannot reset the other one itself.
 volatile std::sig_atomic_t g_stop_requested = 0;
 
 void request_stop(int) {
     g_stop_requested = 1;
-    std::signal(SIGINT, SIG_DFL);
-    std::signal(SIGTERM, SIG_DFL);
+}
+
+// Installs request_stop for SIGINT and SIGTERM for its lifetime and puts the
+// previous handlers back on destruction, including when train() throws.
+class StopSignalGuard {
+public:
+    StopSignalGuard() {
+        g_stop_requested = 0;
+        struct sigaction action {};
+        action.sa_handler = request_stop;
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = SA_RESETHAND;
+        sigaction(SIGINT, &action, &prev_int_);
+        sigaction(SIGTERM, &action, &prev_term_);
+    }
+    ~StopSignalGuard() {
+        sigaction(SIGINT, &prev_int_, nullptr);
+        sigaction(SIGTERM, &prev_term_, nullptr);
+    }
+    StopSignalGuard(const StopSignalGuard&) = delete;
+    StopSignalGuard& operator=(const StopSignalGuard&) = delete;
+
+private:
+    struct sigaction prev_int_ {};
+    struct sigaction prev_term_ {};
+};
+
+// rename() replaces the destination atomically within a filesystem, so a
+// reader (or a crash) sees either the old file or the complete new one.
+bool replace_file(const std::string& tmp, const std::string& path) {
+    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+        std::cerr << "Warning: failed to rename " << tmp << " -> " << path
+                  << ": " << std::strerror(errno) << std::endl;
+        std::remove(tmp.c_str());
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -46,10 +87,8 @@ std::optional<int> peek_resume_step(const std::string& state_path) {
 Trainer::Trainer(const TrainingConfig& config,
                  GPTModel& model,
                  DataLoader& loader,
-                 BPETokenizer& tokenizer,
                  DataLoader* val_loader)
-    : config_(config), model_(model), loader_(loader), tokenizer_(tokenizer),
-      val_loader_(val_loader) {
+    : config_(config), model_(model), loader_(loader), val_loader_(val_loader) {
 
     auto params = model_.getAllParameters();
     optimizer_ = std::make_unique<AdamOptimizer>(params, config_.learning_rate,
@@ -60,6 +99,14 @@ Trainer::Trainer(const TrainingConfig& config,
                              config_.learning_rate * 0.1f);
 
     metrics_ = std::make_unique<utils::TrainingMetrics>(config_.num_steps);
+
+    if (val_loader_ && config_.max_eval_batches > 0) {
+        const size_t windows = static_cast<size_t>(config_.max_eval_batches)
+                             * static_cast<size_t>(val_loader_->batch_size());
+        eval_loader_ = std::make_unique<DataLoader>(
+            std::make_shared<SpreadSubset>(val_loader_->dataset(), windows),
+            val_loader_->batch_size(), /*shuffle=*/false);
+    }
 }
 
 std::string Trainer::resume_model_path() const {
@@ -70,18 +117,24 @@ std::string Trainer::resume_state_path() const {
     return config_.checkpoint_prefix + "_resume_state.bin";
 }
 
-// Writes the model + optimizer/trainer state pair, each through a temp
-// file and rename, so an interrupt mid-write leaves the previous pair
-// intact instead of a truncated file.
-void Trainer::save_resume_state(int next_step, float best_val_loss) {
-    std::string model_tmp = resume_model_path() + ".tmp";
-    if (!model_.save(model_tmp, /*quiet=*/true) ||
-        std::rename(model_tmp.c_str(), resume_model_path().c_str()) != 0) {
-        std::cerr << "Warning: failed to write " << resume_model_path() << std::endl;
-        return;
+// Writes the model + optimizer/trainer state pair. Both files are fully
+// written to .tmp siblings before either is renamed into place, so a failed
+// or interrupted write never replaces a good file with a partial one. The
+// state file is renamed last because its step decides where `resume`
+// continues: the one unguarded window (a crash between the two renames)
+// pairs new weights with the previous step and optimizer state, which
+// replays those steps rather than skipping any.
+bool Trainer::save_resume_state(int next_step, float best_val_loss) {
+    const std::string model_tmp = resume_model_path() + ".tmp";
+    const std::string state_tmp = resume_state_path() + ".tmp";
+
+    if (!model_.save(model_tmp, /*quiet=*/true)) {
+        std::cerr << "Warning: failed to write " << model_tmp << std::endl;
+        std::remove(model_tmp.c_str());
+        return false;
     }
 
-    std::string state_tmp = resume_state_path() + ".tmp";
+    bool state_ok = false;
     {
         std::ofstream out(state_tmp, std::ios::binary);
         int32_t step32 = next_step;
@@ -89,14 +142,28 @@ void Trainer::save_resume_state(int next_step, float best_val_loss) {
         out.write(reinterpret_cast<const char*>(&kResumeVersion), sizeof(kResumeVersion));
         out.write(reinterpret_cast<const char*>(&step32), sizeof(step32));
         out.write(reinterpret_cast<const char*>(&best_val_loss), sizeof(best_val_loss));
-        if (!optimizer_->save_state(out) || !out.good()) {
-            std::cerr << "Warning: failed to write " << state_tmp << std::endl;
-            return;
-        }
+        state_ok = optimizer_->save_state(out) && out.good();
+        out.close();
+        state_ok = state_ok && !out.fail();
     }
-    if (std::rename(state_tmp.c_str(), resume_state_path().c_str()) != 0) {
-        std::cerr << "Warning: failed to rename " << state_tmp << std::endl;
+    if (!state_ok) {
+        std::cerr << "Warning: failed to write " << state_tmp << std::endl;
+        std::remove(model_tmp.c_str());
+        std::remove(state_tmp.c_str());
+        return false;
     }
+
+    if (!replace_file(model_tmp, resume_model_path())) {
+        std::remove(state_tmp.c_str());
+        return false;
+    }
+    if (!replace_file(state_tmp, resume_state_path())) {
+        std::cerr << "Warning: " << resume_model_path() << " was updated but "
+                  << resume_state_path() << " was not; a resume would replay steps "
+                  << "from the older state's position" << std::endl;
+        return false;
+    }
+    return true;
 }
 
 bool Trainer::load_resume_state() {
@@ -166,10 +233,6 @@ bool Trainer::train() {
         static_cast<long>(config_.batch_size) * config_.grad_accum * config_.seq_length,
         param_count, desc);
 
-    g_stop_requested = 0;
-    auto prev_int = std::signal(SIGINT, request_stop);
-    auto prev_term = std::signal(SIGTERM, request_stop);
-
     // Best-val checkpointing: training loss keeps falling long after the
     // model starts memorizing (observed on Shakespeare: val perplexity
     // bottomed at step ~6000 of 50000, then quintupled). The checkpoint
@@ -178,6 +241,9 @@ bool Trainer::train() {
         ? best_val_loss_restored_ : std::numeric_limits<float>::max();
 
     bool interrupted = false;
+    // The handlers cover the loop only; a Ctrl-C during the end-of-run
+    // evaluation and saves takes the default action.
+    std::optional<StopSignalGuard> stop_signals(std::in_place);
     for (int step = start_step_; step < config_.num_steps; step++) {
         training_step(step);
 
@@ -189,73 +255,92 @@ bool Trainer::train() {
                       << " | val loss " << std::fixed << std::setprecision(4) << val_loss
                       << " | perplexity " << std::setprecision(1) << std::exp(val_loss)
                       << (improved ? " | best]" : "]") << std::defaultfloat << std::endl;
-            if (improved) {
+            // best_val_loss tracks what _best.bin holds, so a failed write
+            // leaves the bar where it was and the next improvement retries.
+            if (improved && save_checkpoint(config_.checkpoint_prefix + "_best.bin")) {
                 best_val_loss = val_loss;
-                save_checkpoint(config_.checkpoint_prefix + "_best.bin");
             }
             mlog_->log_eval(step, val_loss);
-            save_resume_state(step + 1, best_val_loss);
+            if (!save_resume_state(step + 1, best_val_loss)) {
+                std::cerr << "Warning: resume state not updated at step " << step
+                          << "; a restart resumes from the previous save" << std::endl;
+            }
         }
 
         if (step > 0 && step % config_.checkpoint_interval == 0) {
             std::string checkpoint_path = config_.checkpoint_prefix + "_step_" + std::to_string(step) + ".bin";
-            save_checkpoint(checkpoint_path);
-            std::cout << "  [checkpoint: " << checkpoint_path << "]" << std::endl;
+            if (save_checkpoint(checkpoint_path)) {
+                std::cout << "  [checkpoint: " << checkpoint_path << "]" << std::endl;
+            }
         }
 
         if (g_stop_requested) {
             std::cout << "\n\nInterrupted after step " << step << std::endl;
-            save_resume_state(step + 1, best_val_loss);
+            if (!save_resume_state(step + 1, best_val_loss)) {
+                throw std::runtime_error("interrupted after step " + std::to_string(step)
+                                         + " but could not save resume state; a resume "
+                                         "restarts from the previous save");
+            }
             std::cout << "Resume state saved: " << resume_model_path()
                       << " + " << resume_state_path() << std::endl;
             interrupted = true;
             break;
         }
     }
-
-    std::signal(SIGINT, prev_int);
-    std::signal(SIGTERM, prev_term);
+    stop_signals.reset();
 
     if (interrupted) return false;
 
     metrics_->print_summary();
     if (val_loader_) {
         float val_loss = evaluate();
-        std::cout << "Final val loss: " << val_loss
-                  << " | perplexity: " << std::exp(val_loss) << std::endl;
+        std::cout << std::fixed << "Final val loss: " << std::setprecision(4) << val_loss
+                  << " | perplexity: " << std::setprecision(2) << std::exp(val_loss) << std::endl;
         if (best_val_loss < std::numeric_limits<float>::max()) {
-            std::cout << "Best val loss: " << best_val_loss
-                      << " | perplexity: " << std::exp(best_val_loss)
+            std::cout << "Best val loss: " << std::setprecision(4) << best_val_loss
+                      << " | perplexity: " << std::setprecision(2) << std::exp(best_val_loss)
                       << " (saved as " << config_.checkpoint_prefix << "_best.bin)" << std::endl;
         }
+        std::cout << std::defaultfloat;
     }
-    save_checkpoint(config_.checkpoint_prefix + "_final.bin");
-    save_resume_state(config_.num_steps, best_val_loss);
+    // The final checkpoint is the run's deliverable: failing to write it is
+    // an error, not a warning, and the resume state is left at the last
+    // eval so a restart retrains the tail and tries again.
+    if (!save_checkpoint(config_.checkpoint_prefix + "_final.bin")) {
+        throw std::runtime_error("could not write " + config_.checkpoint_prefix + "_final.bin");
+    }
+    if (!save_resume_state(config_.num_steps, best_val_loss)) {
+        std::cerr << "Warning: final resume state not saved; `resume` would retrain "
+                  << "from the last eval" << std::endl;
+    }
     return true;
+}
+
+double mean_loss(GPTModel& model, DataLoader& loader, int max_batches) {
+    double weighted_loss = 0.0;
+    size_t rows = 0;
+    for (int batches = 0; loader.has_next(); batches++) {
+        if (max_batches > 0 && batches >= max_batches) break;
+        auto batch = loader.next_batch();
+        auto in = Variable::create(batch.input, false);
+        auto tgt = Variable::create(batch.target, false);
+
+        // The graph is still built (parameters require grad), so release it.
+        auto logits = model.forward(in, false);
+        auto loss = logits->log_softmax()->nll_loss(tgt);
+        const size_t batch_rows = batch.input.getBatchSize();
+        weighted_loss += static_cast<double>(loss->getData().getValue(0, 0)) * static_cast<double>(batch_rows);
+        rows += batch_rows;
+        loss->release_graph();
+    }
+    return rows > 0 ? weighted_loss / static_cast<double>(rows) : -1.0;
 }
 
 float Trainer::evaluate() {
     if (!val_loader_) return -1.0f;
-
-    val_loader_->reset();
-    double total_loss = 0.0;
-    int batches = 0;
-
-    while (val_loader_->has_next()) {
-        if (config_.max_eval_batches > 0 && batches >= config_.max_eval_batches) break;
-        auto batch = val_loader_->next_batch();
-        auto in = Variable::create(batch.input, false);
-        auto tgt = Variable::create(batch.target, false);
-
-        // Forward-only: training=false disables dropout. The graph is still
-        // built (parameters require grad), so release it.
-        auto logits = model_.forward(in, false);
-        auto loss = logits->log_softmax()->nll_loss(tgt);
-        total_loss += loss->getData().getValue(0, 0);
-        loss->release_graph();
-        batches++;
-    }
-    return batches > 0 ? static_cast<float>(total_loss / batches) : -1.0f;
+    DataLoader& loader = eval_loader_ ? *eval_loader_ : *val_loader_;
+    loader.reset();
+    return static_cast<float>(mean_loss(model_, loader));
 }
 
 void Trainer::training_step(int step) {
@@ -297,9 +382,7 @@ void Trainer::training_step(int step) {
     // track and clip-rate statistic.
     auto params = model_.getAllParameters();
     float grad_norm = utils::compute_grad_norm(params);
-    if (step % 100 == 0) {
-        metrics_->record_step(step, loss_val, grad_norm);
-    }
+    metrics_->record_step(step, loss_val, grad_norm);
 
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();
@@ -316,10 +399,16 @@ void Trainer::training_step(int step) {
     }
 }
 
-void Trainer::save_checkpoint(const std::string& path) {
-    if (!model_.save(path)) {
+bool Trainer::save_checkpoint(const std::string& path) {
+    const std::string tmp = path + ".tmp";
+    if (!model_.save(tmp, /*quiet=*/true)) {
         std::cerr << "Warning: failed to write checkpoint " << path << std::endl;
+        std::remove(tmp.c_str());
+        return false;
     }
+    if (!replace_file(tmp, path)) return false;
+    std::cout << "Model saved successfully to: " << path << std::endl;
+    return true;
 }
 
 } // namespace training

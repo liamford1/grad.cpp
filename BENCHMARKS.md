@@ -36,6 +36,10 @@ Run benchmarks on an otherwise idle machine. The JSON includes every trial, the 
 
 \* Historical rows recorded resident memory at the end of the benchmark, not a high-water mark. The v0.1 JSON protocol reports `getrusage` peak RSS; the old values remain here unchanged as historical observations.
 
+## Long-run measurement: 70M medium preset (2026-09)
+
+Not an optimization round. It is the throughput a real run sustained: the `medium` preset (69.8M parameters, d768 L8, seq 256, 8 × 4 accumulation) trained for 40,000 steps on TinyStories. The median optimizer step took 3.23s, or **2,540 tokens/s** (10th to 90th percentile 3.20 to 3.44s), over 37.1 hours in four resumed sessions. End-of-step RSS stayed between 1.8 and 2.3GB with no drift. Details and the full per-step CSV are in the [run report](docs/runs/2026-09-tinystories-70m/README.md).
+
 ## Head-to-head: PyTorch (2026-07-19)
 
 Same machine, same session, runs interleaved minutes apart. The PyTorch side is [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py): the identical 22.0M-parameter config, optimizer settings, dropout placement, and loss, but written as idiomatic PyTorch with fused QKV and `scaled_dot_product_attention`. Training throughput is fp32.

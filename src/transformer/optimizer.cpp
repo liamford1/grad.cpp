@@ -56,9 +56,6 @@ void AdamOptimizer::step() {
                 m_[param_ptr] = Tensor(data.getRows(), data.getCols());
                 v_[param_ptr] = Tensor(data.getRows(), data.getCols());
             }
-
-            m_[param_ptr].fill(0.0f);
-            v_[param_ptr].fill(0.0f);
         }
 
         Tensor& m = m_[param_ptr];

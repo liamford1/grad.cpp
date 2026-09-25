@@ -12,8 +12,7 @@ LayerNorm::LayerNorm(int d_model, bool rms) :
 
     Tensor gamma_tensor(1, d_model);
     Tensor beta_tensor(1, d_model);
-    gamma_tensor.fill(1.0f);
-    beta_tensor.fill(0.0f);
+    gamma_tensor.fill(1.0f);  // beta stays at the constructor's zeros
 
     gamma = Variable::create(gamma_tensor, true);
     beta = Variable::create(beta_tensor, true);
@@ -99,7 +98,6 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         auto self_gamma = gamma;
         auto self_beta = beta;
         int self_d = d_model;
-        float self_epsilon = epsilon;
 
         output->addChild(input);
         output->addChild(gamma);
@@ -108,7 +106,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         const bool rms = rms_;
         output->setBackwardFn([self_input, self_gamma, self_beta,
                                output_weak = std::weak_ptr<Variable>(output),
-                               means, inv_stds, self_d, self_epsilon, total_rows, rms]() {
+                               means, inv_stds, self_d, total_rows, rms]() {
             auto output = output_weak.lock();
             if (!output || !output->hasGrad()) return;
             self_gamma->ensureGrad();
@@ -161,7 +159,9 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
 
                 for (size_t i = begin; i < end; i++) {
                     const float std_inv = inv_stds[i];
-                    const float variance = (1.0f / (std_inv * std_inv)) - self_epsilon;
+                    // d(var)^(-1/2)/d(var) = -0.5 * (var + eps)^(-3/2) = -0.5 * std_inv^3,
+                    // one multiply per row instead of a pow per element.
+                    const float dvar_scale = -0.5f * std_inv * std_inv * std_inv;
                     const float mean = means[i];
                     const float* dout_row = output_grad_data + i * self_d;
                     const float* input_row = input_data + i * self_d;
@@ -175,7 +175,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                         b_part[j] += dout_row[j];
 
                         const float dnorm = dout_row[j] * gamma_data[j];
-                        dvar += dnorm * x_minus_mean * -0.5f * std::pow(variance + self_epsilon, -1.5f);
+                        dvar += dnorm * x_minus_mean * dvar_scale;
                     }
 
                     float dmean = 0.0f;

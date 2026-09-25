@@ -40,18 +40,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Mirrors kPresets in src/main.cpp: vocab, d_model, layers, heads,
-# max_len, seq_length, micro-batch, grad_accum, arch.
+# max_len, seq_length, micro-batch, grad_accum, dropout, arch. Dropout is
+# per preset there (medium/modern train under one epoch and use 0), and
+# mask generation is a real share of step time, so it has to match here.
 PRESETS = {
-    "fast":        dict(vocab=500,   d=128, layers=2, heads=4,  max_len=1024, seq=64,  batch=4, accum=1, modern=False),
-    "fast-modern": dict(vocab=500,   d=128, layers=2, heads=4,  max_len=1024, seq=64,  batch=4, accum=1, modern=True),
-    "small":       dict(vocab=5000,  d=512, layers=6, heads=8,  max_len=1024, seq=96,  batch=8, accum=1, modern=False),
-    "medium":      dict(vocab=16000, d=768, layers=8, heads=12, max_len=1024, seq=256, batch=8, accum=4, modern=False),
-    "modern":      dict(vocab=16000, d=768, layers=8, heads=12, max_len=1024, seq=256, batch=8, accum=4, modern=True),
+    "fast":        dict(vocab=500,   d=128, layers=2, heads=4,  max_len=1024, seq=64,  batch=4, accum=1, dropout=0.1, modern=False),
+    "fast-modern": dict(vocab=500,   d=128, layers=2, heads=4,  max_len=1024, seq=64,  batch=4, accum=1, dropout=0.1, modern=True),
+    "small":       dict(vocab=5000,  d=512, layers=6, heads=8,  max_len=1024, seq=96,  batch=8, accum=1, dropout=0.1, modern=False),
+    "medium":      dict(vocab=16000, d=768, layers=8, heads=12, max_len=1024, seq=256, batch=8, accum=4, dropout=0.0, modern=False),
+    "modern":      dict(vocab=16000, d=768, layers=8, heads=12, max_len=1024, seq=256, batch=8, accum=4, dropout=0.0, modern=True),
 }
 
-DROPOUT = 0.1
 GRAD_CLIP = 5.0
 LR = 3e-4  # Adam, betas (0.9, 0.999), eps 1e-8, wd 0, same as C++ bench mode
+
+
+def make_dropout(p: float) -> nn.Module:
+    """Identity at p == 0, matching Variable::dropout's early return."""
+    return nn.Dropout(p) if p > 0 else nn.Identity()
 
 
 def swiglu_hidden(d_model: int) -> int:
@@ -79,16 +85,17 @@ class Rope(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d: int, heads: int, max_len: int, rope: bool):
+    def __init__(self, d: int, heads: int, max_len: int, rope: bool, dropout: float):
         super().__init__()
         assert d % heads == 0
         self.heads = heads
+        self.dropout = dropout
         # The C++ model keeps Q/K/V biases in both archs; one fused
         # projection here is the idiomatic-PyTorch equivalent of its
         # three flat sgemms.
         self.qkv = nn.Linear(d, 3 * d, bias=True)
         self.proj = nn.Linear(d, d, bias=True)
-        self.drop = nn.Dropout(DROPOUT)
+        self.drop = make_dropout(dropout)
         self.rope = Rope(d // heads, max_len) if rope else None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -101,7 +108,7 @@ class CausalSelfAttention(nn.Module):
             q, k = self.rope(q), self.rope(k)
         out = F.scaled_dot_product_attention(
             q, k, v, is_causal=True,
-            dropout_p=DROPOUT if self.training else 0.0)
+            dropout_p=self.dropout if self.training else 0.0)
         out = out.transpose(1, 2).reshape(B, T, d)
         return self.drop(self.proj(out))
 
@@ -113,7 +120,7 @@ class FeedForward(nn.Module):
     feedforward.cpp in both archs.
     """
 
-    def __init__(self, d: int, modern: bool):
+    def __init__(self, d: int, modern: bool, dropout: float):
         super().__init__()
         self.modern = modern
         if modern:
@@ -124,7 +131,7 @@ class FeedForward(nn.Module):
         else:
             self.up = nn.Linear(d, 4 * d, bias=True)
             self.down = nn.Linear(4 * d, d, bias=True)
-        self.drop = nn.Dropout(DROPOUT)
+        self.drop = make_dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.modern:
@@ -135,12 +142,12 @@ class FeedForward(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, d: int, heads: int, max_len: int, modern: bool):
+    def __init__(self, d: int, heads: int, max_len: int, modern: bool, dropout: float):
         super().__init__()
         norm = (lambda: nn.RMSNorm(d, eps=1e-5)) if modern else (lambda: nn.LayerNorm(d, eps=1e-5))
         self.norm1, self.norm2 = norm(), norm()
-        self.attn = CausalSelfAttention(d, heads, max_len, rope=modern)
-        self.ffn = FeedForward(d, modern)
+        self.attn = CausalSelfAttention(d, heads, max_len, rope=modern, dropout=dropout)
+        self.ffn = FeedForward(d, modern, dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.norm1(x))
@@ -154,9 +161,10 @@ class GPT(nn.Module):
         self.modern = modern
         self.wte = nn.Embedding(cfg["vocab"], d)
         self.wpe = None if modern else nn.Embedding(cfg["max_len"], d)
-        self.drop = nn.Dropout(DROPOUT)
+        self.drop = make_dropout(cfg["dropout"])
         self.blocks = nn.ModuleList(
-            Block(d, cfg["heads"], cfg["max_len"], modern) for _ in range(cfg["layers"]))
+            Block(d, cfg["heads"], cfg["max_len"], modern, cfg["dropout"])
+            for _ in range(cfg["layers"]))
         self.final_norm = nn.RMSNorm(d, eps=1e-5) if modern else nn.LayerNorm(d, eps=1e-5)
         # Weight tying: logits = final_norm(x) @ wte^T, same as gpt_model.cpp.
 
@@ -208,6 +216,7 @@ def main() -> int:
     model = GPT(cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"preset={args.preset} device={device.type} params={n_params / 1e6:.1f}M "
+          f"dropout={cfg['dropout']} "
           f"torch={torch.__version__} threads={torch.get_num_threads()}"
           + (f" amp={args.amp}" if args.amp else "")
           + (" compile" if args.compile else ""))

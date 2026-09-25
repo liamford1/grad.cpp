@@ -5,6 +5,8 @@
 #include <sstream>
 #include <fstream>
 #include <chrono>
+#include <cstdint>
+#include <stdexcept>
 
 BPETokenizer::BPETokenizer(int vocab_size) : vocab_size(vocab_size) {
     vocab[pad_token] = pad_token_id;
@@ -69,7 +71,7 @@ void BPETokenizer::train(const std::string& training_text) {
 
     int merge_count = 0;
     int total_merges = vocab_size - vocab.size();
-    auto start_time = std::chrono::high_resolution_clock::now();
+    auto start_time = std::chrono::steady_clock::now();
 
     while(vocab.size() < static_cast<size_t>(vocab_size)) {
         if (pair_counts.empty()) { break; }
@@ -93,7 +95,7 @@ void BPETokenizer::train(const std::string& training_text) {
         merge_count++;
 
         if (merge_count % 100 == 0 || merge_count == total_merges) {
-            auto now = std::chrono::high_resolution_clock::now();
+            auto now = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
             float progress = 100.0f * merge_count / total_merges;
             float merges_per_sec = merge_count / static_cast<float>(elapsed + 1);
@@ -156,7 +158,7 @@ void BPETokenizer::train(const std::string& training_text) {
     std::cout << std::endl;
 }
 
-std::vector<int> BPETokenizer::encode(const std::string& text) {
+std::vector<int> BPETokenizer::encode(const std::string& text) const {
     std::vector<std::string> words;
     std::istringstream iss(text);
     std::string word;
@@ -270,17 +272,6 @@ std::string BPETokenizer::decode(const std::vector<int>& token_ids) const {
     return result;
 }
 
-std::unordered_map<std::pair<std::string, std::string>, int, PairHash> BPETokenizer::countPairs(const std::vector<std::vector<std::string>>& word_tokens) {
-    std::unordered_map<std::pair<std::string, std::string>, int, PairHash> pair_counts;
-    for (const auto& word : word_tokens) {
-        for (size_t i = 0; i < word.size() - 1; i++) {
-            std::pair<std::string, std::string> pair = {word[i], word[i + 1]};
-            pair_counts[pair]++;
-        }
-    }
-    return pair_counts;
-}
-
 int BPETokenizer::getCurrentVocabSize() const {
     return vocab.size();
 }
@@ -316,7 +307,46 @@ void BPETokenizer::save(const std::string& filepath) const {
     }
 
     file.close();
+    if (!file) {
+        throw std::runtime_error("Failed while writing tokenizer cache: " + filepath);
+    }
 }
+
+namespace {
+
+// Upper bounds for the cache's length fields. They are far above anything
+// train() produces (the 16000-entry TinyStories cache has 15893 merges and
+// a longest token of 16 bytes), and exist only so a corrupt field fails
+// with a message instead of attempting an allocation of that size.
+constexpr uint64_t kMaxCacheEntries = 1u << 24;
+constexpr uint64_t kMaxTokenBytes = 1u << 16;
+
+template <typename T>
+T read_pod(std::istream& in, const std::string& path, const char* what) {
+    T value;
+    in.read(reinterpret_cast<char*>(&value), sizeof(value));
+    if (!in) {
+        throw std::runtime_error("Tokenizer cache truncated reading " + std::string(what)
+                                 + ": " + path);
+    }
+    return value;
+}
+
+std::string read_token(std::istream& in, const std::string& path) {
+    const size_t len = read_pod<size_t>(in, path, "token length");
+    if (len > kMaxTokenBytes) {
+        throw std::runtime_error("Tokenizer cache has an implausible token length ("
+                                 + std::to_string(len) + " bytes): " + path);
+    }
+    std::string token(len, '\0');
+    in.read(token.data(), static_cast<std::streamsize>(len));
+    if (!in) {
+        throw std::runtime_error("Tokenizer cache truncated reading a token: " + path);
+    }
+    return token;
+}
+
+}  // namespace
 
 void BPETokenizer::load(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::binary);
@@ -324,35 +354,42 @@ void BPETokenizer::load(const std::string& filepath) {
         throw std::runtime_error("Failed to open file for loading: " + filepath);
     }
 
-    vocab.clear();
-    id_to_token.clear();
-    merges.clear();
+    // Parse into locals and swap in only once the whole file has read
+    // cleanly, so a bad cache cannot leave a half-loaded tokenizer.
+    std::unordered_map<std::string, int> new_vocab;
+    std::unordered_map<int, std::string> new_id_to_token;
+    std::vector<std::pair<std::string, std::string>> new_merges;
 
-    size_t vocab_map_size;
-    file.read(reinterpret_cast<char*>(&vocab_map_size), sizeof(vocab_map_size));
+    const size_t vocab_map_size = read_pod<size_t>(file, filepath, "vocab size");
+    if (vocab_map_size > kMaxCacheEntries) {
+        throw std::runtime_error("Tokenizer cache has an implausible vocab size ("
+                                 + std::to_string(vocab_map_size) + "): " + filepath);
+    }
+    new_vocab.reserve(vocab_map_size);
+    new_id_to_token.reserve(vocab_map_size);
     for (size_t i = 0; i < vocab_map_size; i++) {
-        size_t key_len;
-        file.read(reinterpret_cast<char*>(&key_len), sizeof(key_len));
-        std::string key(key_len, '\0');
-        file.read(&key[0], key_len);
-        int value;
-        file.read(reinterpret_cast<char*>(&value), sizeof(value));
-        vocab[key] = value;
-        id_to_token[value] = key;
+        std::string key = read_token(file, filepath);
+        const int value = read_pod<int>(file, filepath, "token id");
+        if (value < 0) {
+            throw std::runtime_error("Tokenizer cache has a negative token id: " + filepath);
+        }
+        new_id_to_token[value] = key;
+        new_vocab[std::move(key)] = value;
     }
 
-    size_t merges_size;
-    file.read(reinterpret_cast<char*>(&merges_size), sizeof(merges_size));
+    const size_t merges_size = read_pod<size_t>(file, filepath, "merge count");
+    if (merges_size > kMaxCacheEntries) {
+        throw std::runtime_error("Tokenizer cache has an implausible merge count ("
+                                 + std::to_string(merges_size) + "): " + filepath);
+    }
+    new_merges.reserve(merges_size);
     for (size_t i = 0; i < merges_size; i++) {
-        size_t first_len, second_len;
-        file.read(reinterpret_cast<char*>(&first_len), sizeof(first_len));
-        std::string first(first_len, '\0');
-        file.read(&first[0], first_len);
-        file.read(reinterpret_cast<char*>(&second_len), sizeof(second_len));
-        std::string second(second_len, '\0');
-        file.read(&second[0], second_len);
-        merges.push_back({first, second});
+        std::string first = read_token(file, filepath);
+        std::string second = read_token(file, filepath);
+        new_merges.emplace_back(std::move(first), std::move(second));
     }
 
-    file.close();
+    vocab.swap(new_vocab);
+    id_to_token.swap(new_id_to_token);
+    merges.swap(new_merges);
 }

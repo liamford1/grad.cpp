@@ -41,4 +41,7 @@ public:
     size_t dataset_size() const {
         return dataset_->size();
     }
+
+    const std::shared_ptr<Dataset>& dataset() const { return dataset_; }
+    int batch_size() const { return batch_size_; }
 };

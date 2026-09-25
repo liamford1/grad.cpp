@@ -20,7 +20,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
 
       - name: Configure
-        run: cmake -S . -B build -DBUILD_TESTS=ON
+        run: cmake -S . -B build -DBUILD_TESTS=ON -DGRAD_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build -j
@@ -30,6 +30,12 @@ jobs:
 
       - name: Install package
         run: cmake --install build --prefix "${{ runner.temp }}/grad-install"
+
+      - name: Build against the installed package
+        run: |
+          cmake -S tests/package -B build-package -DCMAKE_PREFIX_PATH="${{ runner.temp }}/grad-install"
+          cmake --build build-package
+          ./build-package/consumer
 
       - name: Training smoke test
         run: ./build/grad train-fast
@@ -42,6 +48,10 @@ jobs:
       - name: Install BLAS
         run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
 
+      # The project's -Wall -Wextra -Wpedantic apply here too (they are
+      # per-target), but not -Werror: GCC's ASan instrumentation is known
+      # to raise false -Wmaybe-uninitialized / -Wstringop-* warnings, and
+      # the build-and-test job already gates on a clean build.
       - name: Configure ASan and UBSan
         run: >-
           cmake -S . -B build-sanitize

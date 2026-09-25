@@ -1,8 +1,10 @@
 #include <iostream>
 #include <cmath>
+#include <functional>
 #include <iomanip>
 #include "transformer/variable.h"
 #include "transformer/tensor.h"
+#include "../test_util.h"
 
 float numericalGradient(std::function<float()> forward_fn, float* param, float epsilon = 1e-5) {
     float original = *param;
@@ -66,7 +68,7 @@ void test_simple_addition() {
     
     float numerical = numericalGradient(forward_fn, &a->getData().raw()[0]);
     
-    bool passed = checkGradient(analytical, numerical, 2e-3);
+    bool passed = CHECK(checkGradient(analytical, numerical, 2e-3));
     std::cout << (passed ? "✓ Addition gradient correct" : "✗ Addition gradient FAILED") << std::endl;
 }
 
@@ -89,7 +91,7 @@ void test_scale() {
     
     float numerical = numericalGradient(forward_fn, &a->getData().raw()[0]);
     
-    bool passed = checkGradient(analytical, numerical, 1e-2);
+    bool passed = CHECK(checkGradient(analytical, numerical, 1e-2));
     std::cout << (passed ? "✓ Scale gradient correct" : "✗ Scale gradient FAILED") << std::endl;
 }
 
@@ -144,7 +146,7 @@ void test_matmul() {
     std::cout << "Numerical: " << numerical << std::endl;
     std::cout << "Analytical: " << analytical << std::endl;
     
-    bool passed = checkGradient(analytical, numerical, 5e-2);
+    bool passed = CHECK(checkGradient(analytical, numerical, 5e-2));
     std::cout << (passed ? "✓ Matmul gradient correct" : "✗ Matmul gradient FAILED") << std::endl;
 }
   
@@ -167,30 +169,40 @@ void test_gelu() {
     
     float numerical = numericalGradient(forward_fn, &x->getData().raw()[0]);
     
-    bool passed = checkGradient(analytical, numerical, 1e-2);
+    bool passed = CHECK(checkGradient(analytical, numerical, 1e-2));
     std::cout << (passed ? "✓ GELU gradient correct" : "✗ GELU gradient FAILED") << std::endl;
 }
 
 void test_softmax() {
-    std::cout << "\n=== Test 5: Softmax (single output) ===" << std::endl;
-    
-    auto x = Variable::create(Tensor(1, 1), true);
+    // A single-element softmax is the constant 1, so its gradient is 0
+    // whatever the backward does. Three logits projected to a scalar by a
+    // fixed weight vector exercise the full Jacobian.
+    std::cout << "\n=== Test 5: Softmax (3 logits, weighted sum) ===" << std::endl;
+
+    auto x = Variable::create(Tensor(1, 3), true);
     x->getData().setValue(0, 0, 1.0f);
-    
+    x->getData().setValue(0, 1, -0.5f);
+    x->getData().setValue(0, 2, 0.25f);
+    auto w = Variable::create(Tensor(3, 1), false);
+    w->getData().setValue(0, 0, 0.3f);
+    w->getData().setValue(1, 0, -1.2f);
+    w->getData().setValue(2, 0, 2.0f);
+
     x->zeroGrad();
-    auto y = x->softmax();
+    auto y = x->softmax()->matmul(w);
     y->backward();
-    
-    float analytical = x->getGrad().getValue(0, 0);
-    
+
     auto forward_fn = [&]() {
-        auto y_temp = x->softmax();
+        auto y_temp = x->softmax()->matmul(w);
         return y_temp->getData().getValue(0, 0);
     };
-    
-    float numerical = numericalGradient(forward_fn, &x->getData().raw()[0]);
-    
-    bool passed = checkGradient(analytical, numerical, 1e-2);
+
+    bool passed = true;
+    for (int i = 0; i < 3; i++) {
+        float analytical = x->getGrad().getValue(0, i);
+        float numerical = numericalGradient(forward_fn, &x->getData().raw()[i], 1e-3f);
+        passed = CHECK(checkGradient(analytical, numerical, 1e-2)) && passed;
+    }
     std::cout << (passed ? "✓ Softmax gradient correct" : "✗ Softmax gradient FAILED") << std::endl;
 }
 
@@ -203,6 +215,5 @@ int main() {
     test_gelu();
     test_softmax();
     
-    std::cout << "\n=== All Tests Complete ===" << std::endl;
-    return 0;
+    return test_util::exit_code();
 }
