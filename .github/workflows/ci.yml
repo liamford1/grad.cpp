@@ -25,6 +25,12 @@ jobs:
       - name: Build
         run: cmake --build build -j
 
+      # The PyTorch baseline keeps its own copy of the presets; fail if it
+      # drifts from grad's. Needs only the binary and python3, not torch.
+      - name: PyTorch baseline presets match grad presets
+        if: runner.os == 'Linux'
+        run: python3 benchmarks/check_presets.py ./build/grad
+
       - name: Unit tests
         run: ctest --test-dir build --output-on-failure
 
