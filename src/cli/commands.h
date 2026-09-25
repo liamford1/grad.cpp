@@ -32,5 +32,6 @@ int run_chat(const Invocation& invocation);
 int run_eval(const Invocation& invocation);
 int run_bench(const Invocation& invocation);
 int run_watch(const Invocation& invocation);
+int run_presets(const Invocation& invocation);
 
 }  // namespace cli

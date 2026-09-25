@@ -146,6 +146,7 @@ add_executable(grad
     src/cli/args.cpp
     src/cli/common.cpp
     src/cli/presets.cpp
+    src/cli/presets_command.cpp
     src/cli/prepare.cpp
     src/cli/train.cpp
     src/cli/generate.cpp

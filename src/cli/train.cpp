@@ -285,7 +285,7 @@ int run_train(const Invocation& invocation) {
                  "saves <prefix>_resume_model.bin and _resume_state.bin, which are also "
                  "refreshed at every eval interval.");
     cmd.optional("corpus", corpus, "plain-text corpus");
-    cmd.optional("preset", preset_name, "one of " + train_preset_names());
+    cmd.optional("preset", preset_name, "one of " + train_preset_names() + "; see grad presets");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 

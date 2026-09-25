@@ -31,6 +31,7 @@ constexpr std::array kCommands{
     CommandEntry{"eval", cli::run_eval, "Loss and perplexity on held-out and training windows"},
     CommandEntry{"bench", cli::run_bench, "Training and generation throughput, median of repeated trials"},
     CommandEntry{"watch", cli::run_watch, "Live terminal dashboard for a training run"},
+    CommandEntry{"presets", cli::run_presets, "List the model and training presets (--json for tools)"},
 };
 
 void print_usage(std::ostream& out, std::string_view program) {
