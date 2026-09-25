@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a training run's loss curves to a self-contained SVG.
 
-Reads the <prefix>_metrics.csv every run writes (see include/utils/metrics.h)
+Reads the <prefix>_metrics.csv every run writes (see include/grad/utils/metrics.h)
 and plots the smoothed training loss, the validation loss, and the points
 where the run was resumed from a checkpoint. Standard library only, so it
 runs anywhere the repo does.

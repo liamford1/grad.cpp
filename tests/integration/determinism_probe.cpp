@@ -8,18 +8,18 @@
 // parameter and of every loss value seen along the way. With a reference
 // file it also fails unless its output matches that file byte for byte.
 //
-// CMake runs it twice, at TRANSFORMER_THREADS=1 and 4. Every parallel loop
+// CMake runs it twice, at GRAD_THREADS=1 and 4. Every parallel loop
 // in the engine either writes disjoint outputs or reduces in a fixed order,
 // so the two runs must agree to the last bit; a reduction merged in thread
 // completion order (as LayerNorm's gamma/beta sums once were) shows up here
 // as a hash mismatch.
 
-#include "transformer/activations.h"
-#include "transformer/gpt_model.h"
-#include "transformer/optimizer.h"
-#include "transformer/parallel.h"
-#include "transformer/tensor.h"
-#include "transformer/variable.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/optimizer.h"
+#include "grad/transformer/parallel.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -32,14 +32,16 @@
 #include <string>
 #include <vector>
 
+using namespace grad;
+
 namespace {
 
 constexpr int kVocab = 97;
 constexpr int kDModel = 64;
 constexpr int kLayers = 2;
 constexpr int kHeads = 4;
-constexpr int kSeq = 16;
-constexpr int kBatch = 4;
+constexpr size_t kSeq = 16;
+constexpr size_t kBatch = 4;
 constexpr float kDropout = 0.1f;
 constexpr int kSteps = 5;
 constexpr int kGradAccum = 2;
@@ -73,9 +75,9 @@ struct TokenBatch {
 TokenBatch make_batch(std::mt19937& gen) {
     std::uniform_int_distribution<int> token(0, kVocab - 1);
     TokenBatch batch;
-    for (int b = 0; b < kBatch; b++) {
+    for (size_t b = 0; b < kBatch; b++) {
         int prev = token(gen);
-        for (int s = 0; s < kSeq; s++) {
+        for (size_t s = 0; s < kSeq; s++) {
             const int next = token(gen);
             batch.input.setValue(b, s, 0, static_cast<float>(prev));
             batch.target.setValue(b, s, 0, static_cast<float>(next));

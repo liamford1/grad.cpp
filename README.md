@@ -88,7 +88,18 @@ The build also produces an installable `grad::core` CMake target:
 cmake --install build --prefix ./dist
 ```
 
-Downstream CMake projects can use `find_package(grad CONFIG REQUIRED)` and link `grad::core` after adding `dist` to `CMAKE_PREFIX_PATH`.
+Downstream CMake projects can use `find_package(grad CONFIG REQUIRED)` and link `grad::core` after adding `dist` to `CMAKE_PREFIX_PATH`. Headers install under `dist/include/grad/` (`#include "grad/transformer/gpt_model.h"`) and everything is in `namespace grad` (`grad::GPTModel`, `grad::training::Trainer`); [tests/package](tests/package/main.cpp) is a minimal consumer.
+
+Runtime switches are environment variables:
+
+| Variable | Effect |
+|---|---|
+| `GRAD_THREADS=N` | Thread pool size (default: all hardware threads) |
+| `GRAD_METAL=0` | Keep every matmul on the CPU |
+| `GRAD_METAL_THRESHOLD=N` | Minimum FLOPs (2·M·N·K) for a matmul to go to the Metal GPU (default 10 GFLOPs) |
+| `GRAD_METAL_FP16=1` | fp16 GPU operands with fp32 accumulation (off by default, BENCHMARKS.md #11) |
+
+They were named `TRANSFORMER_*` before; the old names are still read when the new one is unset.
 
 Release builds are tuned for the build machine with `-march=native` (that is how every number in [BENCHMARKS.md](BENCHMARKS.md) was measured). For a binary you intend to run on another CPU, configure with `-DGRAD_NATIVE_ARCH=OFF`.
 
@@ -176,7 +187,7 @@ The test suite checks the parts that are easiest to get silently wrong. Every ch
 - **Packaging**: CI builds a small consumer project against the installed `grad::core` CMake package
 - **Hardware-aware results**: Metal parity is reported as skipped, not passed, when no Metal device is exposed
 
-CI builds with warnings as errors (`-Wall -Wextra -Wpedantic`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer.
+CI builds with warnings as errors (`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast`, and Clang's stricter `-Wshadow-all`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer.
 
 ## Design notes
 
@@ -188,7 +199,7 @@ CI builds with warnings as errors (`-Wall -Wextra -Wpedantic`) on macOS and Linu
 ## Repository layout
 
 ```
-include/, src/
+include/grad/, src/   grad::core (headers install to <prefix>/include/grad/)
   transformer/   tensor, variable (autograd), attention, layer_norm,
                  feedforward, embeddings, transformer_block, gpt_model,
                  optimizer, inference (KV cache), text_gen, Metal backend
@@ -196,6 +207,7 @@ include/, src/
   data/          datasets, memory-mapped token files, batching dataloader
   training/      trainer (loop, evaluation, checkpointing, resume)
   utils/         metrics log, terminal dashboard, training helpers
+include/cli/, src/cli/, src/main.cpp   the grad executable (not installed)
 tests/
   unit/          gradient checks and component tests
   integration/   end-to-end sanity and file-format tests

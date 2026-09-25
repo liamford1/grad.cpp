@@ -5,14 +5,16 @@
 //
 // This is the only test that exercises the weight-tying backward and the
 // batched (3D) training path through the whole network.
-#include "transformer/gpt_model.h"
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include <cmath>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
+
+using namespace grad;
 
 namespace {
 
@@ -21,8 +23,8 @@ constexpr int kDModel = 16;
 constexpr int kLayers = 2;
 constexpr int kHeads = 2;
 constexpr int kMaxLen = 32;
-constexpr int kBatch = 2;
-constexpr int kSeq = 5;
+constexpr size_t kBatch = 2;
+constexpr size_t kSeq = 5;
 
 float model_loss(const GPTModel& model,
                  const std::shared_ptr<Variable>& input,
@@ -77,8 +79,8 @@ void run_arch(GPTArch arch, const std::vector<Probe>& probes,
 
     Tensor ids(kBatch, kSeq, 1);
     Tensor tgt(kBatch, kSeq, 1);
-    for (int b = 0; b < kBatch; b++) {
-        for (int s = 0; s < kSeq; s++) {
+    for (size_t b = 0; b < kBatch; b++) {
+        for (size_t s = 0; s < kSeq; s++) {
             ids.setValue(b, s, 0, static_cast<float>((b * 3 + s * 2 + 1) % kVocab));
             tgt.setValue(b, s, 0, static_cast<float>((b * 5 + s * 3 + 2) % kVocab));
         }
@@ -97,7 +99,7 @@ void run_arch(GPTArch arch, const std::vector<Probe>& probes,
         int idx = probe.param_idx >= 0
             ? probe.param_idx
             : static_cast<int>(params.size()) + probe.param_idx;
-        auto& p = params[idx];
+        auto& p = params[static_cast<size_t>(idx)];
         float analytical = p->hasGrad() ? p->getGrad().raw()[probe.flat_idx] : 0.0f;
         float numerical = numerical_gradient(model, input, targets,
                                              &p->getData().raw()[probe.flat_idx]);

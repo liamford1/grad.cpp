@@ -1,14 +1,14 @@
 #pragma once
 
-#include "transformer/gpt_model.h"
-#include "transformer/optimizer.h"
-#include "data/dataloader.h"
-#include "utils/metrics.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/optimizer.h"
+#include "grad/data/dataloader.h"
+#include "grad/utils/metrics.h"
 #include <string>
 #include <memory>
 #include <optional>
 
-namespace training {
+namespace grad::training {
 
 struct TrainingConfig {
     int vocab_size;
@@ -99,4 +99,4 @@ private:
 // exists. Empty if the file is missing or is not a resume state file.
 [[nodiscard]] std::optional<int> peek_resume_step(const std::string& state_path);
 
-} // namespace training
+}  // namespace grad::training

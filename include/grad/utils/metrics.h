@@ -1,10 +1,11 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <fstream>
 #include <string>
 
-namespace utils {
+namespace grad::utils {
 
 // Append-only per-step training log, one CSV row per step plus eval and
 // meta rows. This is the data source for `grad watch` (the live
@@ -19,7 +20,7 @@ class MetricsLog {
 public:
     MetricsLog(const std::string& path, bool append,
                int total_steps, long tokens_per_step,
-               long param_count, const std::string& model_desc);
+               size_t param_count, const std::string& model_desc);
 
     void log_step(int step, float loss, float lr, float grad_norm,
                   long step_ms, long mem_mb);
@@ -58,4 +59,4 @@ private:
 void print_header(const std::string& title);
 void print_section(const std::string& title);
 
-} // namespace utils
+}  // namespace grad::utils

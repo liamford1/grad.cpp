@@ -3,6 +3,8 @@
 #include <string>
 #include <memory>
 
+namespace grad {
+
 class Dataset {
     public:
         virtual ~Dataset() = default;
@@ -13,8 +15,8 @@ class Dataset {
 class TextDataset : public Dataset {
     private:
         std::vector<int> token_ids_;
-        int seq_length_;
-        int stride_;
+        size_t seq_length_;
+        size_t stride_;
     public:
         // stride = 1 gives every sliding window (training); stride =
         // seq_length gives non-overlapping windows (deterministic full
@@ -43,3 +45,5 @@ class SpreadSubset : public Dataset {
         size_t size() const override { return count_; }
         std::pair<std::vector<int>, std::vector<int>> get_item(size_t index) const override;
 };
+
+}  // namespace grad

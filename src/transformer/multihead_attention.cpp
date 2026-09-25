@@ -1,27 +1,29 @@
-#include "transformer/tensor.h"
-#include "transformer/activations.h"
-#include "transformer/multihead_attention.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/multihead_attention.h"
 #include <cmath>
 #include <stdexcept>
 #include <cstring>
-#include "transformer/blas_wrapper.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/parallel.h"
 #include <memory>
 #include <string>
 #include <vector>
 
+namespace grad {
+
 namespace {
 
-inline void fill_bias_rows(float* out, const float* bias, int rows, int cols) {
-    for (int i = 0; i < rows; i++) {
-        std::memcpy(out + static_cast<size_t>(i) * cols, bias, cols * sizeof(float));
+inline void fill_bias_rows(float* out, const float* bias, size_t rows, size_t cols) {
+    for (size_t i = 0; i < rows; i++) {
+        std::memcpy(out + i * cols, bias, cols * sizeof(float));
     }
 }
 
-inline void add_column_sums(const float* x, int rows, int cols, float* out) {
-    for (int i = 0; i < rows; i++) {
-        const float* row = x + static_cast<size_t>(i) * cols;
-        for (int j = 0; j < cols; j++) {
+inline void add_column_sums(const float* x, size_t rows, size_t cols, float* out) {
+    for (size_t i = 0; i < rows; i++) {
+        const float* row = x + i * cols;
+        for (size_t j = 0; j < cols; j++) {
             out[j] += row[j];
         }
     }
@@ -29,16 +31,17 @@ inline void add_column_sums(const float* x, int rows, int cols, float* out) {
 
 // cos/sin tables for RoPE: row i holds cos/sin(i * theta_j) for the
 // head_size/2 rotation frequencies theta_j = 10000^(-2j/head_size).
-void build_rope_tables(int seq_len, int head_size,
+void build_rope_tables(size_t seq_len, size_t head_size,
                        std::vector<float>& cos_t, std::vector<float>& sin_t) {
-    const int half = head_size / 2;
-    cos_t.resize(static_cast<size_t>(seq_len) * half);
-    sin_t.resize(static_cast<size_t>(seq_len) * half);
-    for (int j = 0; j < half; j++) {
-        const float theta = std::pow(10000.0f, -2.0f * j / head_size);
-        for (int i = 0; i < seq_len; i++) {
-            cos_t[static_cast<size_t>(i) * half + j] = std::cos(i * theta);
-            sin_t[static_cast<size_t>(i) * half + j] = std::sin(i * theta);
+    const size_t half = head_size / 2;
+    cos_t.resize(seq_len * half);
+    sin_t.resize(seq_len * half);
+    for (size_t j = 0; j < half; j++) {
+        const float theta = std::pow(10000.0f, -2.0f * static_cast<float>(j) /
+                                                   static_cast<float>(head_size));
+        for (size_t i = 0; i < seq_len; i++) {
+            cos_t[i * half + j] = std::cos(static_cast<float>(i) * theta);
+            sin_t[i * half + j] = std::sin(static_cast<float>(i) * theta);
         }
     }
 }
@@ -46,16 +49,16 @@ void build_rope_tables(int seq_len, int head_size,
 // Rotates each head's (2j, 2j+1) pairs in a (seq_len, d_model) block by
 // its row's position angle, in place. inverse applies the transpose
 // rotation - backward through RoPE, since rotations are orthogonal.
-void rope_apply(float* buf, int seq_len, int d_model, int num_heads, int head_size,
+void rope_apply(float* buf, size_t seq_len, size_t d_model, size_t num_heads, size_t head_size,
                 const float* cos_t, const float* sin_t, bool inverse) {
-    const int half = head_size / 2;
-    for (int i = 0; i < seq_len; i++) {
-        const float* c_row = cos_t + static_cast<size_t>(i) * half;
-        const float* s_row = sin_t + static_cast<size_t>(i) * half;
-        float* row = buf + static_cast<size_t>(i) * d_model;
-        for (int h = 0; h < num_heads; h++) {
+    const size_t half = head_size / 2;
+    for (size_t i = 0; i < seq_len; i++) {
+        const float* c_row = cos_t + i * half;
+        const float* s_row = sin_t + i * half;
+        float* row = buf + i * d_model;
+        for (size_t h = 0; h < num_heads; h++) {
             float* head = row + h * head_size;
-            for (int j = 0; j < half; j++) {
+            for (size_t j = 0; j < half; j++) {
                 const float c = c_row[j];
                 const float s = inverse ? -s_row[j] : s_row[j];
                 const float a = head[2 * j];
@@ -75,10 +78,10 @@ std::shared_ptr<Variable> relayout(const std::shared_ptr<Variable>& src, Tensor&
     const bool needs_grad = compute_requires_grad(src);
     auto out = Variable::create(std::move(shaped), needs_grad);
     if (needs_grad) {
-        out->setBackward({src}, [src](Variable& out) {
+        out->setBackward({src}, [src](Variable& node) {
             src->ensureGrad();
             float* dst = src->getGrad().raw();
-            blas_vadd(dst, out.getGrad().raw(), dst, out.getGrad().numel());
+            blas_vadd(dst, node.getGrad().raw(), dst, node.getGrad().numel());
         });
     }
     return out;
@@ -88,27 +91,28 @@ std::shared_ptr<Variable> relayout(const std::shared_ptr<Variable>& src, Tensor&
 
 MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout_rate,
                                        bool rope) :
-    d_model(d_model),
-    num_heads(num_heads),
-    dropout_rate(dropout_rate),
+    d_model_(d_model),
+    num_heads_(num_heads),
+    dropout_rate_(dropout_rate),
     rope_(rope)
 {
-    if (num_heads == 0 || (d_model % num_heads) != 0) {
+    if (d_model <= 0 || num_heads <= 0 || (d_model % num_heads) != 0) {
         throw std::invalid_argument("d_model must be divisible by num_heads and num_heads > 0");
     }
     if (rope && (d_model / num_heads) % 2 != 0) {
         throw std::invalid_argument("RoPE requires an even head size");
     }
 
-    Tensor wq_tensor(d_model, d_model);
-    Tensor wk_tensor(d_model, d_model);
-    Tensor wv_tensor(d_model, d_model);
-    Tensor wo_tensor(d_model, d_model);
-    
-    wq_tensor.xavier(d_model, d_model);
-    wk_tensor.xavier(d_model, d_model);
-    wv_tensor.xavier(d_model, d_model);
-    wo_tensor.xavier(d_model, d_model);
+    const size_t d = static_cast<size_t>(d_model);
+    Tensor wq_tensor(d, d);
+    Tensor wk_tensor(d, d);
+    Tensor wv_tensor(d, d);
+    Tensor wo_tensor(d, d);
+
+    wq_tensor.xavier(d, d);
+    wk_tensor.xavier(d, d);
+    wv_tensor.xavier(d, d);
+    wo_tensor.xavier(d, d);
 
     W_q = Variable::create(wq_tensor, true);
     W_k = Variable::create(wk_tensor, true);
@@ -116,19 +120,19 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout
     W_o = Variable::create(wo_tensor, true);
 
     // Biases start at the constructor's zeros.
-    b_q = Variable::create(Tensor(1, d_model), true);
-    b_k = Variable::create(Tensor(1, d_model), true);
-    b_v = Variable::create(Tensor(1, d_model), true);
-    b_o = Variable::create(Tensor(1, d_model), true);
+    b_q = Variable::create(Tensor(1, d), true);
+    b_k = Variable::create(Tensor(1, d), true);
+    b_v = Variable::create(Tensor(1, d), true);
+    b_o = Variable::create(Tensor(1, d), true);
 }
 
 std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> input, bool training) const {
     const Tensor& input_tensor = input->getData();
 
-    if (input_tensor.getCols() != static_cast<size_t>(d_model)) {
+    if (input_tensor.getCols() != static_cast<size_t>(d_model_)) {
         throw std::invalid_argument("MultiHeadAttention: input width " +
                                     std::to_string(input_tensor.getCols()) +
-                                    " does not match d_model " + std::to_string(d_model));
+                                    " does not match d_model " + std::to_string(d_model_));
     }
 
     if (!input_tensor.getIs3D()) {
@@ -153,20 +157,21 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     // cached for the backward pass, so it recomputes nothing and
     // differentiates through exactly the mask the forward applied; without
     // it they live only in per-task scratch.
-    const int batch_size = input_tensor.getBatchSize();
-    const int seq_len = input_tensor.getRows();
-    const int head_size = d_model / num_heads;
-    const int flat = batch_size * seq_len;
-    const int d = d_model;
-    const int H = num_heads;
-    const int S = seq_len;
+    // Extents come from the input's shape; num_heads_ was checked positive
+    // at construction.
+    const size_t batch_size = input_tensor.getBatchSize();
+    const size_t S = input_tensor.getRows();
+    const size_t d = input_tensor.getCols();
+    const size_t H = static_cast<size_t>(num_heads_);
+    const size_t head_size = d / H;
+    const size_t flat = batch_size * S;
 
-    const bool use_attn_dropout = training && dropout_rate > 0.0f;
+    const bool use_attn_dropout = training && dropout_rate_ > 0.0f;
     // The weights get gradients even when the input is frozen, so the
     // graph is recorded if anything feeding this op requires grad.
     const bool needs_grad = compute_requires_grad(input, W_q, W_k, W_v, W_o,
                                                   b_q, b_k, b_v, b_o);
-    const float keep_scale = 1.0f / (1.0f - dropout_rate);
+    const float keep_scale = 1.0f / (1.0f - dropout_rate_);
 
     Tensor causal_mask = Tensor::create_causal_mask(S);
     const float scale_factor = 1.0f / std::sqrt(static_cast<float>(head_size));
@@ -196,9 +201,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     auto rope_sin = std::make_shared<std::vector<float>>();
     if (rope_) {
         build_rope_tables(S, head_size, *rope_cos, *rope_sin);
-        for (int b = 0; b < batch_size; b++) {
-            float* q_block = Q->raw() + static_cast<size_t>(b) * S * d;
-            float* k_block = K->raw() + static_cast<size_t>(b) * S * d;
+        for (size_t b = 0; b < batch_size; b++) {
+            float* q_block = Q->raw() + b * S * d;
+            float* k_block = K->raw() + b * S * d;
             rope_apply(q_block, S, d, H, head_size, rope_cos->data(), rope_sin->data(), false);
             rope_apply(k_block, S, d, H, head_size, rope_cos->data(), rope_sin->data(), false);
         }
@@ -206,7 +211,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
     // Softmax outputs (and dropout masks) per (batch, head), kept for the
     // backward pass only when there is one.
-    const size_t cache_floats = static_cast<size_t>(batch_size) * H * S * S;
+    const size_t cache_floats = batch_size * H * S * S;
     std::shared_ptr<std::vector<float>> attn_cache;
     std::shared_ptr<std::vector<float>> drop_mask;
     if (needs_grad) {
@@ -226,13 +231,13 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     // parallel loop so each unit's mask is fixed by its index rather
     // than by which thread reached the RNG first.
     const uint64_t stream_base = use_attn_dropout
-        ? reserve_dropout_streams(static_cast<uint64_t>(batch_size) * H) : 0;
+        ? reserve_dropout_streams(static_cast<uint64_t>(batch_size * H)) : 0;
 
     // Heads are column slices of the (rows, d_model) projections; BLAS
     // takes them as strided views (lda = d_model), so no per-head
     // gather/scatter copies are needed anywhere in this loop -
     // measured at ~12% of step CPU as memmove (BENCHMARKS.md #10).
-    parallel_for(static_cast<size_t>(batch_size) * H, 1,
+    parallel_for(batch_size * H, 1,
                  [&](size_t begin, size_t end) {
         Tensor scores = Tensor::uninitialized(S, S);
         // Per-task homes for what the cache would otherwise hold: the
@@ -243,40 +248,40 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         Tensor dropped = use_attn_dropout ? Tensor::uninitialized(S, S) : Tensor();
 
         for (size_t unit = begin; unit < end; unit++) {
-            const int b = static_cast<int>(unit) / H;
-            const int h = static_cast<int>(unit) % H;
-            const size_t batch_offset = static_cast<size_t>(b) * S * d;
-            const int col = h * head_size;
+            const size_t b = unit / H;
+            const size_t h = unit % H;
+            const size_t batch_offset = b * S * d;
+            const size_t col = h * head_size;
 
             const float* q_ptr = Q_data + batch_offset + col;
             const float* k_ptr = K_data + batch_offset + col;
             const float* v_ptr = V_data + batch_offset + col;
 
             float* scores_data = scores.raw();
-            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                        S, S, head_size,
-                        1.0f, q_ptr, d, k_ptr, d,
-                        0.0f, scores_data, S);
-            for (int i = 0; i < S * S; i++) {
+            blas_sgemm_strided(false, true,
+                               S, S, head_size,
+                               1.0f, q_ptr, d, k_ptr, d,
+                               0.0f, scores_data, S);
+            for (size_t i = 0; i < S * S; i++) {
                 scores_data[i] = scores_data[i] * scale_factor + mask_data[i];
             }
 
             // Softmax rows straight into the cache slice or scratch (same
             // math as Tensor::softmax: subtract max, vec_exp, scale by 1/sum).
             float* attn_unit = attn_data_all ? attn_data_all + unit * S * S : attn_scratch.raw();
-            for (int i = 0; i < S; i++) {
-                const float* row_in = scores_data + static_cast<size_t>(i) * S;
-                float* row_out = attn_unit + static_cast<size_t>(i) * S;
+            for (size_t i = 0; i < S; i++) {
+                const float* row_in = scores_data + i * S;
+                float* row_out = attn_unit + i * S;
                 float max_val = row_in[0];
-                for (int j = 1; j < S; j++) {
+                for (size_t j = 1; j < S; j++) {
                     max_val = std::max(max_val, row_in[j]);
                 }
-                for (int j = 0; j < S; j++) {
+                for (size_t j = 0; j < S; j++) {
                     row_out[j] = row_in[j] - max_val;
                 }
                 vec_exp(row_out, row_out, S);
                 const float inv_sum = 1.0f / vec_sum(row_out, S);
-                for (int j = 0; j < S; j++) {
+                for (size_t j = 0; j < S; j++) {
                     row_out[j] *= inv_sum;
                 }
             }
@@ -284,20 +289,20 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             const float* effective = attn_unit;
             if (use_attn_dropout) {
                 float* m = mask_all ? mask_all + unit * S * S : mask_scratch.raw();
-                fill_dropout_mask(m, static_cast<size_t>(S) * S,
-                                  dropout_rate, keep_scale, stream_base + unit);
+                fill_dropout_mask(m, S * S,
+                                  dropout_rate_, keep_scale, stream_base + unit);
                 float* w = dropped.raw();
-                for (int i = 0; i < S * S; i++) {
+                for (size_t i = 0; i < S * S; i++) {
                     w[i] = attn_unit[i] * m[i];
                 }
                 effective = w;
             }
 
             // attended lands directly in its concat column slice.
-            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                        S, head_size, S,
-                        1.0f, effective, S, v_ptr, d,
-                        0.0f, concat_data + batch_offset + col, d);
+            blas_sgemm_strided(false, false,
+                               S, head_size, S,
+                               1.0f, effective, S, v_ptr, d,
+                               0.0f, concat_data + batch_offset + col, d);
         }
     });
 
@@ -324,10 +329,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                              Q, K, V, concat, attn_cache, drop_mask,
                              rope_cos, rope_sin, rope_active,
                              batch_size, S, d, H, head_size, flat,
-                             scale_factor, dropout_active](Variable& output) {
+                             scale_factor, dropout_active](Variable& node) {
             // Each gradient is written only if its target requires grad:
             // ensureGrad leaves a frozen tensor's grad unallocated.
-            const float* dOut = output.getGrad().raw();
+            const float* dOut = node.getGrad().raw();
 
             // Output projection gradients: single flat sgemms.
             // dWo += concat^T @ dOut ; dbo += column sums of dOut.
@@ -362,38 +367,38 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             float* dK_data = dK.raw();
             float* dV_data = dV.raw();
             const float* dConcat_data = dConcat.raw();
-            const float* Q_data = Q->raw();
-            const float* K_data = K->raw();
-            const float* V_data = V->raw();
+            const float* Q_saved = Q->raw();
+            const float* K_saved = K->raw();
+            const float* V_saved = V->raw();
             const float* attn_all = attn_cache->data();
-            const float* mask_all = drop_mask ? drop_mask->data() : nullptr;
+            const float* masks = drop_mask ? drop_mask->data() : nullptr;
 
             // Strided views throughout, mirroring forward: head slices
             // read with lda = d, and dQ/dK/dV written directly into
             // their disjoint column slices (each unit owns one).
-            parallel_for(static_cast<size_t>(batch_size) * H, 1,
+            parallel_for(batch_size * H, 1,
                          [&](size_t begin, size_t end) {
                 Tensor dWeights = Tensor::uninitialized(S, S);
                 Tensor dScores = Tensor::uninitialized(S, S);
                 Tensor effective = Tensor::uninitialized(S, S);
 
                 for (size_t unit = begin; unit < end; unit++) {
-                    const int b = static_cast<int>(unit) / H;
-                    const int h = static_cast<int>(unit) % H;
-                    const size_t batch_offset = static_cast<size_t>(b) * S * d;
-                    const int col = h * head_size;
+                    const size_t b = unit / H;
+                    const size_t h = unit % H;
+                    const size_t batch_offset = b * S * d;
+                    const size_t col = h * head_size;
 
-                    const float* q_ptr = Q_data + batch_offset + col;
-                    const float* k_ptr = K_data + batch_offset + col;
-                    const float* v_ptr = V_data + batch_offset + col;
+                    const float* q_ptr = Q_saved + batch_offset + col;
+                    const float* k_ptr = K_saved + batch_offset + col;
+                    const float* v_ptr = V_saved + batch_offset + col;
                     const float* dAtt_ptr = dConcat_data + batch_offset + col;
 
                     const float* W = attn_all + unit * S * S;  // pre-dropout softmax
                     const float* W_eff = W;
                     if (dropout_active) {
-                        const float* m = mask_all + unit * S * S;
+                        const float* m = masks + unit * S * S;
                         float* e = effective.raw();
-                        for (int i = 0; i < S * S; i++) {
+                        for (size_t i = 0; i < S * S; i++) {
                             e[i] = W[i] * m[i];
                         }
                         W_eff = e;
@@ -401,20 +406,20 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
                     // attended = W_eff @ V_head:
                     //   dW_eff = dAttended @ V_head^T ; dV_head = W_eff^T @ dAttended
-                    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                                S, S, head_size,
-                                1.0f, dAtt_ptr, d, v_ptr, d,
-                                0.0f, dWeights.raw(), S);
-                    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
-                                S, head_size, S,
-                                1.0f, W_eff, S, dAtt_ptr, d,
-                                0.0f, dV_data + batch_offset + col, d);
+                    blas_sgemm_strided(false, true,
+                                       S, S, head_size,
+                                       1.0f, dAtt_ptr, d, v_ptr, d,
+                                       0.0f, dWeights.raw(), S);
+                    blas_sgemm_strided(true, false,
+                                       S, head_size, S,
+                                       1.0f, W_eff, S, dAtt_ptr, d,
+                                       0.0f, dV_data + batch_offset + col, d);
 
                     float* dW = dWeights.raw();
                     if (dropout_active) {
                         // Through the dropout: dW = dW_eff * mask.
-                        const float* m = mask_all + unit * S * S;
-                        for (int i = 0; i < S * S; i++) {
+                        const float* m = masks + unit * S * S;
+                        for (size_t i = 0; i < S * S; i++) {
                             dW[i] *= m[i];
                         }
                     }
@@ -422,28 +427,28 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                     // Softmax backward per row:
                     //   dScores = W * (dW - sum(dW * W)) * scale
                     float* dS = dScores.raw();
-                    for (int i = 0; i < S; i++) {
-                        const float* w_row = W + static_cast<size_t>(i) * S;
-                        const float* dw_row = dW + static_cast<size_t>(i) * S;
-                        float* ds_row = dS + static_cast<size_t>(i) * S;
+                    for (size_t i = 0; i < S; i++) {
+                        const float* w_row = W + i * S;
+                        const float* dw_row = dW + i * S;
+                        float* ds_row = dS + i * S;
                         float sum = 0.0f;
-                        for (int j = 0; j < S; j++) {
+                        for (size_t j = 0; j < S; j++) {
                             sum += dw_row[j] * w_row[j];
                         }
-                        for (int j = 0; j < S; j++) {
+                        for (size_t j = 0; j < S; j++) {
                             ds_row[j] = w_row[j] * (dw_row[j] - sum) * scale_factor;
                         }
                     }
 
                     // dQ_head = dScores @ K_head ; dK_head = dScores^T @ Q_head
-                    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                                S, head_size, S,
-                                1.0f, dS, S, k_ptr, d,
-                                0.0f, dQ_data + batch_offset + col, d);
-                    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
-                                S, head_size, S,
-                                1.0f, dS, S, q_ptr, d,
-                                0.0f, dK_data + batch_offset + col, d);
+                    blas_sgemm_strided(false, false,
+                                       S, head_size, S,
+                                       1.0f, dS, S, k_ptr, d,
+                                       0.0f, dQ_data + batch_offset + col, d);
+                    blas_sgemm_strided(true, false,
+                                       S, head_size, S,
+                                       1.0f, dS, S, q_ptr, d,
+                                       0.0f, dK_data + batch_offset + col, d);
                 }
             });
 
@@ -452,11 +457,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             // maps them back to pre-RoPE projection space before the
             // weight/bias/input gradients below.
             if (rope_active) {
-                for (int b = 0; b < batch_size; b++) {
-                    rope_apply(dQ_data + static_cast<size_t>(b) * S * d,
+                for (size_t b = 0; b < batch_size; b++) {
+                    rope_apply(dQ_data + b * S * d,
                                S, d, H, head_size,
                                rope_cos->data(), rope_sin->data(), true);
-                    rope_apply(dK_data + static_cast<size_t>(b) * S * d,
+                    rope_apply(dK_data + b * S * d,
                                S, d, H, head_size,
                                rope_cos->data(), rope_sin->data(), true);
                 }
@@ -464,11 +469,11 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
 
             // Projection gradients, all flat single sgemms with beta=1
             // accumulation. dInput sums the three projection paths.
-            const float* in_data = self_input->getData().raw();
+            const float* input_data = self_input->getData().raw();
             auto weight_grad = [&](const std::shared_ptr<Variable>& W, const float* dProj) {
                 if (!W->requiresGrad()) return;
                 W->ensureGrad();
-                blas_sgemm_ex(in_data, dProj, W->getGrad().raw(),
+                blas_sgemm_ex(input_data, dProj, W->getGrad().raw(),
                               d, d, flat, true, false, 1.0f, 1.0f);
             };
             auto bias_grad = [&](const std::shared_ptr<Variable>& b, const float* dProj) {
@@ -497,8 +502,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     }
 
     auto final_output = output;
-    if (training && dropout_rate > 0.0f) {
-        final_output = output->dropout(dropout_rate, training);
+    if (training && dropout_rate_ > 0.0f) {
+        final_output = output->dropout(dropout_rate_, training);
     }
     return final_output;
 }
+
+}  // namespace grad

@@ -7,13 +7,13 @@
 #include "commands.h"
 #include "common.h"
 
-#include "transformer/text_gen.h"
+#include "grad/transformer/text_gen.h"
 
 #include <iostream>
 #include <optional>
 #include <string>
 
-namespace cli {
+namespace grad::cli {
 
 int run_chat(const Invocation& invocation) {
     std::string checkpoint = "shakespeare_final.bin";
@@ -59,4 +59,4 @@ int run_chat(const Invocation& invocation) {
     return 0;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

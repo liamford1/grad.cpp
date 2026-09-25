@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -134,4 +134,4 @@ int run_presets(const Invocation& invocation) {
     return 0;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

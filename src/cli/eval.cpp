@@ -11,10 +11,10 @@
 #include "commands.h"
 #include "common.h"
 
-#include "data/dataloader.h"
-#include "data/token_file.h"
-#include "training/trainer.h"
-#include "utils/metrics.h"
+#include "grad/data/dataloader.h"
+#include "grad/data/token_file.h"
+#include "grad/training/trainer.h"
+#include "grad/utils/metrics.h"
 
 #include <algorithm>
 #include <chrono>
@@ -27,7 +27,7 @@
 #include <string>
 #include <utility>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -115,4 +115,4 @@ int run_eval(const Invocation& invocation) {
     return 0;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

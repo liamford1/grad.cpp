@@ -2,7 +2,7 @@
 
 #include <array>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -131,4 +131,4 @@ const Preset* find_preset(std::string_view name) noexcept {
     return nullptr;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

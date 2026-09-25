@@ -1,7 +1,9 @@
-#include "transformer/activations.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/parallel.h"
 #include <atomic>
 #include <cstdint>
+
+namespace grad {
 
 namespace {
 
@@ -86,3 +88,5 @@ void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale,
         }
     });
 }
+
+}  // namespace grad

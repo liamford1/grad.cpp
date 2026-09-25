@@ -1,16 +1,18 @@
 #pragma once
 
-#include "tensor.h"
-#include "gpt_model.h"
-#include "tokenizer/bpe_tokenizer.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/tokenizer/bpe_tokenizer.h"
 #include <functional>
 #include <string>
 #include <vector>
 
+namespace grad {
+
 class TextGen {
     private:
-        const GPTModel& model;
-        const BPETokenizer* tokenizer;
+        const GPTModel& model_;
+        const BPETokenizer* tokenizer_;
 
         int sample_from_logits(const Tensor& logits, float temperature = 1.0f, int top_k = 0, float top_p = 1.0f);
         std::string tokens_to_string(const std::vector<int>& tokens);
@@ -28,3 +30,5 @@ class TextGen {
                             float temperature = 1.0f, int max_tokens = 50,
                             float repetition_penalty = 1.2f, int top_k = 0, float top_p = 1.0f);
 };
+
+}  // namespace grad

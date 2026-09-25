@@ -1,4 +1,4 @@
-#include "utils/dashboard.h"
+#include "grad/utils/dashboard.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,7 +19,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-namespace utils {
+namespace grad::utils {
 namespace {
 
 // ---------------------------------------------------------------- palette
@@ -99,12 +99,18 @@ struct Canvas {
     int W, H;
     std::vector<uint8_t> cells;
     Canvas(int w, int h) : W(std::max(1, w)), H(std::max(1, h)),
-                           cells(static_cast<size_t>(W) * H, 0) {}
+                           cells(static_cast<size_t>(W) * static_cast<size_t>(H), 0) {}
+
+    // Cell (cx, cy), both non-negative and inside the canvas.
+    [[nodiscard]] size_t index(int cx, int cy) const {
+        return static_cast<size_t>(cy) * static_cast<size_t>(W) + static_cast<size_t>(cx);
+    }
 
     void set(int px, int py) {
         if (px < 0 || py < 0 || px >= W * 2 || py >= H * 4) return;
         static const uint8_t bit[4][2] = {{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}};
-        cells[static_cast<size_t>(py / 4) * W + px / 2] |= bit[py % 4][px % 2];
+        uint8_t& cell = cells[index(px / 2, py / 4)];
+        cell = static_cast<uint8_t>(cell | bit[py % 4][px % 2]);
     }
 
     void vline(int px, int py0, int py1) {
@@ -114,7 +120,7 @@ struct Canvas {
 };
 
 std::string braille_utf8(uint8_t v) {
-    unsigned cp = 0x2800 + v;
+    unsigned cp = 0x2800u + v;
     std::string s;
     s += static_cast<char>(0xE0 | (cp >> 12));
     s += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
@@ -151,16 +157,19 @@ void draw_series(Canvas& cv, const Series& s, const Range& r) {
     const int PW = cv.W * 2, PH = cv.H * 4;
     int ppx = -1, ppy = -1;
     for (const auto& p : s.pts) {
-        int px = std::clamp(static_cast<int>((p.first - r.x0) / (r.x1 - r.x0) * (PW - 1) + 0.5f), 0, PW - 1);
-        int py = std::clamp(static_cast<int>((1.0f - (p.second - r.y0) / (r.y1 - r.y0)) * (PH - 1) + 0.5f), 0, PH - 1);
+        int px = std::clamp(static_cast<int>((p.first - r.x0) / (r.x1 - r.x0) *
+                                             static_cast<float>(PW - 1) + 0.5f), 0, PW - 1);
+        int py = std::clamp(static_cast<int>((1.0f - (p.second - r.y0) / (r.y1 - r.y0)) *
+                                             static_cast<float>(PH - 1) + 0.5f), 0, PH - 1);
         if (s.scatter || ppx < 0) {
             cv.set(px, py);
         } else if (px == ppx) {
             cv.vline(px, std::min(ppy, py), std::max(ppy, py));
         } else {
             for (int x = ppx; x <= px; x++) {
-                float t = float(x - ppx) / (px - ppx);
-                cv.set(x, static_cast<int>(ppy + t * (py - ppy) + 0.5f));
+                float t = static_cast<float>(x - ppx) / static_cast<float>(px - ppx);
+                cv.set(x, static_cast<int>(static_cast<float>(ppy) +
+                                           t * static_cast<float>(py - ppy) + 0.5f));
             }
         }
         ppx = px;
@@ -179,22 +188,23 @@ std::vector<std::string> chart_rows(int w, int h, const std::vector<Series>& lay
     }
     Canvas hcv(w, h);
     if (hline > r.y0 && hline < r.y1) {
-        int py = static_cast<int>((1.0f - (hline - r.y0) / (r.y1 - r.y0)) * (h * 4 - 1) + 0.5f);
+        int py = static_cast<int>((1.0f - (hline - r.y0) / (r.y1 - r.y0)) *
+                                  static_cast<float>(h * 4 - 1) + 0.5f);
         for (int px = 0; px < w * 2; px += 3) hcv.set(px, py);  // dashed
     }
 
-    std::vector<std::string> rows(h);
+    std::vector<std::string> rows(static_cast<size_t>(std::max(0, h)));
     for (int rr = 0; rr < h; rr++) {
         std::string line;
         for (int c = 0; c < w; c++) {
             uint8_t v = 0;
             const char* color = nullptr;
             for (size_t l = 0; l < layers.size(); l++) {
-                uint8_t cell = cvs[l].cells[static_cast<size_t>(rr) * w + c];
+                uint8_t cell = cvs[l].cells[cvs[l].index(c, rr)];
                 if (cell) { v = cell; color = layers[l].color; break; }
             }
             if (!v) {
-                uint8_t hc = hcv.cells[static_cast<size_t>(rr) * w + c];
+                uint8_t hc = hcv.cells[hcv.index(c, rr)];
                 if (hc) { v = hc; color = hline_color; }
             }
             if (v) {
@@ -205,7 +215,7 @@ std::vector<std::string> chart_rows(int w, int h, const std::vector<Series>& lay
                 line += " ";
             }
         }
-        rows[rr] = line;
+        rows[static_cast<size_t>(rr)] = line;
     }
     return rows;
 }
@@ -249,7 +259,7 @@ size_t visible_width(const std::string& s) {
             while (i < s.size() && s[i] != 'm') i++;
             i++;
         } else {
-            unsigned char c = s[i];
+            unsigned char c = static_cast<unsigned char>(s[i]);
             i += (c >= 0xF0) ? 4 : (c >= 0xE0) ? 3 : (c >= 0xC0) ? 2 : 1;
             w++;
         }
@@ -278,7 +288,7 @@ std::string panel(const std::string& title, int width, const std::vector<std::st
         out += RST;
         out += line;
         int pad = width - 2 - static_cast<int>(visible_width(line));
-        out.append(std::max(0, pad), ' ');
+        out.append(static_cast<size_t>(std::max(0, pad)), ' ');
         out += DIM;
         out += "│";
         out += RST;
@@ -344,21 +354,22 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         if (r.grad_norm > 0) gn_pts.push_back({x, r.grad_norm});
         if (r.grad_norm > kClipNorm) clipped++;
         if (r.step_ms > 0) {
-            float ts = d.tokens_per_step / (r.step_ms / 1000.0f);
+            float ts = static_cast<float>(d.tokens_per_step) / (r.step_ms / 1000.0f);
             tok_ema = tok_ema == 0 ? ts : 0.95f * tok_ema + 0.05f * ts;
             tok_pts.push_back({x, tok_ema});
         }
     }
-    float clip_pct = gn_pts.empty() ? 0 : 100.0f * clipped / gn_pts.size();
+    float clip_pct = gn_pts.empty() ? 0
+        : 100.0f * static_cast<float>(clipped) / static_cast<float>(gn_pts.size());
 
     // Throughput and ETA from the median of recent step times.
     std::vector<float> recent_ms;
     for (size_t i = N > 50 ? N - 50 : 0; i < N; i++) recent_ms.push_back(d.train[i].step_ms);
     std::sort(recent_ms.begin(), recent_ms.end());
     float med_ms = recent_ms.empty() ? 0 : recent_ms[recent_ms.size() / 2];
-    float tok_s = (med_ms > 0) ? d.tokens_per_step / (med_ms / 1000.0f) : 0;
+    float tok_s = (med_ms > 0) ? static_cast<float>(d.tokens_per_step) / (med_ms / 1000.0f) : 0;
     double eta_s = (med_ms > 0) ? (total - last.step - 1) * (med_ms / 1000.0) : -1;
-    double tflops = 6.0 * d.params * tok_s / 1e12;  // fwd+bwd ~ 6*N per token
+    double tflops = 6.0 * static_cast<double>(d.params) * tok_s / 1e12;  // fwd+bwd ~ 6*N per token
 
     const EvalRow* best = nullptr;
     for (const auto& e : d.evals) {
@@ -384,7 +395,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         int fillw = static_cast<int>(barw * done / 100.0 + 0.5);
         std::string bar;
         for (int i = 0; i < barw; i++) bar += (i < fillw) ? "█" : "░";
-        out += right + GRN + bar + RST + " " + WHT + fmt(done, 1) + "%" + RST + "\r\n";
+        out += right + GRN + bar + RST + " " + WHT + fmt(static_cast<float>(done), 1) + "%" + RST + "\r\n";
     }
 
     // ------------------------------------------------------- stats strip
@@ -402,10 +413,10 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         l1 += "  " + kv("lr", fmt_sci(last.lr), ORN);
         out += l1 + "\r\n";
 
-        double tokens_seen = double(last.step + 1) * d.tokens_per_step;
-        double tokens_total = double(total) * d.tokens_per_step;
+        double tokens_seen = double(last.step + 1) * static_cast<double>(d.tokens_per_step);
+        double tokens_total = double(total) * static_cast<double>(d.tokens_per_step);
         std::string l2 = " " + kv("tok/s", fmt_count(tok_s), GRN) +
-                         "  " + kv("TFLOP/s", fmt(tflops, 2), GRN) +
+                         "  " + kv("TFLOP/s", fmt(static_cast<float>(tflops), 2), GRN) +
                          "  " + kv("tokens", fmt_count(tokens_seen) + std::string(DIM) + "/" +
                                              fmt_count(tokens_total) + RST) +
                          "  " + kv("step", fmt(med_ms / 1000.0f, 1) + "s") +
@@ -428,7 +439,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         // Raw loss subsampled to the pixel budget as scatter; EMA and the
         // validation track drawn as lines on the same scale.
         std::vector<std::pair<float, float>> raw_sub;
-        size_t stride = std::max<size_t>(1, raw_pts.size() / ((left_w - 2) * 2));
+        size_t stride = std::max<size_t>(1, raw_pts.size() / static_cast<size_t>((left_w - 2) * 2));
         for (size_t i = 0; i < raw_pts.size(); i += stride) raw_sub.push_back(raw_pts[i]);
         std::vector<std::pair<float, float>> val_pts;
         for (const auto& e : d.evals) val_pts.push_back({static_cast<float>(e.step), e.val_loss});
@@ -539,7 +550,7 @@ struct RawTerm {
         if (!isatty(STDIN_FILENO)) return;
         tcgetattr(STDIN_FILENO, &saved);
         termios raw = saved;
-        raw.c_lflag &= ~(ICANON | ECHO);
+        raw.c_lflag &= ~static_cast<tcflag_t>(ICANON | ECHO);
         raw.c_cc[VMIN] = 0;
         raw.c_cc[VTIME] = 0;
         tcsetattr(STDIN_FILENO, TCSANOW, &raw);
@@ -627,4 +638,4 @@ int run_dashboard(const std::string& csv_path, bool once) {
     return 0;
 }
 
-}  // namespace utils
+}  // namespace grad::utils

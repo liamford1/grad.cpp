@@ -1,13 +1,13 @@
-#include "transformer/gpt_model.h"
-#include "transformer/inference.h"
-#include "transformer/variable.h"
-#include "transformer/optimizer.h"
-#include "data/dataset.h"
-#include "data/dataloader.h"
-#include "data/token_file.h"
-#include "tokenizer/bpe_tokenizer.h"
-#include "utils/training_utils.h"
-#include "utils/metrics.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/inference.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/optimizer.h"
+#include "grad/data/dataset.h"
+#include "grad/data/dataloader.h"
+#include "grad/data/token_file.h"
+#include "grad/tokenizer/bpe_tokenizer.h"
+#include "grad/utils/training_utils.h"
+#include "grad/utils/metrics.h"
 #include <iostream>
 #include <vector>
 #include <iomanip>
@@ -19,6 +19,8 @@
 #include <cstdio>
 #include <functional>
 
+using namespace grad;
+
 void test_overfit_tiny_sequence() {
     utils::print_header("Overfitting Test: Memorize 5 Tokens");
 
@@ -27,7 +29,8 @@ void test_overfit_tiny_sequence() {
     const int num_layers = 2;
     const int num_heads = 4;
     const int max_len = 10;
-    const int seq_length = 5;
+    const size_t seq_length = 5;
+    const size_t vocab = vocab_size;
 
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.0f);
     auto params = model.getAllParameters();
@@ -35,7 +38,7 @@ void test_overfit_tiny_sequence() {
 
     std::vector<int> sequence = {1, 2, 3, 4, 5};
     Tensor input(seq_length, 1), target(seq_length, 1);
-    for (int i = 0; i < seq_length; i++) {
+    for (size_t i = 0; i < seq_length; i++) {
         input.setValue(i, 0, float(sequence[i]));
         target.setValue(i, 0, float(sequence[i]));
     }
@@ -76,17 +79,17 @@ void test_overfit_tiny_sequence() {
 
     auto final_logits = model.forward(Variable::create(input, false), false);
     int correct = 0;
-    for (int i = 0; i < seq_length; i++) {
+    for (size_t i = 0; i < seq_length; i++) {
         int pred = 0;
         float max_val = -1e9f;
-        for (int j = 0; j < vocab_size; j++) {
+        for (size_t j = 0; j < vocab; j++) {
             float val = final_logits->getData().getValue(i, j);
-            if (val > max_val) { max_val = val; pred = j; }
+            if (val > max_val) { max_val = val; pred = static_cast<int>(j); }
         }
         if (pred == sequence[i]) correct++;
     }
 
-    float acc = 100.0f * correct / seq_length;
+    float acc = 100.0f * static_cast<float>(correct) / static_cast<float>(seq_length);
     std::cout << "\nAccuracy: " << acc << "%" << std::endl;
     if (acc < 80.0f) {
         throw std::runtime_error("Overfit test failed to reach 80% accuracy");
@@ -116,8 +119,8 @@ void test_dataloader() {
         while (loader.has_next()) {
             auto batch = loader.next_batch();
 
-            int batch_size = batch.input.getBatchSize();
-            int seq_len = batch.input.getRows();
+            const size_t batch_size = batch.input.getBatchSize();
+            const size_t seq_len = batch.input.getRows();
 
             Tensor input_2d(batch_size * seq_len, 1);
             Tensor target_2d(batch_size * seq_len, 1);
@@ -144,7 +147,7 @@ void test_dataloader() {
             }
         }
 
-        const float avg_loss = total_loss / batch_count;
+        const float avg_loss = total_loss / static_cast<float>(batch_count);
         std::cout << "Avg Loss: " << avg_loss << std::endl;
         if (batch_count == 0 || !std::isfinite(avg_loss)) {
             throw std::runtime_error("DataLoader test produced a non-finite loss");
@@ -159,7 +162,7 @@ void test_dataloader() {
 void test_spread_subset() {
     utils::print_header("SpreadSubset: evenly spread, deterministic windows");
     std::vector<int> tokens(1001);
-    for (int i = 0; i < 1001; i++) tokens[i] = i;
+    for (size_t i = 0; i < tokens.size(); i++) tokens[i] = static_cast<int>(i);
     auto source = std::make_shared<TextDataset>(tokens, 10, 10);  // 99 windows
     SpreadSubset subset(source, 7);
     if (subset.size() != 7) throw std::runtime_error("SpreadSubset size is not the requested count");
@@ -233,8 +236,8 @@ void benchmark_training_speed() {
         if (!loader.has_next()) loader.reset();
         auto batch = loader.next_batch();
 
-        int bs = batch.input.getBatchSize();
-        int sl = batch.input.getRows();
+        const size_t bs = batch.input.getBatchSize();
+        const size_t sl = batch.input.getRows();
         Tensor input_2d(bs * sl, 1), target_2d(bs * sl, 1);
         utils::reshape_batch_to_2d(batch.input, batch.target, input_2d, target_2d);
 
@@ -256,8 +259,8 @@ void benchmark_training_speed() {
         if (!loader.has_next()) loader.reset();
         auto batch = loader.next_batch();
 
-        int bs = batch.input.getBatchSize();
-        int sl = batch.input.getRows();
+        const size_t bs = batch.input.getBatchSize();
+        const size_t sl = batch.input.getRows();
         Tensor input_2d(bs * sl, 1), target_2d(bs * sl, 1);
         utils::reshape_batch_to_2d(batch.input, batch.target, input_2d, target_2d);
 
@@ -276,8 +279,9 @@ void benchmark_training_speed() {
 
     std::cout << "\n=== BASELINE RESULTS ===" << std::endl;
     std::cout << "100 steps took: " << duration.count() << "ms" << std::endl;
-    std::cout << "Average per step: " << (duration.count() / 100.0) << "ms" << std::endl;
-    std::cout << "Speed: " << (100000.0 / duration.count()) << " steps/sec" << std::endl;
+    const double ms = static_cast<double>(duration.count());
+    std::cout << "Average per step: " << (ms / 100.0) << "ms" << std::endl;
+    std::cout << "Speed: " << (100000.0 / ms) << " steps/sec" << std::endl;
 }
 
 // The batched training forward and the KV-cache InferenceSession are two
@@ -295,22 +299,23 @@ void test_inference_parity(GPTArch arch) {
     const int num_heads = 4;  // head_size 8, even as RoPE requires
     const int max_len = 16;
     const std::vector<int> sequence = {3, 11, 7, 0, 19, 5};
-    const int S = static_cast<int>(sequence.size());
+    const size_t S = sequence.size();
+    const size_t vocab = vocab_size;
 
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len,
                    /*dropout=*/0.0f, arch);
 
     // Batched training-path forward over the whole sequence.
     Tensor ids(1, S, 1);
-    for (int i = 0; i < S; i++) ids.setValue(0, i, 0, static_cast<float>(sequence[i]));
+    for (size_t i = 0; i < S; i++) ids.setValue(0, i, 0, static_cast<float>(sequence[i]));
     auto logits = model.forward(Variable::create(ids, false), false);
 
     // Incremental decoding over the same tokens.
     InferenceSession session(model);
     float worst = 0.0f;
-    for (int i = 0; i < S; i++) {
+    for (size_t i = 0; i < S; i++) {
         const float* step_logits = session.step(sequence[i]);
-        for (int v = 0; v < vocab_size; v++) {
+        for (size_t v = 0; v < vocab; v++) {
             float a = logits->getData().getValue(0, i, v);
             float b = step_logits[v];
             float tol = 1e-3f + 1e-3f * (std::abs(a) + std::abs(b));

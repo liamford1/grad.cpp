@@ -6,14 +6,14 @@
 #include "common.h"
 #include "presets.h"
 
-#include "data/dataloader.h"
-#include "data/dataset.h"
-#include "data/token_file.h"
-#include "training/trainer.h"
-#include "transformer/activations.h"
-#include "transformer/tensor.h"
-#include "transformer/text_gen.h"
-#include "utils/metrics.h"
+#include "grad/data/dataloader.h"
+#include "grad/data/dataset.h"
+#include "grad/data/token_file.h"
+#include "grad/training/trainer.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/text_gen.h"
+#include "grad/utils/metrics.h"
 
 #include <cstdint>
 #include <fstream>
@@ -27,7 +27,7 @@
 #include <string_view>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -361,4 +361,4 @@ int run_train_fast(const Invocation& invocation) {
                   .via_train_fast = true});
 }
 
-}  // namespace cli
+}  // namespace grad::cli

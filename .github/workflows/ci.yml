@@ -54,7 +54,7 @@ jobs:
       - name: Install BLAS
         run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
 
-      # The project's -Wall -Wextra -Wpedantic apply here too (they are
+      # The project's warning flags apply here too (they are
       # per-target), but not -Werror: GCC's ASan instrumentation is known
       # to raise false -Wmaybe-uninitialized / -Wstringop-* warnings, and
       # the build-and-test job already gates on a clean build.

@@ -11,6 +11,10 @@
 #include <utility>
 #include <vector>
 
+#include "grad/utils/env.h"
+
+namespace grad {
+
 // A minimal persistent thread pool exposing one primitive:
 //
 //   parallel_for(n, grain, [](size_t begin, size_t end) { ... });
@@ -27,7 +31,7 @@
 // take it again would be undefined behavior rather than a clean refusal.
 //
 // The pool is created on first use with hardware_concurrency() threads
-// (override with the TRANSFORMER_THREADS environment variable).
+// (override with the GRAD_THREADS environment variable).
 //
 // Callers must ensure different indices touch disjoint data: the pool does
 // no synchronization beyond the completion barrier at the end of each call.
@@ -98,8 +102,8 @@ public:
 private:
     ThreadPool() {
         int n = static_cast<int>(std::thread::hardware_concurrency());
-        if (const char* env = std::getenv("TRANSFORMER_THREADS")) {
-            int v = std::atoi(env);
+        if (const char* value = env::lookup("GRAD_THREADS", "TRANSFORMER_THREADS")) {
+            int v = std::atoi(value);
             if (v > 0) n = v;
         }
         num_threads_ = n > 0 ? n : 1;
@@ -185,3 +189,5 @@ inline void parallel_for(size_t n, size_t grain,
                          const std::function<void(size_t, size_t)>& fn) {
     ThreadPool::instance().parallel_for(n, grain, fn);
 }
+
+}  // namespace grad

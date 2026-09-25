@@ -3,12 +3,12 @@
 #include "cli/args.h"
 #include "commands.h"
 
-#include "utils/dashboard.h"
+#include "grad/utils/dashboard.h"
 
 #include <iostream>
 #include <string>
 
-namespace cli {
+namespace grad::cli {
 
 int run_watch(const Invocation& invocation) {
     std::string run;
@@ -38,4 +38,4 @@ int run_watch(const Invocation& invocation) {
     return utils::run_dashboard(csv, once);
 }
 
-}  // namespace cli
+}  // namespace grad::cli

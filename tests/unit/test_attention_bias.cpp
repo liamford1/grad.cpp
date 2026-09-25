@@ -1,9 +1,11 @@
 #include <cmath>
 #include <iostream>
-#include "transformer/multihead_attention.h"
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/multihead_attention.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include "../test_util.h"
+
+using namespace grad;
 
 int main() {
     std::cout << "=== MultiHeadAttention Bias Verification ===" << std::endl;
@@ -31,9 +33,9 @@ int main() {
         CHECK(b != nullptr && b->getData().numel() == d);
     }
     
-    auto input = Variable::create(Tensor(10, d_model), true);
+    auto input = Variable::create(Tensor(10, d), true);
     for (size_t i = 0; i < input->getData().numel(); i++) {
-        input->getData().raw()[i] = 0.01f * (i % 100);
+        input->getData().raw()[i] = 0.01f * static_cast<float>(i % 100);
     }
     
     std::cout << "\nRunning forward pass..." << std::endl;
@@ -48,7 +50,7 @@ int main() {
     // The bias must reach the output: with zero input every projection is
     // bias-only, and with b_v = 0 the attended values are zero, so the
     // output is exactly b_o on every row.
-    auto zeros = Variable::create(Tensor(10, d_model), false);
+    auto zeros = Variable::create(Tensor(10, d), false);
     for (size_t i = 0; i < d; i++) {
         attn.getB_v()->getData().raw()[i] = 0.0f;
         attn.getB_o()->getData().raw()[i] = 0.5f;

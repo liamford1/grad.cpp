@@ -1,12 +1,17 @@
-#include "transformer/positional_encoding.h"
+#include "grad/transformer/positional_encoding.h"
+#include "grad/utils/narrow.h"
 #include <stdexcept>
 
-PositionalEncoding::PositionalEncoding(int max_len, int d_model) : 
-    max_len(max_len),
-    d_model(d_model)
+namespace grad {
+
+PositionalEncoding::PositionalEncoding(int max_len, int d_model) :
+    max_len_(max_len),
+    d_model_(d_model)
 {
-    Tensor pos_emb(max_len, d_model);
-    pos_emb.xavier(max_len, d_model);
+    const size_t rows = narrow<size_t>(max_len);
+    const size_t cols = narrow<size_t>(d_model);
+    Tensor pos_emb(rows, cols);
+    pos_emb.xavier(rows, cols);
     position_embeddings = Variable::create(pos_emb, true);
 }
 
@@ -14,20 +19,21 @@ PositionalEncoding::PositionalEncoding(int max_len, int d_model) :
 // (batch, seq, d) embeddings, broadcasting over the batch.
 std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> embeddings) const {
     const Tensor& emb_tensor = embeddings->getData();
-    const int seq_len = static_cast<int>(emb_tensor.getRows());
-    if (seq_len > max_len) {
+    const size_t seq_len = emb_tensor.getRows();
+    if (seq_len > static_cast<size_t>(max_len_)) {
         throw std::out_of_range("Sequence length exceeds max_len");
     }
 
-    const Tensor pos_slice = position_embeddings->getData().slice(0, seq_len, 0, d_model);
+    const Tensor pos_slice = position_embeddings->getData().slice(
+        0, seq_len, 0, static_cast<size_t>(d_model_));
     const bool needs_grad = compute_requires_grad(embeddings, position_embeddings);
     auto output = Variable::create(emb_tensor.add(pos_slice), needs_grad);
 
     if (needs_grad) {
         auto self_pos_emb = position_embeddings;
         output->setBackward({embeddings, position_embeddings},
-                            [embeddings, self_pos_emb](Variable& output) {
-            const Tensor& dOut = output.getGrad();
+                            [embeddings, self_pos_emb](Variable& node) {
+            const Tensor& dOut = node.getGrad();
 
             if (embeddings->requiresGrad()) {
                 embeddings->ensureGrad();
@@ -56,3 +62,5 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
     }
     return output;
 }
+
+}  // namespace grad

@@ -1,15 +1,28 @@
-#include "data/dataset.h"
+#include "grad/data/dataset.h"
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
-TextDataset::TextDataset(const std::vector<int>& tokens, int seq_length, int stride)
-    : token_ids_(tokens), seq_length_(seq_length), stride_(stride) {
-    if (tokens.size() < static_cast<size_t>(seq_length + 1)) {
-        throw std::runtime_error("Not enough tokens for even one sequence");
+namespace grad {
+
+namespace {
+
+size_t at_least_one(int value, const char* name) {
+    if (value < 1) {
+        throw std::invalid_argument(std::string(name) + " must be >= 1");
     }
-    if (stride < 1) {
-        throw std::invalid_argument("stride must be >= 1");
+    return static_cast<size_t>(value);
+}
+
+}  // namespace
+
+TextDataset::TextDataset(const std::vector<int>& tokens, int seq_length, int stride)
+    : token_ids_(tokens),
+      seq_length_(at_least_one(seq_length, "seq_length")),
+      stride_(at_least_one(stride, "stride")) {
+    if (tokens.size() < seq_length_ + 1) {
+        throw std::runtime_error("Not enough tokens for even one sequence");
     }
 }
 
@@ -24,12 +37,12 @@ std::pair<std::vector<int>, std::vector<int>> TextDataset::get_item(size_t index
     const size_t start = index * stride_;
 
     std::vector<int> input(seq_length_);
-    for (int i = 0; i < seq_length_; i++) {
+    for (size_t i = 0; i < seq_length_; i++) {
         input[i] = token_ids_[start + i];
     }
 
     std::vector<int> target(seq_length_);
-    for (int i = 0; i < seq_length_; i++) {
+    for (size_t i = 0; i < seq_length_; i++) {
         target[i] = token_ids_[start + 1 + i];
     }
     return {input, target};
@@ -53,3 +66,5 @@ std::pair<std::vector<int>, std::vector<int>> SpreadSubset::get_item(size_t inde
     const size_t source_index = index * (n / count_) + index * (n % count_) / count_;
     return source_->get_item(source_index);
 }
+
+}  // namespace grad

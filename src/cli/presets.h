@@ -5,12 +5,12 @@
 // CI runs benchmarks/check_presets.py against `grad presets --json` so the
 // two cannot drift apart silently.
 
-#include "transformer/gpt_model.h"
+#include "grad/transformer/gpt_model.h"
 
 #include <span>
 #include <string_view>
 
-namespace cli {
+namespace grad::cli {
 
 struct Preset {
     std::string_view name;
@@ -53,4 +53,4 @@ struct Preset {
 // The preset called name, or nullptr.
 [[nodiscard]] const Preset* find_preset(std::string_view name) noexcept;
 
-}  // namespace cli
+}  // namespace grad::cli

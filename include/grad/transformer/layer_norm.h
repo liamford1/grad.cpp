@@ -1,7 +1,9 @@
 #pragma once
-#include "tensor.h"
-#include "variable.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
 #include <memory>
+
+namespace grad {
 
 // rms = true turns the layer into an RMSNorm: y = x / rms(x) * gamma with
 // no mean subtraction and no beta shift (the modern-arch norm). beta is
@@ -10,7 +12,7 @@
 // so the lazily-allocating optimizer skips it entirely.
 class LayerNorm {
     private:
-        int d_model;
+        int d_model_;
         std::shared_ptr<Variable> gamma;
         std::shared_ptr<Variable> beta;
         float epsilon;
@@ -33,3 +35,5 @@ class LayerNorm {
             beta = Variable::create(new_beta, true);
         }
 };
+
+}  // namespace grad

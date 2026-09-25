@@ -1,6 +1,6 @@
 #include "common.h"
 
-#include "utils/metrics.h"
+#include "grad/utils/metrics.h"
 
 #include <sys/stat.h>
 
@@ -10,7 +10,7 @@
 #include <iterator>
 #include <stdexcept>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -168,4 +168,4 @@ InferenceModel load_for_inference(const std::string& checkpoint_path,
     return {std::move(model), std::move(tokenizer)};
 }
 
-}  // namespace cli
+}  // namespace grad::cli

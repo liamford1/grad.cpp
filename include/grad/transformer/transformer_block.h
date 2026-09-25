@@ -1,8 +1,10 @@
 #pragma once
-#include "tensor.h"
-#include "multihead_attention.h"
-#include "layer_norm.h"
-#include "feedforward.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/multihead_attention.h"
+#include "grad/transformer/layer_norm.h"
+#include "grad/transformer/feedforward.h"
+
+namespace grad {
 
 class TransformerBlock {
     private:
@@ -28,3 +30,5 @@ class TransformerBlock {
         LayerNorm& getNorm1Ref() { return norm1; }
         LayerNorm& getNorm2Ref() { return norm2; }
 };
+
+}  // namespace grad

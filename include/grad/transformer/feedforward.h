@@ -1,7 +1,9 @@
 #pragma once
-#include "tensor.h"
-#include "linear.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/linear.h"
 #include <memory>
+
+namespace grad {
 
 // Two variants behind one class:
 //   gated = false (GPT-2 style): out = W2(gelu(W1 x + b1)) + b2, hidden 4d.
@@ -16,7 +18,7 @@ class FeedForward {
         Linear layer2;
         std::unique_ptr<Linear> gate_;
         bool gated_;
-        float dropout_rate;
+        float dropout_rate_;
 
         static int resolve_hidden(int d_model, int hidden_dim, bool gated) {
             if (hidden_dim != -1) return hidden_dim;
@@ -54,3 +56,5 @@ class FeedForward {
             layer2.setWeights(down_weights, nullptr);
         }
 };
+
+}  // namespace grad

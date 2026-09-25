@@ -4,6 +4,8 @@
 #include <string>
 #include <unordered_map>
 
+namespace grad {
+
 struct PairHash {
     size_t operator()(const std::pair<std::string, std::string>& p) const {
         // hash_combine (Boost / N3876): mixes both halves so (a,b) and
@@ -19,7 +21,7 @@ class BPETokenizer {
         std::unordered_map<std::string, int> vocab;
         std::unordered_map<int, std::string> id_to_token;
         std::vector<std::pair<std::string, std::string>> merges;
-        int vocab_size;
+        int vocab_size_;
 
         int pad_token_id = 0;
         int eos_token_id = 1;
@@ -43,3 +45,5 @@ class BPETokenizer {
         int getCurrentVocabSize() const;
         int getVocabSize() const;
 };
+
+}  // namespace grad

@@ -6,11 +6,11 @@
 // Uses its own CHECK rather than assert so it stays meaningful in Release
 // (NDEBUG) builds.
 
-#include "transformer/gpt_model.h"
-#include "transformer/layer_norm.h"
-#include "transformer/multihead_attention.h"
-#include "transformer/tensor.h"
-#include "transformer/variable.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/layer_norm.h"
+#include "grad/transformer/multihead_attention.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
 
 #include <cmath>
 #include <cstdio>
@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <thread>
 #include <vector>
+
+using namespace grad;
 
 namespace {
 

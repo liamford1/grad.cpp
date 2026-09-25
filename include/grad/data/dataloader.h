@@ -1,14 +1,16 @@
 #pragma once
-#include "dataset.h"
-#include "../transformer/tensor.h"
+#include "grad/data/dataset.h"
+#include "grad/transformer/tensor.h"
 #include <memory>
 #include <random>
+
+namespace grad {
 
 struct Batch {
     Tensor input;
     Tensor target;
     
-    Batch(int batch_size, int seq_length)
+    Batch(size_t batch_size, size_t seq_length)
         : input(batch_size, seq_length, 1),
           target(batch_size, seq_length, 1) {}
 };
@@ -22,7 +24,7 @@ struct Batch {
 class DataLoader {
 private:
     std::shared_ptr<Dataset> dataset_;
-    int batch_size_;
+    size_t batch_size_;
     bool shuffle_;
     size_t current_index_;
     std::mt19937 rng_;
@@ -43,5 +45,8 @@ public:
     }
 
     const std::shared_ptr<Dataset>& dataset() const { return dataset_; }
-    int batch_size() const { return batch_size_; }
+    // batch_size was validated >= 1 as an int, so it converts back.
+    int batch_size() const { return static_cast<int>(batch_size_); }
 };
+
+}  // namespace grad

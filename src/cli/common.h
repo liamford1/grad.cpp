@@ -5,9 +5,9 @@
 // inference.
 
 #include "cli/args.h"
-#include "data/dataset.h"
-#include "tokenizer/bpe_tokenizer.h"
-#include "transformer/gpt_model.h"
+#include "grad/data/dataset.h"
+#include "grad/tokenizer/bpe_tokenizer.h"
+#include "grad/transformer/gpt_model.h"
 
 #include <chrono>
 #include <cstddef>
@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 inline constexpr const char* kDefaultCorpus = "data/shakespeare.txt";
 
@@ -107,4 +107,4 @@ struct InferenceModel {
                                                 const std::string& corpus_path,
                                                 std::optional<int> requested_vocab);
 
-}  // namespace cli
+}  // namespace grad::cli

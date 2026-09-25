@@ -1,14 +1,16 @@
 #pragma once
-#include "tensor.h"
-#include "variable.h"
-#include "linear.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/linear.h"
 #include <memory>
+
+namespace grad {
 
 class MultiHeadAttention {
     private:
-        int d_model;
-        int num_heads;
-        float dropout_rate;
+        int d_model_;
+        int num_heads_;
+        float dropout_rate_;
         // Rotary position embeddings: Q and K are rotated by position-
         // dependent angles before the score matmul, encoding relative
         // position directly in the attention instead of via learned
@@ -42,3 +44,5 @@ class MultiHeadAttention {
             return {W_q, W_k, W_v, W_o, b_q, b_k, b_v, b_o};
         }
 };
+
+}  // namespace grad

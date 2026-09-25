@@ -18,20 +18,20 @@ namespace {
 
 struct CommandEntry {
     std::string_view name;
-    int (*run)(const cli::Invocation&);
+    int (*run)(const grad::cli::Invocation&);
     std::string_view summary;
 };
 
 constexpr std::array kCommands{
-    CommandEntry{"prepare", cli::run_prepare, "Pre-tokenize a corpus into memory-mapped .bin token files"},
-    CommandEntry{"train", cli::run_train, "Train a preset on a corpus; Ctrl-C saves a resumable state"},
-    CommandEntry{"train-fast", cli::run_train_fast, "Train the tiny 'fast' preset: a one-minute smoke test"},
-    CommandEntry{"generate", cli::run_generate, "Sample greedy and sampled continuations from a checkpoint"},
-    CommandEntry{"chat", cli::run_chat, "Interactive REPL: type a prompt, watch the model continue it"},
-    CommandEntry{"eval", cli::run_eval, "Loss and perplexity on held-out and training windows"},
-    CommandEntry{"bench", cli::run_bench, "Training and generation throughput, median of repeated trials"},
-    CommandEntry{"watch", cli::run_watch, "Live terminal dashboard for a training run"},
-    CommandEntry{"presets", cli::run_presets, "List the model and training presets (--json for tools)"},
+    CommandEntry{"prepare", grad::cli::run_prepare, "Pre-tokenize a corpus into memory-mapped .bin token files"},
+    CommandEntry{"train", grad::cli::run_train, "Train a preset on a corpus; Ctrl-C saves a resumable state"},
+    CommandEntry{"train-fast", grad::cli::run_train_fast, "Train the tiny 'fast' preset: a one-minute smoke test"},
+    CommandEntry{"generate", grad::cli::run_generate, "Sample greedy and sampled continuations from a checkpoint"},
+    CommandEntry{"chat", grad::cli::run_chat, "Interactive REPL: type a prompt, watch the model continue it"},
+    CommandEntry{"eval", grad::cli::run_eval, "Loss and perplexity on held-out and training windows"},
+    CommandEntry{"bench", grad::cli::run_bench, "Training and generation throughput, median of repeated trials"},
+    CommandEntry{"watch", grad::cli::run_watch, "Live terminal dashboard for a training run"},
+    CommandEntry{"presets", grad::cli::run_presets, "List the model and training presets (--json for tools)"},
 };
 
 void print_usage(std::ostream& out, std::string_view program) {
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    const cli::Invocation invocation{
+    const grad::cli::Invocation invocation{
         .program = program,
         .command = entry->name,
         .summary = entry->summary,
@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
     };
     try {
         return entry->run(invocation);
-    } catch (const cli::UsageError& e) {
+    } catch (const grad::cli::UsageError& e) {
         std::cerr << "Error: " << e.what() << "\nRun '" << invocation.usage_name()
                   << " --help' for usage." << std::endl;
         return 1;

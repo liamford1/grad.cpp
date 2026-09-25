@@ -5,9 +5,9 @@
 #include "commands.h"
 #include "common.h"
 
-#include "data/dataset.h"
-#include "data/token_file.h"
-#include "transformer/text_gen.h"
+#include "grad/data/dataset.h"
+#include "grad/data/token_file.h"
+#include "grad/transformer/text_gen.h"
 
 #include <iostream>
 #include <optional>
@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -97,4 +97,4 @@ int run_generate(const Invocation& invocation) {
     return 0;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

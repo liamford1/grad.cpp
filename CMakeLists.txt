@@ -48,8 +48,24 @@ function(grad_enable_warnings target)
         endif()
     else()
         # COMPILE_LANGUAGE covers the Objective-C++ Metal backend as well.
+        #
+        # -Wconversion and -Wsign-conversion hold the size convention in
+        # place: extents are size_t, hyperparameters int, and the only
+        # narrowing to a BLAS integer is in blas_wrapper.h. GCC's -Wshadow
+        # also flags parameters and locals that shadow a data member;
+        # Clang's -Wshadow does not, so Clang gets -Wshadow-all, which
+        # adds that check for constructors and lambdas and keeps a clean
+        # AppleClang build clean under GCC as well. -Wold-style-cast is
+        # nearly free here (the code had one C-style cast); the one system
+        # macro that expands to one, MAP_FAILED, is fenced in token_file.cpp.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(grad_shadow_flag -Wshadow-all)
+        else()
+            set(grad_shadow_flag -Wshadow)
+        endif()
         target_compile_options(${target} PRIVATE
-            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall -Wextra -Wpedantic>)
+            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall -Wextra -Wpedantic
+                -Wconversion -Wsign-conversion ${grad_shadow_flag} -Wold-style-cast>)
         if(GRAD_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Werror>)
         endif()
@@ -261,11 +277,11 @@ if(BUILD_TESTS)
              COMMAND determinism_probe ${CMAKE_CURRENT_BINARY_DIR}/determinism_threads4.txt
                      ${GRAD_DETERMINISM_REF})
     set_tests_properties(DeterminismThreads1 PROPERTIES
-        ENVIRONMENT TRANSFORMER_THREADS=1
+        ENVIRONMENT GRAD_THREADS=1
         FIXTURES_SETUP determinism_reference
         LABELS "integration" TIMEOUT 120)
     set_tests_properties(DeterminismThreads4 PROPERTIES
-        ENVIRONMENT TRANSFORMER_THREADS=4
+        ENVIRONMENT GRAD_THREADS=4
         FIXTURES_REQUIRED determinism_reference
         LABELS "integration" TIMEOUT 120)
 
@@ -294,8 +310,10 @@ install(TARGETS grad grad_core
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-# include/cli is the grad executable's parser, not part of grad::core's API.
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} PATTERN cli EXCLUDE)
+# grad::core's public headers install to <prefix>/include/grad/, so consumers
+# write #include "grad/transformer/tensor.h". include/cli is the grad
+# executable's parser, not part of the library's API, and is not installed.
+install(DIRECTORY include/grad DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT gradTargets
     FILE gradTargets.cmake
     NAMESPACE grad::

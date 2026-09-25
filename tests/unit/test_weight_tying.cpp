@@ -1,9 +1,11 @@
 #include <cmath>
 #include <iostream>
-#include "transformer/gpt_model.h"
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include "../test_util.h"
+
+using namespace grad;
 
 int main() {
     std::cout << "=== Weight Tying Verification ===" << std::endl;
@@ -13,6 +15,8 @@ int main() {
     int num_layers = 2;
     int num_heads = 4;
     int max_len = 512;
+    const size_t vocab = static_cast<size_t>(vocab_size);
+    const size_t dm = static_cast<size_t>(d_model);
     
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.0f);
     
@@ -25,15 +29,15 @@ int main() {
     }
     std::cout << "Total parameter count: " << total_params << std::endl;
 
-    size_t without_tying = total_params + static_cast<size_t>(d_model) * vocab_size + vocab_size;
+    size_t without_tying = total_params + dm * vocab + vocab;
     
     std::cout << "\nWith weight tying: " << total_params << " parameters" << std::endl;
     std::cout << "Without tying would be: " << without_tying << " parameters" << std::endl;
     std::cout << "Saved: " << (without_tying - total_params) << " parameters" << std::endl;
     
     auto input = Variable::create(Tensor(1, 10), true);
-    for (int i = 0; i < 10; i++) {
-        input->getData().setValue(0, i, float(i % vocab_size));
+    for (size_t i = 0; i < 10; i++) {
+        input->getData().setValue(0, i, static_cast<float>(i % vocab));
     }
     
     std::cout << "\nRunning forward pass..." << std::endl;
@@ -50,7 +54,7 @@ int main() {
     int vocab_by_d = 0;
     int table_refs = 0;
     for (const auto& p : params) {
-        if (p->getData().numel() == static_cast<size_t>(vocab_size) * d_model) vocab_by_d++;
+        if (p->getData().numel() == vocab * dm) vocab_by_d++;
         if (p == table) table_refs++;
     }
     CHECK(table_refs == 1);
@@ -60,7 +64,7 @@ int main() {
     // input embedding would give rows 10.. zero gradient. Through the tied
     // output projection every row receives gradient.
     Tensor ids(10, 1), targets(10, 1);
-    for (int i = 0; i < 10; i++) {
+    for (size_t i = 0; i < 10; i++) {
         ids.setValue(i, 0, static_cast<float>(i));
         targets.setValue(i, 0, static_cast<float>((i + 1) % 10));
     }
@@ -70,9 +74,9 @@ int main() {
     loss->backward();
     const Tensor& grad = table->getGrad();
     bool unused_rows_have_grad = true;
-    for (int row = 10; row < vocab_size; row++) {
+    for (size_t row = 10; row < vocab; row++) {
         float row_abs = 0.0f;
-        for (int c = 0; c < d_model; c++) row_abs += std::abs(grad.getValue(row, c));
+        for (size_t c = 0; c < dm; c++) row_abs += std::abs(grad.getValue(row, c));
         if (!(row_abs > 0.0f)) unused_rows_have_grad = false;
     }
     loss->release_graph();

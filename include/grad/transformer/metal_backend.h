@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 // Metal (MPS) matmul backend, Apple Silicon only.
 //
 // Design: tensors never move. They stay CPU-owned; unified memory means the
@@ -10,7 +12,7 @@
 // to amortize the dispatch latency. Any call can decline before submitting
 // work, and the caller then runs the CPU BLAS path instead.
 //
-// Mixed precision (opt-in): with TRANSFORMER_METAL_FP16=1, operands are
+// Mixed precision (opt-in): with GRAD_METAL_FP16=1, operands are
 // converted to fp16 on the GPU (a compute kernel writes fp16 copies into
 // persistent private scratch in the same command buffer) and the MPS
 // matmul reads them at half the bandwidth; the result matrix stays fp32,
@@ -19,11 +21,12 @@
 // remain fp32. Off by default: measured as a wash at current model
 // scale (BENCHMARKS.md #11).
 //
-// Environment switches:
-//   TRANSFORMER_METAL=0            disable the GPU entirely
-//   TRANSFORMER_METAL_THRESHOLD=N  min FLOPs (2*M*N*K) to go to GPU
-//   TRANSFORMER_METAL_FP16=1       fp16 operands, fp32 accumulate
-namespace metalgpu {
+// Environment switches (see grad/utils/env.h; the pre-rename
+// TRANSFORMER_* spellings are still honored):
+//   GRAD_METAL=0            disable the GPU entirely
+//   GRAD_METAL_THRESHOLD=N  min FLOPs (2*M*N*K) to go to GPU
+//   GRAD_METAL_FP16=1       fp16 operands, fp32 accumulate
+namespace grad::metal {
 
 #if defined(__APPLE__)
 // True if a Metal device is present and not disabled via environment.
@@ -41,13 +44,13 @@ bool fp16_active();
 // submission may have partially written C, so it throws std::runtime_error
 // rather than returning false.
 bool sgemm(const float* A, const float* B, float* C,
-           int M, int N, int K, bool transA, bool transB,
+           size_t M, size_t N, size_t K, bool transA, bool transB,
            float alpha, float beta);
 #else
 inline bool available() { return false; }
 inline bool fp16_active() { return false; }
 inline bool sgemm(const float*, const float*, float*,
-                  int, int, int, bool, bool, float, float) { return false; }
+                  size_t, size_t, size_t, bool, bool, float, float) { return false; }
 #endif
 
-}  // namespace metalgpu
+}  // namespace grad::metal

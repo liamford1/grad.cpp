@@ -1,7 +1,9 @@
-#include "transformer/tensor.h"
+#include "grad/transformer/tensor.h"
 #include <iostream>
 #include <cassert>
 #include <cmath>
+
+using namespace grad;
 
 void test_basic_subtract() {
     std::cout << "Test 1: Basic Subtraction\n";

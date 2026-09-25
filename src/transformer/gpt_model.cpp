@@ -1,11 +1,12 @@
-#include "transformer/tensor.h"
-#include "transformer/token_embedding.h"
-#include "transformer/positional_encoding.h"
-#include "transformer/transformer_block.h"
-#include "transformer/linear.h"
-#include "transformer/layer_norm.h"
-#include "transformer/gpt_model.h"
-#include "transformer/blas_wrapper.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/token_embedding.h"
+#include "grad/transformer/positional_encoding.h"
+#include "grad/transformer/transformer_block.h"
+#include "grad/transformer/linear.h"
+#include "grad/transformer/layer_norm.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/blas_wrapper.h"
+#include "grad/utils/narrow.h"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -14,15 +15,17 @@
 #include <string>
 #include <vector>
 
+namespace grad {
+
 GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
                    float dropout_rate, GPTArch arch) :
-    vocab_size(vocab_size),
-    d_model(d_model),
-    num_layers(num_layers),
-    num_heads(num_heads),
-    max_len(max_len),
-    dropout_rate(dropout_rate),
-    arch(arch),
+    vocab_size_(vocab_size),
+    d_model_(d_model),
+    num_layers_(num_layers),
+    num_heads_(num_heads),
+    max_len_(max_len),
+    dropout_rate_(dropout_rate),
+    arch_(arch),
     token_embedding(vocab_size, d_model),
     pos_encoding(max_len, d_model),
     final_norm(d_model, /*rms=*/arch == GPTArch::Modern)
@@ -37,17 +40,17 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     auto embed_tokens = token_embedding.forward(token_ids);
     // Modern arch: position comes from RoPE inside attention, not from
     // learned embeddings added to the residual stream.
-    auto transformer_input = arch == GPTArch::Modern
+    auto transformer_input = arch_ == GPTArch::Modern
         ? embed_tokens
         : pos_encoding.forward(embed_tokens);
 
-    if (training && dropout_rate > 0.0f) {
-        transformer_input = transformer_input->dropout(dropout_rate, training);
+    if (training && dropout_rate_ > 0.0f) {
+        transformer_input = transformer_input->dropout(dropout_rate_, training);
     }
     auto transformer_output = transformer_input;
 
-    for (int i = 0; i < num_layers; i++) {
-        transformer_output = transformer_blocks[i]->forward(transformer_output, training);
+    for (const auto& block : transformer_blocks) {
+        transformer_output = block->forward(transformer_output, training);
     }
 
     auto normalized_output = final_norm.forward(transformer_output);
@@ -56,13 +59,13 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     const Tensor& emb_data = embedding_table->getData();
     const Tensor& norm_data = normalized_output->getData();
 
-    const int d_model_dim = static_cast<int>(norm_data.getCols());
-    const int vocab = static_cast<int>(emb_data.getRows());
+    const size_t d_model_dim = norm_data.getCols();
+    const size_t vocab = emb_data.getRows();
 
     // Weight tying: logits = norm @ E^T. A 3D (batch, seq, d) tensor is
     // contiguous, so it multiplies as one flat (batch*seq, d) matrix, and
     // the transpose happens inside the sgemm instead of materializing E^T.
-    const int flat_rows = static_cast<int>(norm_data.getFlatRows());
+    const size_t flat_rows = norm_data.getFlatRows();
     Tensor logits_tensor = Tensor::uninitialized(norm_data.shape().with_last_dim(vocab));
     blas_sgemm_ex(norm_data.raw(), emb_data.raw(), logits_tensor.raw(),
                   flat_rows, vocab, d_model_dim,
@@ -74,15 +77,15 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     if (logits->requiresGrad()) {
         logits->setBackward({normalized_output, embedding_table},
                             [normalized_output, embedding_table,
-                             flat_rows, vocab, d_model_dim](Variable& logits) {
-            const Tensor& grad_logits = logits.getGrad();
-            const Tensor& norm_data = normalized_output->getData();
-            const Tensor& emb_data = embedding_table->getData();
+                             flat_rows, vocab, d_model_dim](Variable& node) {
+            const Tensor& grad_logits = node.getGrad();
+            const Tensor& norm_values = normalized_output->getData();
+            const Tensor& emb_values = embedding_table->getData();
 
             if (normalized_output->requiresGrad()) {
                 normalized_output->ensureGrad();
                 // dNorm += dLogits @ E, accumulated in place (beta = 1)
-                blas_sgemm_ex(grad_logits.raw(), emb_data.raw(),
+                blas_sgemm_ex(grad_logits.raw(), emb_values.raw(),
                               normalized_output->getGrad().raw(),
                               flat_rows, d_model_dim, vocab,
                               false, false, 1.0f, 1.0f);
@@ -91,7 +94,7 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
             if (embedding_table->requiresGrad()) {
                 embedding_table->ensureGrad();
                 // dE += dLogits^T @ Norm, summing over batch*seq via the sgemm
-                blas_sgemm_ex(grad_logits.raw(), norm_data.raw(),
+                blas_sgemm_ex(grad_logits.raw(), norm_values.raw(),
                               embedding_table->getGrad().raw(),
                               vocab, d_model_dim, flat_rows,
                               true, false, 1.0f, 1.0f);
@@ -105,16 +108,14 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
 std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
     std::vector<std::shared_ptr<Variable>> params;
     
-    const bool modern = arch == GPTArch::Modern;
+    const bool modern = arch_ == GPTArch::Modern;
 
     params.push_back(token_embedding.getEmbeddingTable());
     if (!modern) {
         params.push_back(pos_encoding.getPositionEmbeddings());
     }
 
-    for (int i = 0; i < num_layers; i++) {
-        const TransformerBlock* block = transformer_blocks[i].get();
-
+    for (const auto& block : transformer_blocks) {
         const MultiHeadAttention& attention = block->getAttention();
         auto attn_params = attention.parameters();
         params.insert(params.end(), attn_params.begin(), attn_params.end());
@@ -163,8 +164,8 @@ void write_tensor(std::ofstream& file, const Tensor& tensor) {
     if (tensor.getIs3D()) {
         throw std::logic_error("checkpoint tensors are 2D");
     }
-    const int rows = static_cast<int>(tensor.getRows());
-    const int cols = static_cast<int>(tensor.getCols());
+    const int rows = narrow<int>(tensor.getRows());
+    const int cols = narrow<int>(tensor.getCols());
     file.write(reinterpret_cast<const char*>(&rows), sizeof(int));
     file.write(reinterpret_cast<const char*>(&cols), sizeof(int));
     file.write(reinterpret_cast<const char*>(tensor.raw()),
@@ -198,7 +199,7 @@ public:
                  ", model expects " + std::to_string(target.getRows()) + "x" +
                  std::to_string(target.getCols()));
         }
-        Tensor t = Tensor::uninitialized(rows, cols);
+        Tensor t = Tensor::empty_like(target);
         file_.read(reinterpret_cast<char*>(t.raw()),
                    static_cast<std::streamsize>(t.numel() * sizeof(float)));
         if (!file_) fail("file ends inside " + what);
@@ -234,28 +235,26 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
         // v1 files (all GPT-2-style checkpoints) stay loadable.
         uint32_t magic = kCheckpointMagic;
         uint32_t version = 2;
-        uint32_t arch_tag = static_cast<uint32_t>(arch);
+        uint32_t arch_tag = static_cast<uint32_t>(arch_);
         file.write(reinterpret_cast<const char*>(&magic), sizeof(uint32_t));
         file.write(reinterpret_cast<const char*>(&version), sizeof(uint32_t));
         file.write(reinterpret_cast<const char*>(&arch_tag), sizeof(uint32_t));
 
-        file.write(reinterpret_cast<const char*>(&vocab_size), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&d_model), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&num_layers), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&num_heads), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&max_len), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&dropout_rate), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&vocab_size_), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&d_model_), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&num_layers_), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&num_heads_), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&max_len_), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&dropout_rate_), sizeof(float));
 
-        const bool modern = arch == GPTArch::Modern;
+        const bool modern = arch_ == GPTArch::Modern;
 
         write_tensor(file, token_embedding.getEmbeddingTable()->getData());
         if (!modern) {
             write_tensor(file, pos_encoding.getPositionEmbeddings()->getData());
         }
 
-        for (int i = 0; i < num_layers; i++) {
-            const TransformerBlock* block = transformer_blocks[i].get();
-
+        for (const auto& block : transformer_blocks) {
             const MultiHeadAttention& attention = block->getAttention();
             write_tensor(file, attention.getW_q()->getData());
             write_tensor(file, attention.getW_k()->getData());
@@ -310,7 +309,7 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
 GPTModel GPTModel::load(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open()) {
-        throw std::runtime_error("Error: Could not open file for reading: " + filepath);
+        throw std::runtime_error("Could not open checkpoint for reading: " + filepath);
     }
 
     try {
@@ -366,7 +365,7 @@ GPTModel GPTModel::load(const std::string& filepath) {
                 model.pos_encoding.getPositionEmbeddings()->getData(), "position embedding"));
         }
 
-        for (int i = 0; i < num_layers; i++) {
+        for (size_t i = 0; i < model.transformer_blocks.size(); i++) {
             TransformerBlock* block = model.transformer_blocks[i].get();
             const std::string layer = "layer " + std::to_string(i) + " ";
 
@@ -418,6 +417,8 @@ GPTModel GPTModel::load(const std::string& filepath) {
 
     } catch (const std::exception& e) {
         file.close();
-        throw std::runtime_error("Error loading model from " + filepath + ": " + e.what());
+        throw std::runtime_error("Failed to load model from " + filepath + ": " + e.what());
     }
 }
+
+}  // namespace grad

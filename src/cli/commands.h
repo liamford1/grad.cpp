@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace cli {
+namespace grad::cli {
 
 struct Invocation {
     std::string_view program;  // argv[0]
@@ -34,4 +34,4 @@ int run_bench(const Invocation& invocation);
 int run_watch(const Invocation& invocation);
 int run_presets(const Invocation& invocation);
 
-}  // namespace cli
+}  // namespace grad::cli

@@ -1,30 +1,35 @@
 #pragma once
-#include "tensor.h"
-#include "token_embedding.h"
-#include "positional_encoding.h"
-#include "transformer_block.h"
-#include "linear.h"
-#include "layer_norm.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/token_embedding.h"
+#include "grad/transformer/positional_encoding.h"
+#include "grad/transformer/transformer_block.h"
+#include "grad/transformer/linear.h"
+#include "grad/transformer/layer_norm.h"
 
 #include <vector>
 #include <memory>
 #include <string>
 
+namespace grad {
+
 // GPT2: LayerNorm, learned absolute positional embeddings, GELU FFN with
 // biases. Modern: RMSNorm, RoPE, bias-free SwiGLU FFN - same parameter
 // count at equal d_model. The arch is stored in the checkpoint (format v2;
 // v1 files load as GPT2).
+//
+// Hyperparameters are int and extents size_t; see the size convention in
+// tensor.h.
 enum class GPTArch { GPT2 = 0, Modern = 1 };
 
 class GPTModel {
     private:
-        int vocab_size;
-        int d_model;
-        int num_layers;
-        int num_heads;
-        int max_len;
-        float dropout_rate;
-        GPTArch arch;
+        int vocab_size_;
+        int d_model_;
+        int num_layers_;
+        int num_heads_;
+        int max_len_;
+        float dropout_rate_;
+        GPTArch arch_;
 
         TokenEmbedding token_embedding;
         // Constructed for both arches to keep the class layout simple, but
@@ -42,16 +47,16 @@ class GPTModel {
 
         [[nodiscard]] std::vector<std::shared_ptr<Variable>> getAllParameters() const;
 
-        int getVocabSize() const { return vocab_size; }
-        int getDModel() const { return d_model; }
-        int getNumLayers() const { return num_layers; }
-        int getNumHeads() const { return num_heads; }
-        int getMaxLen() const { return max_len; }
-        GPTArch getArch() const { return arch; }
+        int getVocabSize() const { return vocab_size_; }
+        int getDModel() const { return d_model_; }
+        int getNumLayers() const { return num_layers_; }
+        int getNumHeads() const { return num_heads_; }
+        int getMaxLen() const { return max_len_; }
+        GPTArch getArch() const { return arch_; }
 
         const TokenEmbedding& getTokenEmbedding() const { return token_embedding; }
         const PositionalEncoding& getPosEncoding() const { return pos_encoding; }
-        const TransformerBlock& getBlock(int i) const { return *transformer_blocks[i]; }
+        const TransformerBlock& getBlock(size_t i) const { return *transformer_blocks[i]; }
         const LayerNorm& getFinalNorm() const { return final_norm; }
 
         // quiet suppresses the success print - used for the periodic
@@ -66,3 +71,5 @@ class GPTModel {
         GPTModel(GPTModel&&) = default;
         GPTModel& operator=(GPTModel&&) = default;
 };
+
+}  // namespace grad

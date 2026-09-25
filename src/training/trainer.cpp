@@ -1,6 +1,6 @@
-#include "training/trainer.h"
-#include "utils/training_utils.h"
-#include "transformer/variable.h"
+#include "grad/training/trainer.h"
+#include "grad/utils/training_utils.h"
+#include "grad/transformer/variable.h"
 #include <cerrno>
 #include <cmath>
 #include <csignal>
@@ -14,7 +14,7 @@
 #include <stdexcept>
 #include <signal.h>
 
-namespace training {
+namespace grad::training {
 
 namespace {
 
@@ -42,7 +42,7 @@ public:
         struct sigaction action {};
         action.sa_handler = request_stop;
         sigemptyset(&action.sa_mask);
-        action.sa_flags = SA_RESETHAND;
+        action.sa_flags = static_cast<int>(SA_RESETHAND);  // 0x80000000u on glibc; sa_flags is int
         sigaction(SIGINT, &action, &prev_int_);
         sigaction(SIGTERM, &action, &prev_term_);
     }
@@ -219,7 +219,7 @@ bool Trainer::train() {
 
     // Per-step CSV for `grad watch`; resumes append so the
     // dashboard sees the run's whole history.
-    long param_count = 0;
+    size_t param_count = 0;
     for (const auto& p : model_.getAllParameters()) param_count += p->getData().numel();
     char desc[128];
     std::snprintf(desc, sizeof(desc), "%s d%d L%d H%d seq%d b%dx%d vocab%d",
@@ -374,10 +374,10 @@ void Trainer::training_step(int step) {
         loss->release_graph();
     }
     if (config_.grad_accum > 1) {
-        optimizer_->scale_grads(1.0f / config_.grad_accum);
+        optimizer_->scale_grads(1.0f / static_cast<float>(config_.grad_accum));
     }
 
-    float loss_val = loss_sum / config_.grad_accum;
+    float loss_val = loss_sum / static_cast<float>(config_.grad_accum);
 
     // Pre-clip gradient norm, every step: one linear pass over the
     // parameters (<1% of step time) buys the dashboard its gradient-norm
@@ -413,4 +413,4 @@ bool Trainer::save_checkpoint(const std::string& path) {
     return true;
 }
 
-} // namespace training
+}  // namespace grad::training

@@ -1,6 +1,6 @@
-#include "transformer/tensor.h"
-#include "transformer/blas_wrapper.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/parallel.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,6 +13,8 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+
+namespace grad {
 
 namespace {
 
@@ -43,10 +45,10 @@ void check_dims(const Shape& shape) {
         }
         // Compared by division so the check cannot itself overflow: a
         // product that wraps size_t would otherwise pass as a small tensor.
-        if (n > MAX_TENSOR_ELEMENTS / total) {
+        if (n > kMaxTensorElements / total) {
             throw std::overflow_error("Tensor too large: " + shape.to_string() +
                                       " exceeds the maximum of " +
-                                      std::to_string(MAX_TENSOR_ELEMENTS) + " elements");
+                                      std::to_string(kMaxTensorElements) + " elements");
         }
         total *= n;
     }
@@ -286,8 +288,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
         blas_sgemm_ex(data.get() + b * M * K,
                       other.data.get() + (batched_rhs ? b * K * N : 0),
                       result.data.get() + b * M * N,
-                      static_cast<int>(M), static_cast<int>(N), static_cast<int>(K),
-                      false, false, 1.0f, 0.0f);
+                      M, N, K, false, false, 1.0f, 0.0f);
     }
     return result;
 }
@@ -394,9 +395,9 @@ Tensor Tensor::softmax() const {
             for (size_t j = 0; j < cols; j++) {
                 row_out[j] = row_in[j] - max_val;
             }
-            vec_exp(row_out, row_out, static_cast<int>(cols));
+            vec_exp(row_out, row_out, cols);
 
-            const float inv_sum = 1.0f / vec_sum(row_out, static_cast<int>(cols));
+            const float inv_sum = 1.0f / vec_sum(row_out, cols);
             for (size_t j = 0; j < cols; j++) {
                 row_out[j] *= inv_sum;
             }
@@ -441,7 +442,7 @@ Tensor Tensor::slice(size_t start_row, size_t num_rows, size_t start_col, size_t
 void Tensor::xavier(size_t fan_in, size_t fan_out) {
     assertValid("xavier(target)");
 
-    float limit = std::sqrt(6.0f / (fan_in + fan_out));
+    float limit = std::sqrt(6.0f / static_cast<float>(fan_in + fan_out));
     std::uniform_real_distribution<float> dis(-limit, limit);
 
     InitStream& stream = init_stream();
@@ -500,3 +501,5 @@ void Tensor::multiply_inplace(const Tensor& other) {
 void Tensor::zero() {
     if (numel() > 0) std::memset(data.get(), 0, numel() * sizeof(float));
 }
+
+}  // namespace grad

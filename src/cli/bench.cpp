@@ -7,15 +7,15 @@
 #include "commands.h"
 #include "common.h"
 
-#include "data/dataloader.h"
-#include "data/dataset.h"
-#include "transformer/gpt_model.h"
-#include "transformer/metal_backend.h"
-#include "transformer/optimizer.h"
-#include "transformer/text_gen.h"
-#include "transformer/variable.h"
-#include "utils/metrics.h"
-#include "utils/training_utils.h"
+#include "grad/data/dataloader.h"
+#include "grad/data/dataset.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/metal_backend.h"
+#include "grad/transformer/optimizer.h"
+#include "grad/transformer/text_gen.h"
+#include "grad/transformer/variable.h"
+#include "grad/utils/metrics.h"
+#include "grad/utils/training_utils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -45,7 +45,7 @@
 #define GRAD_SYSTEM "unknown"
 #endif
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -127,8 +127,8 @@ void write_benchmark_json(const BenchmarkOptions& options,
         << "  \"build_type\": \"" << GRAD_BUILD_TYPE << "\",\n"
         << "  \"compiler\": \"" << GRAD_COMPILER << "\",\n"
         << "  \"system\": \"" << GRAD_SYSTEM << "\",\n"
-        << "  \"metal_available\": " << (metalgpu::available() ? "true" : "false") << ",\n"
-        << "  \"metal_fp16\": " << (metalgpu::fp16_active() ? "true" : "false") << ",\n"
+        << "  \"metal_available\": " << (metal::available() ? "true" : "false") << ",\n"
+        << "  \"metal_fp16\": " << (metal::fp16_active() ? "true" : "false") << ",\n"
         << "  \"parameters\": " << parameter_count << ",\n"
         << "  \"config\": {\"vocab\": " << kConfig.vocab_size
         << ", \"d_model\": " << kConfig.d_model << ", \"layers\": " << kConfig.num_layers
@@ -269,4 +269,4 @@ int run_bench(const Invocation& invocation) {
     return 0;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

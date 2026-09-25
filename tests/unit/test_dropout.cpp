@@ -1,8 +1,10 @@
 #include <iostream>
 #include <cmath>
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include "../test_util.h"
+
+using namespace grad;
 
 void test_dropout_training_mode() {
     std::cout << "\n=== Test 1: Dropout in Training Mode ===" << std::endl;
