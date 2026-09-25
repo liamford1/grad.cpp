@@ -63,31 +63,45 @@ bool exists(const std::string& path) {
 
 }  // namespace tokenfile
 
+void MappedTokenDataset::Unmap::operator()(void* addr) const noexcept {
+    ::munmap(addr, bytes);
+}
+
 MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, int stride)
     : seq_length_(seq_length), stride_(stride) {
     if (stride < 1) {
         throw std::invalid_argument("stride must be >= 1");
     }
+    if (seq_length < 1) {
+        throw std::invalid_argument("seq_length must be >= 1");
+    }
 
-    fd_ = ::open(path.c_str(), O_RDONLY);
-    if (fd_ < 0) {
+    // Closes the descriptor on every exit from the constructor, including
+    // the throws below; the mapping outlives it.
+    struct Fd {
+        int fd;
+        ~Fd() { if (fd >= 0) ::close(fd); }
+    } file{::open(path.c_str(), O_RDONLY)};
+    if (file.fd < 0) {
         throw std::runtime_error("Cannot open token file: " + path);
     }
 
     struct stat st;
-    if (::fstat(fd_, &st) != 0 || static_cast<size_t>(st.st_size) < kHeaderBytes) {
-        ::close(fd_);
+    if (::fstat(file.fd, &st) != 0 || st.st_size < 0
+        || static_cast<size_t>(st.st_size) < kHeaderBytes) {
         throw std::runtime_error("Token file truncated or unreadable: " + path);
     }
-    map_bytes_ = static_cast<size_t>(st.st_size);
+    const size_t map_bytes = static_cast<size_t>(st.st_size);
 
-    map_ = ::mmap(nullptr, map_bytes_, PROT_READ, MAP_PRIVATE, fd_, 0);
-    if (map_ == MAP_FAILED) {
-        ::close(fd_);
+    void* addr = ::mmap(nullptr, map_bytes, PROT_READ, MAP_PRIVATE, file.fd, 0);
+    if (addr == MAP_FAILED) {
         throw std::runtime_error("mmap failed for token file: " + path);
     }
+    // Owned from here on: any later throw unmaps through the member's
+    // destructor.
+    map_ = std::unique_ptr<void, Unmap>(addr, Unmap{map_bytes});
 
-    const char* base = static_cast<const char*>(map_);
+    const char* base = static_cast<const char*>(addr);
     if (std::memcmp(base, kMagic, 4) != 0) {
         throw std::runtime_error("Not a token file (bad magic): " + path);
     }
@@ -95,25 +109,22 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
     uint64_t count;
     std::memcpy(&vocab, base + 4, sizeof(vocab));
     std::memcpy(&count, base + 4 + sizeof(vocab), sizeof(count));
+    if (vocab == 0 || vocab > 65536) {
+        throw std::runtime_error("Token file vocab " + std::to_string(vocab)
+                                 + " outside (0, 65536]: " + path);
+    }
+    // Compared as a token count so a corrupt count cannot overflow the
+    // byte-size product.
+    if (count > (map_bytes - kHeaderBytes) / sizeof(uint16_t)) {
+        throw std::runtime_error("Token file shorter than its header claims: " + path);
+    }
     vocab_size_ = static_cast<int>(vocab);
     count_ = static_cast<size_t>(count);
 
-    if (map_bytes_ < kHeaderBytes + count_ * sizeof(uint16_t)) {
-        throw std::runtime_error("Token file shorter than its header claims: " + path);
-    }
-    if (count_ < static_cast<size_t>(seq_length_ + 1)) {
+    if (count_ < static_cast<size_t>(seq_length_) + 1) {
         throw std::runtime_error("Not enough tokens for even one sequence: " + path);
     }
     tokens_ = reinterpret_cast<const uint16_t*>(base + kHeaderBytes);
-}
-
-MappedTokenDataset::~MappedTokenDataset() {
-    if (map_ != nullptr && map_ != MAP_FAILED) {
-        ::munmap(map_, map_bytes_);
-    }
-    if (fd_ >= 0) {
-        ::close(fd_);
-    }
 }
 
 size_t MappedTokenDataset::size() const {
@@ -128,9 +139,20 @@ std::pair<std::vector<int>, std::vector<int>> MappedTokenDataset::get_item(size_
 
     std::vector<int> input(seq_length_);
     std::vector<int> target(seq_length_);
+    // The window spans tokens [start, start + seq_length] inclusive (the
+    // target is the input shifted by one).
+    const uint16_t* window = tokens_ + start;
+    for (int i = 0; i <= seq_length_; i++) {
+        if (window[i] >= vocab_size_) {
+            throw std::runtime_error("token id " + std::to_string(window[i])
+                                     + " at offset " + std::to_string(start + i)
+                                     + " is outside the file's vocab of "
+                                     + std::to_string(vocab_size_));
+        }
+    }
     for (int i = 0; i < seq_length_; i++) {
-        input[i] = tokens_[start + i];
-        target[i] = tokens_[start + 1 + i];
+        input[i] = window[i];
+        target[i] = window[i + 1];
     }
     return {input, target};
 }
