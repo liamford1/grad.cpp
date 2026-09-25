@@ -15,7 +15,7 @@ import math
 from pathlib import Path
 
 WIDTH, HEIGHT = 820, 440
-MARGIN = {"left": 64, "right": 150, "top": 56, "bottom": 52}
+MARGIN = {"left": 64, "right": 170, "top": 56, "bottom": 52}
 Y_TICKS = [1.5, 2, 3, 4, 6, 10]
 EMA_ALPHA = 0.01
 MAX_POINTS = 800
@@ -77,7 +77,7 @@ def smooth(points):
     return out[::stride] + ([out[-1]] if len(out) % stride else [])
 
 
-def render(train, val, resumes, title):
+def render(train, val, resumes, title, val_label):
     plot_w = WIDTH - MARGIN["left"] - MARGIN["right"]
     plot_h = HEIGHT - MARGIN["top"] - MARGIN["bottom"]
     x_max = max(s for s, _ in train)
@@ -143,7 +143,7 @@ def render(train, val, resumes, title):
         mid = (train_y + val_y) / 2
         train_y, val_y = mid - 15, mid + 15
     for cls, ly, name, value in (("swatch-train", train_y, "train (EMA)", smoothed[-1][1]),
-                                 ("swatch-val", val_y, "validation", last_val)):
+                                 ("swatch-val", val_y, val_label, last_val)):
         parts.append(f'<rect class="{cls}" x="{label_x}" y="{ly - 9:.1f}" width="10" height="3" rx="1.5"/>')
         parts.append(f'<text class="label" x="{label_x + 16}" y="{ly - 4:.1f}">{name}</text>')
         parts.append(f'<text class="label" x="{label_x + 16}" y="{ly + 11:.1f}">{value:.3f}</text>')
@@ -157,13 +157,15 @@ def main():
     parser.add_argument("metrics", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--title", default="Training and validation loss")
+    parser.add_argument("--val-label", default="validation",
+                        help="legend text for the in-loop validation series")
     args = parser.parse_args()
 
     train, val, resumes = read_metrics(args.metrics)
     if not train or not val:
         parser.error(f"{args.metrics} has no training or validation rows")
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(render(train, val, resumes, args.title))
+    args.output.write_text(render(train, val, resumes, args.title, args.val_label))
 
 
 if __name__ == "__main__":
