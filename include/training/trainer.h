@@ -52,8 +52,9 @@ public:
     [[nodiscard]] bool train();
     void save_checkpoint(const std::string& path);
 
-    // Mean loss over the whole validation set (forward-only, no dropout).
-    // Perplexity is exp of this. Returns -1 if there is no val loader.
+    // Mean loss over the validation set, capped at max_eval_batches from
+    // its start (forward-only, no dropout). Perplexity is exp of this.
+    // Returns -1 if there is no val loader.
     [[nodiscard]] float evaluate();
 
     // Restores the state written by save_resume_state: optimizer moments,
@@ -81,6 +82,13 @@ private:
     void save_resume_state(int next_step, float best_val_loss);
     void log_performance_breakdown();
 };
+
+// Mean next-token cross-entropy (nats) over up to max_batches batches of
+// loader, from its current position (0 = until the loader is exhausted).
+// Forward-only with dropout off; each batch's graph is released before the
+// next is built. Batches are weighted by row count, so a short final batch
+// does not skew the mean. Returns -1 if the loader yields nothing.
+[[nodiscard]] double mean_loss(GPTModel& model, DataLoader& loader, int max_batches = 0);
 
 // Reads just the step position from a resume state file, so callers can
 // derive run parameters (e.g. the data loader seed) before the Trainer

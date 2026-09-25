@@ -234,28 +234,30 @@ bool Trainer::train() {
     return true;
 }
 
-float Trainer::evaluate() {
-    if (!val_loader_) return -1.0f;
-
-    val_loader_->reset();
-    double total_loss = 0.0;
-    int batches = 0;
-
-    while (val_loader_->has_next()) {
-        if (config_.max_eval_batches > 0 && batches >= config_.max_eval_batches) break;
-        auto batch = val_loader_->next_batch();
+double mean_loss(GPTModel& model, DataLoader& loader, int max_batches) {
+    double weighted_loss = 0.0;
+    size_t rows = 0;
+    for (int batches = 0; loader.has_next(); batches++) {
+        if (max_batches > 0 && batches >= max_batches) break;
+        auto batch = loader.next_batch();
         auto in = Variable::create(batch.input, false);
         auto tgt = Variable::create(batch.target, false);
 
-        // Forward-only: training=false disables dropout. The graph is still
-        // built (parameters require grad), so release it.
-        auto logits = model_.forward(in, false);
+        // The graph is still built (parameters require grad), so release it.
+        auto logits = model.forward(in, false);
         auto loss = logits->log_softmax()->nll_loss(tgt);
-        total_loss += loss->getData().getValue(0, 0);
+        const size_t batch_rows = batch.input.getBatchSize();
+        weighted_loss += static_cast<double>(loss->getData().getValue(0, 0)) * static_cast<double>(batch_rows);
+        rows += batch_rows;
         loss->release_graph();
-        batches++;
     }
-    return batches > 0 ? static_cast<float>(total_loss / batches) : -1.0f;
+    return rows > 0 ? weighted_loss / static_cast<double>(rows) : -1.0;
+}
+
+float Trainer::evaluate() {
+    if (!val_loader_) return -1.0f;
+    val_loader_->reset();
+    return static_cast<float>(mean_loss(model_, *val_loader_, config_.max_eval_batches));
 }
 
 void Trainer::training_step(int step) {

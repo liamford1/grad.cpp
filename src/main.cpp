@@ -232,6 +232,76 @@ int run_chat(const std::string& checkpoint_path,
     }
 }
 
+// Scores a checkpoint on the held-out split and on an equal-sized random
+// sample of training windows, both in non-overlapping windows. The trainer's
+// in-loop validation reads only the first max_eval_batches of the split, which
+// is fine for tracking a run but not for reporting one; this is the number to
+// report. max_batches = 0 walks the whole val split; otherwise both splits are
+// sampled uniformly, so a capped run still covers the split rather than its
+// first few stories. The train-side figure separates generalization from
+// distribution shift between the two splits.
+int run_eval(const std::string& checkpoint_path, const std::string& corpus_path,
+             int vocab_size, int seq_length, int max_batches) {
+    std::cout << "\nTransformer Evaluation\n" << std::endl;
+
+    try {
+        const std::string train_bin = token_bin_path(corpus_path, vocab_size, "train");
+        const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
+        if (!tokenfile::exists(train_bin) || !tokenfile::exists(val_bin)) {
+            throw std::runtime_error("eval needs pre-tokenized files; run: ./build/grad prepare "
+                                     + corpus_path + " " + std::to_string(vocab_size));
+        }
+
+        utils::print_section("Loading Model");
+        GPTModel model = GPTModel::load(checkpoint_path);
+        if (seq_length > model.getMaxLen()) {
+            throw std::runtime_error("seq length exceeds the model's context ("
+                                     + std::to_string(model.getMaxLen()) + ")");
+        }
+
+        constexpr int kBatchSize = 8;
+        auto val = std::make_shared<MappedTokenDataset>(val_bin, seq_length, seq_length);
+        auto train = std::make_shared<MappedTokenDataset>(train_bin, seq_length, seq_length);
+        if (val->vocabSize() != model.getVocabSize()) {
+            throw std::runtime_error("token files and checkpoint disagree on vocab size");
+        }
+
+        constexpr unsigned kSeed = 20260921;
+        DataLoader val_loader(val, kBatchSize, /*shuffle=*/max_batches > 0, kSeed);
+        const int val_batches = max_batches > 0
+            ? std::min<int>(max_batches, static_cast<int>(val_loader.num_batches()))
+            : static_cast<int>(val_loader.num_batches());
+        DataLoader train_loader(train, kBatchSize, /*shuffle=*/true, kSeed + 1);
+
+        auto report = [](const char* split, double loss, long tokens, double seconds) {
+            std::cout << std::left << std::setw(8) << split << std::right << std::fixed
+                      << " loss " << std::setprecision(4) << loss
+                      << "  perplexity " << std::setprecision(3) << std::exp(loss)
+                      << "  (" << tokens << " tokens, " << std::setprecision(0) << seconds
+                      << "s)" << std::defaultfloat << std::endl;
+        };
+        auto timed = [&](DataLoader& loader) {
+            const auto start = std::chrono::steady_clock::now();
+            const double loss = training::mean_loss(model, loader, val_batches);
+            const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
+            return std::make_pair(loss, elapsed.count());
+        };
+
+        utils::print_section("Scoring");
+        const long tokens = static_cast<long>(std::min<size_t>(
+            static_cast<size_t>(val_batches) * kBatchSize, val->size())) * seq_length;
+        const auto [val_loss, val_s] = timed(val_loader);
+        report("val", val_loss, tokens, val_s);
+        const auto [train_loss, train_s] = timed(train_loader);
+        report("train", train_loss, static_cast<long>(val_batches) * kBatchSize * seq_length,
+               train_s);
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "\nError: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
 struct BenchmarkOptions {
     int steps = 20;
     int warmup = 3;
@@ -759,6 +829,17 @@ int main(int argc, char* argv[]) {
         int vocab = (argc > 5) ? std::atoi(argv[5]) : 5000;
         return run_generation(checkpoint, prompt, corpus, vocab);
     }
+    if (mode == "eval") {
+        if (argc < 4) {
+            std::cerr << "Usage: " << argv[0]
+                      << " eval <ckpt> <corpus.txt> [vocab] [seq] [max_batches]" << std::endl;
+            return 1;
+        }
+        const int vocab = (argc > 4) ? std::atoi(argv[4]) : 5000;
+        const int seq = (argc > 5) ? std::atoi(argv[5]) : 256;
+        const int max_batches = (argc > 6) ? std::atoi(argv[6]) : 0;
+        return run_eval(argv[2], argv[3], vocab, seq, max_batches);
+    }
     if (mode == "bench") {
         BenchmarkOptions options;
         bool positional_steps_seen = false;
@@ -825,6 +906,8 @@ int main(int argc, char* argv[]) {
               << "  train-fast [corpus.txt] [ckpt.bin|resume]   tiny config for a quick smoke test\n"
               << "  generate [ckpt] [prompt] [corpus] [vocab]   sample from a saved checkpoint\n"
               << "  chat [ckpt] [corpus] [vocab]                interactive prompt/continue REPL\n"
+              << "  eval <ckpt> <corpus> [vocab] [seq] [max_batches]\n"
+              << "      loss/perplexity on the full val split and a matched train sample\n"
               << "  bench [steps] [--warmup N] [--trials N] [--json path]\n"
               << "                                      benchmark with repeated median trials\n"
               << "  watch [run-prefix]                   live terminal dashboard for a training\n"
