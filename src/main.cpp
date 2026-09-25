@@ -1,3 +1,4 @@
+#include "transformer/activations.h"
 #include "transformer/gpt_model.h"
 #include "transformer/metal_backend.h"
 #include "transformer/text_gen.h"
@@ -11,6 +12,7 @@
 #include "utils/training_utils.h"
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <functional>
@@ -857,14 +859,18 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         // that starts from existing weights must not repeat the seed those
         // weights were trained with - it would replay the exact batch
         // sequence the checkpoint already saw. Resumes perturb the seed by
-        // their step position, warm starts by the checkpoint path.
+        // their step position, warm starts by the checkpoint path (FNV-1a,
+        // so the seed is the same under every standard library). Dropout
+        // masks follow the same seed for the same reason.
         unsigned int loader_seed = 42;
         if (resume) {
             loader_seed = 42u + static_cast<unsigned int>(*resume_next_step);
         } else if (!warm_start_path.empty()) {
-            loader_seed = static_cast<unsigned int>(
-                std::hash<std::string>{}(warm_start_path));
+            uint32_t h = 2166136261u;
+            for (unsigned char c : warm_start_path) h = (h ^ c) * 16777619u;
+            loader_seed = h;
         }
+        set_dropout_seed(loader_seed);
         DataLoader loader(dataset, config.batch_size, true, loader_seed);
         DataLoader val_loader(val_dataset, config.batch_size, false);
 
