@@ -30,7 +30,7 @@ void BPETokenizer::train(const std::string& training_text) {
     }
 
     int curr_id = 3;
-    for(char c : unique_chars) {
+    for (char c : unique_chars) {
         std::string char_str(1, c);
         vocab[char_str] = curr_id;
         id_to_token[curr_id] = char_str;
@@ -56,7 +56,7 @@ void BPETokenizer::train(const std::string& training_text) {
         std::vector<std::string> chars;
         chars.reserve(entry.first.size());
         for (char c : entry.first) {
-            chars.push_back(std::string(1, c));
+            chars.emplace_back(1, c);
         }
         word_tokens[entry.first] = chars;
     }
@@ -75,8 +75,10 @@ void BPETokenizer::train(const std::string& training_text) {
     const int total_merges = vocab_size_ - static_cast<int>(vocab.size());
     auto start_time = std::chrono::steady_clock::now();
 
-    while(vocab.size() < static_cast<size_t>(vocab_size_)) {
-        if (pair_counts.empty()) { break; }
+    while (vocab.size() < static_cast<size_t>(vocab_size_)) {
+        if (pair_counts.empty()) {
+            break;
+        }
 
         std::pair<std::string, std::string> most_freq_pair;
         int max_count = 0;
@@ -87,7 +89,9 @@ void BPETokenizer::train(const std::string& training_text) {
             }
         }
 
-        if (max_count == 0) { break; }
+        if (max_count == 0) {
+            break;
+        }
 
         std::string merged_token = most_freq_pair.first + most_freq_pair.second;
         vocab[merged_token] = curr_id;
@@ -98,16 +102,20 @@ void BPETokenizer::train(const std::string& training_text) {
 
         if (merge_count % 100 == 0 || merge_count == total_merges) {
             auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
-            float progress = 100.0f * static_cast<float>(merge_count) / static_cast<float>(total_merges);
-            float merges_per_sec = static_cast<float>(merge_count) / static_cast<float>(elapsed + 1);
-            int eta_sec = static_cast<int>(static_cast<float>(total_merges - merge_count) /
-                                           (merges_per_sec + 0.001f));
+            auto elapsed =
+                std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
+            float progress =
+                100.0f * static_cast<float>(merge_count) / static_cast<float>(total_merges);
+            float merges_per_sec =
+                static_cast<float>(merge_count) / static_cast<float>(elapsed + 1);
+            int eta_sec = static_cast<int>(static_cast<float>(total_merges - merge_count)
+                                           / (merges_per_sec + 0.001f));
 
             std::cout << "\r  Training tokenizer: [" << merge_count << "/" << total_merges << "] "
                       << std::fixed << std::setprecision(1) << progress << "% "
                       << "elapsed=" << elapsed << "s "
-                      << "eta=" << (eta_sec / 60) << "m" << (eta_sec % 60) << "s     " << std::flush;
+                      << "eta=" << (eta_sec / 60) << "m" << (eta_sec % 60) << "s     "
+                      << std::flush;
         }
 
         pair_counts.erase(most_freq_pair);
@@ -121,9 +129,10 @@ void BPETokenizer::train(const std::string& training_text) {
             new_word.reserve(word.size());
 
             for (size_t i = 0; i < word.size(); i++) {
-                if (i < word.size() - 1 && word[i] == most_freq_pair.first && word[i + 1] == most_freq_pair.second) {
+                if (i < word.size() - 1 && word[i] == most_freq_pair.first
+                    && word[i + 1] == most_freq_pair.second) {
                     if (i > 0) {
-                        std::pair<std::string, std::string> left_pair = {word[i-1], word[i]};
+                        std::pair<std::string, std::string> left_pair = {word[i - 1], word[i]};
                         pair_counts[left_pair] -= freq;
                         if (pair_counts[left_pair] <= 0) {
                             pair_counts.erase(left_pair);
@@ -131,7 +140,7 @@ void BPETokenizer::train(const std::string& training_text) {
                     }
 
                     if (i + 2 < word.size()) {
-                        std::pair<std::string, std::string> right_pair = {word[i+1], word[i+2]};
+                        std::pair<std::string, std::string> right_pair = {word[i + 1], word[i + 2]};
                         pair_counts[right_pair] -= freq;
                         if (pair_counts[right_pair] <= 0) {
                             pair_counts.erase(right_pair);
@@ -141,12 +150,14 @@ void BPETokenizer::train(const std::string& training_text) {
                     new_word.push_back(merged_token);
 
                     if (i > 0) {
-                        std::pair<std::string, std::string> new_left_pair = {word[i-1], merged_token};
+                        std::pair<std::string, std::string> new_left_pair = {word[i - 1],
+                                                                             merged_token};
                         pair_counts[new_left_pair] += freq;
                     }
 
                     if (i + 2 < word.size()) {
-                        std::pair<std::string, std::string> new_right_pair = {merged_token, word[i+2]};
+                        std::pair<std::string, std::string> new_right_pair = {merged_token,
+                                                                              word[i + 2]};
                         pair_counts[new_right_pair] += freq;
                     }
 
@@ -188,9 +199,10 @@ std::vector<int> BPETokenizer::encode(const std::string& text) const {
         const std::string& word = words[word_idx];
 
         if (show_progress && word_idx % 5000 == 0) {
-            float progress = 100.0f * static_cast<float>(word_idx) / static_cast<float>(total_words);
-            std::cout << "\r  Encoding: [" << word_idx << "/" << total_words << "] "
-                      << std::fixed << std::setprecision(1) << progress << "% "
+            float progress =
+                100.0f * static_cast<float>(word_idx) / static_cast<float>(total_words);
+            std::cout << "\r  Encoding: [" << word_idx << "/" << total_words << "] " << std::fixed
+                      << std::setprecision(1) << progress << "% "
                       << "cache_hits=" << cache_hits << "     " << std::flush;
         }
 
@@ -204,15 +216,15 @@ std::vector<int> BPETokenizer::encode(const std::string& text) const {
         std::vector<std::string> word_tokens;
         word_tokens.reserve(word.size());
         for (char c : word) {
-            word_tokens.push_back(std::string(1, c));
+            word_tokens.emplace_back(1, c);
         }
 
         for (const auto& merge_pair : merges) {
             if (word_tokens.size() <= 1) break;
 
             bool has_pair = false;
-            for(size_t i = 0; i < word_tokens.size() - 1; i++) {
-                if (word_tokens[i] == merge_pair.first && word_tokens[i+1] == merge_pair.second) {
+            for (size_t i = 0; i < word_tokens.size() - 1; i++) {
+                if (word_tokens[i] == merge_pair.first && word_tokens[i + 1] == merge_pair.second) {
                     has_pair = true;
                     break;
                 }
@@ -222,8 +234,9 @@ std::vector<int> BPETokenizer::encode(const std::string& text) const {
             std::vector<std::string> new_word_tokens;
             new_word_tokens.reserve(word_tokens.size());
 
-            for(size_t i = 0; i < word_tokens.size(); i++) {
-                if (i < word_tokens.size() - 1 && word_tokens[i] == merge_pair.first && word_tokens[i+1] == merge_pair.second) {
+            for (size_t i = 0; i < word_tokens.size(); i++) {
+                if (i < word_tokens.size() - 1 && word_tokens[i] == merge_pair.first
+                    && word_tokens[i + 1] == merge_pair.second) {
                     new_word_tokens.push_back(merge_pair.first + merge_pair.second);
                     i++;
                 } else {
@@ -259,8 +272,8 @@ std::vector<int> BPETokenizer::encode(const std::string& text) const {
 std::string BPETokenizer::decode(const std::vector<int>& token_ids) const {
     std::string result;
 
-    for (size_t i = 0; i < token_ids.size(); i++) {
-        auto it = id_to_token.find(token_ids[i]);
+    for (int token_id : token_ids) {
+        auto it = id_to_token.find(token_id);
         if (it != id_to_token.end()) {
             result += it->second;
         }
@@ -329,8 +342,8 @@ T read_pod(std::istream& in, const std::string& path, const char* what) {
     T value;
     in.read(reinterpret_cast<char*>(&value), sizeof(value));
     if (!in) {
-        throw std::runtime_error("Tokenizer cache truncated reading " + std::string(what)
-                                 + ": " + path);
+        throw std::runtime_error("Tokenizer cache truncated reading " + std::string(what) + ": "
+                                 + path);
     }
     return value;
 }

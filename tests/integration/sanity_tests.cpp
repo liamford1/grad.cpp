@@ -47,8 +47,8 @@ void test_overfit_tiny_sequence() {
     for (int t : sequence) std::cout << t << " ";
     std::cout << "\n\nTraining..." << std::endl;
 
-    std::cout << std::setw(10) << "Step" << std::setw(15) << "Loss"
-              << std::setw(20) << "Grad Norm" << std::endl;
+    std::cout << std::setw(10) << "Step" << std::setw(15) << "Loss" << std::setw(20) << "Grad Norm"
+              << std::endl;
     std::cout << std::string(45, '-') << std::endl;
 
     for (int step = 0; step < 100; step++) {
@@ -65,11 +65,9 @@ void test_overfit_tiny_sequence() {
         optimizer.step();
 
         if (step % 10 == 0 || step < 5) {
-            std::cout << std::setw(10) << step
-                      << std::setw(15) << std::fixed << std::setprecision(6)
-                      << loss->getData().getValue(0, 0)
-                      << std::setw(20) << std::fixed << std::setprecision(4)
-                      << grad_norm << std::endl;
+            std::cout << std::setw(10) << step << std::setw(15) << std::fixed
+                      << std::setprecision(6) << loss->getData().getValue(0, 0) << std::setw(20)
+                      << std::fixed << std::setprecision(4) << grad_norm << std::endl;
         }
 
         if (step == 0 && grad_norm < 1e-6f) {
@@ -84,7 +82,10 @@ void test_overfit_tiny_sequence() {
         float max_val = -1e9f;
         for (size_t j = 0; j < vocab; j++) {
             float val = final_logits->getData().getValue(i, j);
-            if (val > max_val) { max_val = val; pred = static_cast<int>(j); }
+            if (val > max_val) {
+                max_val = val;
+                pred = static_cast<int>(j);
+            }
         }
         if (pred == sequence[i]) correct++;
     }
@@ -101,6 +102,7 @@ void test_dataloader() {
     utils::print_header("DataLoader Test: Multi-Batch Training");
 
     std::vector<int> tokens;
+    tokens.reserve(200);
     for (int i = 0; i < 200; i++) tokens.push_back(i % 15);
 
     GPTModel model(15, 24, 2, 4, 16);
@@ -141,9 +143,8 @@ void test_dataloader() {
             batch_count++;
 
             if (batch_count % 10 == 0) {
-                std::cout << "  Batch " << batch_count << " - Loss: "
-                          << std::fixed << std::setprecision(4)
-                          << loss->getData().getValue(0, 0) << std::endl;
+                std::cout << "  Batch " << batch_count << " - Loss: " << std::fixed
+                          << std::setprecision(4) << loss->getData().getValue(0, 0) << std::endl;
             }
         }
 
@@ -165,13 +166,14 @@ void test_spread_subset() {
     for (size_t i = 0; i < tokens.size(); i++) tokens[i] = static_cast<int>(i);
     auto source = std::make_shared<TextDataset>(tokens, 10, 10);  // 99 windows
     SpreadSubset subset(source, 7);
-    if (subset.size() != 7) throw std::runtime_error("SpreadSubset size is not the requested count");
+    if (subset.size() != 7)
+        throw std::runtime_error("SpreadSubset size is not the requested count");
     for (size_t i = 0; i < subset.size(); i++) {
         const size_t expected_window = i * source->size() / subset.size();
         const int first_token = subset.get_item(i).first.front();
         if (first_token != static_cast<int>(expected_window * 10)) {
-            throw std::runtime_error("SpreadSubset window " + std::to_string(i) + " starts at token "
-                                     + std::to_string(first_token));
+            throw std::runtime_error("SpreadSubset window " + std::to_string(i)
+                                     + " starts at token " + std::to_string(first_token));
         }
     }
     if (subset.get_item(6).first.front() < 800) {
@@ -192,8 +194,7 @@ void benchmark_training_speed() {
         return;
     }
 
-    std::string text((std::istreambuf_iterator<char>(file)),
-                     std::istreambuf_iterator<char>());
+    std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
 
     std::istringstream sample_stream(text);
@@ -303,7 +304,7 @@ void test_inference_parity(GPTArch arch) {
     const size_t vocab = vocab_size;
 
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len,
-                   /*dropout=*/0.0f, arch);
+                   /*dropout_rate=*/0.0f, arch);
 
     // Batched training-path forward over the whole sequence.
     Tensor ids(1, S, 1);
@@ -448,7 +449,8 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cerr << "Unknown test: " << test_name << std::endl;
                 std::cerr << "Available tests: overfit, dataloader, parity-gpt2, "
-                             "parity-modern, file-formats, benchmark" << std::endl;
+                             "parity-modern, file-formats, benchmark"
+                          << std::endl;
                 return 1;
             }
         } else {

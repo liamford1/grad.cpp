@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <exception>
 #include <iostream>
 #include <span>
@@ -23,15 +24,23 @@ struct CommandEntry {
 };
 
 constexpr std::array kCommands{
-    CommandEntry{"prepare", grad::cli::run_prepare, "Pre-tokenize a corpus into memory-mapped .bin token files"},
-    CommandEntry{"train", grad::cli::run_train, "Train a preset on a corpus; Ctrl-C saves a resumable state"},
-    CommandEntry{"train-fast", grad::cli::run_train_fast, "Train the tiny 'fast' preset: a one-minute smoke test"},
-    CommandEntry{"generate", grad::cli::run_generate, "Sample greedy and sampled continuations from a checkpoint"},
-    CommandEntry{"chat", grad::cli::run_chat, "Interactive REPL: type a prompt, watch the model continue it"},
-    CommandEntry{"eval", grad::cli::run_eval, "Loss and perplexity on held-out and training windows"},
-    CommandEntry{"bench", grad::cli::run_bench, "Training and generation throughput, median of repeated trials"},
+    CommandEntry{"prepare", grad::cli::run_prepare,
+                 "Pre-tokenize a corpus into memory-mapped .bin token files"},
+    CommandEntry{"train", grad::cli::run_train,
+                 "Train a preset on a corpus; Ctrl-C saves a resumable state"},
+    CommandEntry{"train-fast", grad::cli::run_train_fast,
+                 "Train the tiny 'fast' preset: a one-minute smoke test"},
+    CommandEntry{"generate", grad::cli::run_generate,
+                 "Sample greedy and sampled continuations from a checkpoint"},
+    CommandEntry{"chat", grad::cli::run_chat,
+                 "Interactive REPL: type a prompt, watch the model continue it"},
+    CommandEntry{"eval", grad::cli::run_eval,
+                 "Loss and perplexity on held-out and training windows"},
+    CommandEntry{"bench", grad::cli::run_bench,
+                 "Training and generation throughput, median of repeated trials"},
     CommandEntry{"watch", grad::cli::run_watch, "Live terminal dashboard for a training run"},
-    CommandEntry{"presets", grad::cli::run_presets, "List the model and training presets (--json for tools)"},
+    CommandEntry{"presets", grad::cli::run_presets,
+                 "List the model and training presets (--json for tools)"},
 };
 
 void print_usage(std::ostream& out, std::string_view program) {
@@ -46,9 +55,7 @@ void print_usage(std::ostream& out, std::string_view program) {
     out << "\nRun '" << program << " <command> --help' for a command's arguments and options.\n";
 }
 
-}  // namespace
-
-int main(int argc, char* argv[]) {
+int dispatch(int argc, char* argv[]) {
     const std::vector<std::string_view> args(argv, argv + argc);
     const std::string_view program = args.empty() ? "grad" : args[0];
 
@@ -88,4 +95,22 @@ int main(int argc, char* argv[]) {
         std::cerr << "\nError: " << e.what() << std::endl;
         return 1;
     }
+}
+
+}  // namespace
+
+// Anything dispatch() lets escape (an allocation failure while parsing the
+// command line or reporting a usage error) still exits with status 1 and a
+// message instead of std::terminate.
+int main(int argc, char* argv[]) {
+    try {
+        return dispatch(argc, argv);
+    } catch (const std::exception& e) {
+        std::fputs("Error: ", stderr);
+        std::fputs(e.what(), stderr);
+        std::fputs("\n", stderr);
+    } catch (...) {
+        std::fputs("Error: unknown exception\n", stderr);
+    }
+    return 1;
 }

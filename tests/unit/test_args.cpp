@@ -123,7 +123,8 @@ void test_usage_errors() {
     }
     {
         EvalArgs a;
-        CHECK(usage_error(a.cmd, {"m", "c", "16000x"}) == "vocab: expected an integer, got '16000x'");
+        CHECK(usage_error(a.cmd, {"m", "c", "16000x"})
+              == "vocab: expected an integer, got '16000x'");
     }
     {
         EvalArgs a;
@@ -131,7 +132,8 @@ void test_usage_errors() {
     }
     {
         EvalArgs a;
-        CHECK(usage_error(a.cmd, {"m", "c", "--batches", "-1"}) == "--batches: must be >= 0, got -1");
+        CHECK(usage_error(a.cmd, {"m", "c", "--batches", "-1"})
+              == "--batches: must be >= 0, got -1");
     }
     {
         EvalArgs a;
@@ -248,7 +250,8 @@ void test_help() {
     {
         EvalArgs a;
         const std::string help = a.cmd.help();
-        CHECK(help.rfind("Usage: grad eval <ckpt> <corpus> [vocab] [seq] [max_batches] [options]\n", 0)
+        CHECK(help.rfind("Usage: grad eval <ckpt> <corpus> [vocab] [seq] [max_batches] [options]\n",
+                         0)
               == 0);
         CHECK(help.find("Score a checkpoint.") != std::string::npos);
         CHECK(help.find("[seq], --seq N") != std::string::npos);

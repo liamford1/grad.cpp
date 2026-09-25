@@ -13,9 +13,9 @@
 namespace grad::cli {
 
 struct Invocation {
-    std::string_view program;  // argv[0]
-    std::string_view command;  // the subcommand name as typed
-    std::string_view summary;  // its one-line description from the dispatch table
+    std::string_view program;                // argv[0]
+    std::string_view command;                // the subcommand name as typed
+    std::string_view summary;                // its one-line description from the dispatch table
     std::span<const std::string_view> args;  // everything after the command name
 
     // "<program> <command>", as usage lines and hints spell it.

@@ -1,0 +1,28 @@
+# Editor defaults matching .clang-format (C++) and the rest of the tree.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{cpp,h,mm}]
+max_line_length = 100
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a Markdown line break.
+trim_trailing_whitespace = false
+
+[{CMakeLists.txt,*.cmake,*.cmake.in}]
+indent_size = 4
+
+[*.{csv,svg,txt}]
+# Data and generated files: leave them byte for byte.
+trim_trailing_whitespace = false
+insert_final_newline = unset

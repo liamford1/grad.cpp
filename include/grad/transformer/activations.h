@@ -20,8 +20,7 @@ namespace grad {
 // per-(batch, head) units) reserve a block of indices up front and pass one
 // per mask, so the assignment is independent of thread scheduling.
 void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale);
-void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale,
-                       uint64_t stream);
+void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale, uint64_t stream);
 
 // Reserves count consecutive stream indices and returns the first.
 [[nodiscard]] uint64_t reserve_dropout_streams(uint64_t count);

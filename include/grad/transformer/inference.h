@@ -44,16 +44,16 @@ private:
     std::vector<std::vector<float>> v_cache_;
 
     // Scratch buffers reused across steps.
-    std::vector<float> x_;          // residual stream (d_model)
-    std::vector<float> h_;          // normed input / final norm out (d_model)
-    std::vector<float> q_;          // query projection (d_model)
-    std::vector<float> attn_;       // concatenated head outputs (d_model)
-    std::vector<float> scores_;     // attention scores (max_len)
-    std::vector<float> ffn_hidden_; // FFN activation (d_ff)
-    std::vector<float> ffn_gate_;   // SwiGLU gate activation (d_ff, modern)
-    std::vector<float> rope_cos_;   // per-step RoPE angles (head_size/2, modern)
+    std::vector<float> x_;           // residual stream (d_model)
+    std::vector<float> h_;           // normed input / final norm out (d_model)
+    std::vector<float> q_;           // query projection (d_model)
+    std::vector<float> attn_;        // concatenated head outputs (d_model)
+    std::vector<float> scores_;      // attention scores (max_len)
+    std::vector<float> ffn_hidden_;  // FFN activation (d_ff)
+    std::vector<float> ffn_gate_;    // SwiGLU gate activation (d_ff, modern)
+    std::vector<float> rope_cos_;    // per-step RoPE angles (head_size/2, modern)
     std::vector<float> rope_sin_;
-    std::vector<float> logits_;     // output logits (vocab)
+    std::vector<float> logits_;  // output logits (vocab)
 };
 
 }  // namespace grad

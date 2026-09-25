@@ -22,54 +22,56 @@ namespace grad {
 enum class GPTArch { GPT2 = 0, Modern = 1 };
 
 class GPTModel {
-    private:
-        int vocab_size_;
-        int d_model_;
-        int num_layers_;
-        int num_heads_;
-        int max_len_;
-        float dropout_rate_;
-        GPTArch arch_;
+private:
+    int vocab_size_;
+    int d_model_;
+    int num_layers_;
+    int num_heads_;
+    int max_len_;
+    float dropout_rate_;
+    GPTArch arch_;
 
-        TokenEmbedding token_embedding;
-        // Constructed for both arches to keep the class layout simple, but
-        // unused by Modern: forward skips it and it is excluded from
-        // getAllParameters() and the checkpoint (RoPE replaces it).
-        PositionalEncoding pos_encoding;
-        std::vector<std::unique_ptr<TransformerBlock>> transformer_blocks;
-        LayerNorm final_norm;
-    public:
-        GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
-                 float dropout_rate = 0.1f, GPTArch arch = GPTArch::GPT2);
-        ~GPTModel() = default;
+    TokenEmbedding token_embedding;
+    // Constructed for both arches to keep the class layout simple, but
+    // unused by Modern: forward skips it and it is excluded from
+    // getAllParameters() and the checkpoint (RoPE replaces it).
+    PositionalEncoding pos_encoding;
+    std::vector<std::unique_ptr<TransformerBlock>> transformer_blocks;
+    LayerNorm final_norm;
 
-        [[nodiscard]] std::shared_ptr<Variable> forward(std::shared_ptr<Variable> token_ids, bool training = false) const;
+public:
+    GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
+             float dropout_rate = 0.1f, GPTArch arch = GPTArch::GPT2);
+    ~GPTModel() = default;
 
-        [[nodiscard]] std::vector<std::shared_ptr<Variable>> getAllParameters() const;
+    [[nodiscard]] std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& token_ids,
+                                                    bool training = false) const;
 
-        int getVocabSize() const { return vocab_size_; }
-        int getDModel() const { return d_model_; }
-        int getNumLayers() const { return num_layers_; }
-        int getNumHeads() const { return num_heads_; }
-        int getMaxLen() const { return max_len_; }
-        GPTArch getArch() const { return arch_; }
+    [[nodiscard]] std::vector<std::shared_ptr<Variable>> getAllParameters() const;
 
-        const TokenEmbedding& getTokenEmbedding() const { return token_embedding; }
-        const PositionalEncoding& getPosEncoding() const { return pos_encoding; }
-        const TransformerBlock& getBlock(size_t i) const { return *transformer_blocks[i]; }
-        const LayerNorm& getFinalNorm() const { return final_norm; }
+    int getVocabSize() const { return vocab_size_; }
+    int getDModel() const { return d_model_; }
+    int getNumLayers() const { return num_layers_; }
+    int getNumHeads() const { return num_heads_; }
+    int getMaxLen() const { return max_len_; }
+    GPTArch getArch() const { return arch_; }
 
-        // quiet suppresses the success print - used for the periodic
-        // resume-state writes, which would otherwise log a .tmp filename
-        // every eval interval.
-        [[nodiscard]] bool save(const std::string& filepath, bool quiet = false) const;
-        [[nodiscard]] static GPTModel load(const std::string& filepath);
+    const TokenEmbedding& getTokenEmbedding() const { return token_embedding; }
+    const PositionalEncoding& getPosEncoding() const { return pos_encoding; }
+    const TransformerBlock& getBlock(size_t i) const { return *transformer_blocks[i]; }
+    const LayerNorm& getFinalNorm() const { return final_norm; }
 
-        GPTModel(const GPTModel&) = delete;
-        GPTModel& operator=(const GPTModel&) = delete;
-        
-        GPTModel(GPTModel&&) = default;
-        GPTModel& operator=(GPTModel&&) = default;
+    // quiet suppresses the success print - used for the periodic
+    // resume-state writes, which would otherwise log a .tmp filename
+    // every eval interval.
+    [[nodiscard]] bool save(const std::string& filepath, bool quiet = false) const;
+    [[nodiscard]] static GPTModel load(const std::string& filepath);
+
+    GPTModel(const GPTModel&) = delete;
+    GPTModel& operator=(const GPTModel&) = delete;
+
+    GPTModel(GPTModel&&) = default;
+    GPTModel& operator=(GPTModel&&) = default;
 };
 
 }  // namespace grad

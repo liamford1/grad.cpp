@@ -70,7 +70,7 @@ void write(const std::string& path, const int* data, size_t count, int vocab_siz
 }
 
 bool exists(const std::string& path) {
-    struct stat st;
+    struct stat st{};
     return ::stat(path.c_str(), &st) == 0;
 }
 
@@ -80,8 +80,7 @@ void tokenfile::Unmap::operator()(void* addr) const noexcept {
     ::munmap(addr, bytes);
 }
 
-MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, int stride)
-    : seq_length_(0), stride_(0) {
+MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, int stride) {
     if (stride < 1) {
         throw std::invalid_argument("stride must be >= 1");
     }
@@ -95,13 +94,18 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
     // the throws below; the mapping outlives it.
     struct Fd {
         int fd;
-        ~Fd() { if (fd >= 0) ::close(fd); }
+        explicit Fd(int descriptor) : fd(descriptor) {}
+        Fd(const Fd&) = delete;
+        Fd& operator=(const Fd&) = delete;
+        ~Fd() {
+            if (fd >= 0) ::close(fd);
+        }
     } file{::open(path.c_str(), O_RDONLY)};
     if (file.fd < 0) {
         throw std::runtime_error("Cannot open token file: " + path);
     }
 
-    struct stat st;
+    struct stat st{};
     if (::fstat(file.fd, &st) != 0 || st.st_size < 0
         || static_cast<size_t>(st.st_size) < kHeaderBytes) {
         throw std::runtime_error("Token file truncated or unreadable: " + path);
@@ -159,10 +163,9 @@ std::pair<std::vector<int>, std::vector<int>> MappedTokenDataset::get_item(size_
     const uint16_t* window = tokens_ + start;
     for (size_t i = 0; i <= seq_length_; i++) {
         if (window[i] >= vocab_size_) {
-            throw std::runtime_error("token id " + std::to_string(window[i])
-                                     + " at offset " + std::to_string(start + i)
-                                     + " is outside the file's vocab of "
-                                     + std::to_string(vocab_size_));
+            throw std::runtime_error(
+                "token id " + std::to_string(window[i]) + " at offset " + std::to_string(start + i)
+                + " is outside the file's vocab of " + std::to_string(vocab_size_));
         }
     }
     for (size_t i = 0; i < seq_length_; i++) {

@@ -22,8 +22,9 @@ int run_chat(const Invocation& invocation) {
     SamplingOptions sampling{.max_tokens = 200};
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("Each line you type is continued by the model, streamed as it is sampled. "
-                 "An empty line, 'exit', or 'quit' ends the session.");
+    cmd.describe(
+        "Each line you type is continued by the model, streamed as it is sampled. "
+        "An empty line, 'exit', or 'quit' ends the session.");
     cmd.optional("ckpt", checkpoint, "checkpoint to chat with");
     cmd.optional("corpus", corpus, "the corpus the checkpoint was trained on, for its tokenizer");
     cmd.optional("vocab", vocab, "vocab size; must match the checkpoint's")
@@ -40,7 +41,8 @@ int run_chat(const Invocation& invocation) {
     const int top_k = sampling.greedy ? 1 : sampling.top_k;
 
     std::cout << "\nThis is a base language model: it continues text in the"
-              << " style of its training corpus.\nEmpty line or 'exit' quits.\n" << std::endl;
+              << " style of its training corpus.\nEmpty line or 'exit' quits.\n"
+              << std::endl;
 
     std::string line;
     while (true) {

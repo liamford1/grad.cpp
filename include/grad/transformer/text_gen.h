@@ -10,25 +10,30 @@
 namespace grad {
 
 class TextGen {
-    private:
-        const GPTModel& model_;
-        const BPETokenizer* tokenizer_;
+private:
+    const GPTModel& model_;
+    const BPETokenizer* tokenizer_;
 
-        int sample_from_logits(const Tensor& logits, float temperature = 1.0f, int top_k = 0, float top_p = 1.0f);
-        std::string tokens_to_string(const std::vector<int>& tokens);
-    public:
-        TextGen(const GPTModel& model, const BPETokenizer* tok = nullptr);
+    int sample_from_logits(const Tensor& logits, float temperature = 1.0f, int top_k = 0,
+                           float top_p = 1.0f);
+    std::string tokens_to_string(const std::vector<int>& tokens);
 
-        std::string generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens = 50, float repetition_penalty = 1.2f);
-        std::string generate_sample(const std::vector<int>& prompt_tokens, float temperature = 1.0f, int max_tokens = 50, float repetition_penalty = 1.2f, int top_k = 0, float top_p = 1.0f);
+public:
+    TextGen(const GPTModel& model, const BPETokenizer* tok = nullptr);
 
-        // Like generate_sample, but invokes on_text with each token's text
-        // as soon as it is sampled (for interactive streaming output).
-        // Returns the number of tokens generated.
-        int generate_stream(const std::vector<int>& prompt_tokens,
-                            const std::function<void(const std::string&)>& on_text,
-                            float temperature = 1.0f, int max_tokens = 50,
-                            float repetition_penalty = 1.2f, int top_k = 0, float top_p = 1.0f);
+    std::string generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens = 50,
+                                float repetition_penalty = 1.2f);
+    std::string generate_sample(const std::vector<int>& prompt_tokens, float temperature = 1.0f,
+                                int max_tokens = 50, float repetition_penalty = 1.2f, int top_k = 0,
+                                float top_p = 1.0f);
+
+    // Like generate_sample, but invokes on_text with each token's text
+    // as soon as it is sampled (for interactive streaming output).
+    // Returns the number of tokens generated.
+    int generate_stream(const std::vector<int>& prompt_tokens,
+                        const std::function<void(const std::string&)>& on_text,
+                        float temperature = 1.0f, int max_tokens = 50,
+                        float repetition_penalty = 1.2f, int top_k = 0, float top_p = 1.0f);
 };
 
 }  // namespace grad

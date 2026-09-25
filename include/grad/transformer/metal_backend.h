@@ -43,14 +43,19 @@ bool fp16_active();
 // caller then runs the CPU path. A command buffer that fails after
 // submission may have partially written C, so it throws std::runtime_error
 // rather than returning false.
-bool sgemm(const float* A, const float* B, float* C,
-           size_t M, size_t N, size_t K, bool transA, bool transB,
-           float alpha, float beta);
+bool sgemm(const float* A, const float* B, float* C, size_t M, size_t N, size_t K, bool transA,
+           bool transB, float alpha, float beta);
 #else
-inline bool available() { return false; }
-inline bool fp16_active() { return false; }
-inline bool sgemm(const float*, const float*, float*,
-                  size_t, size_t, size_t, bool, bool, float, float) { return false; }
+inline bool available() {
+    return false;
+}
+inline bool fp16_active() {
+    return false;
+}
+inline bool sgemm(const float*, const float*, float*, size_t, size_t, size_t, bool, bool, float,
+                  float) {
+    return false;
+}
 #endif
 
 }  // namespace grad::metal

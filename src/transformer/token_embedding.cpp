@@ -5,11 +5,8 @@
 
 namespace grad {
 
-TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
-    vocab_size_(vocab_size),
-    d_model_(d_model),
-    embedding_scale(1.0f)
-{
+TokenEmbedding::TokenEmbedding(int vocab_size, int d_model)
+    : vocab_size_(vocab_size), d_model_(d_model) {
     const size_t rows = narrow<size_t>(vocab_size);
     const size_t cols = narrow<size_t>(d_model);
     Tensor table(rows, cols);
@@ -17,12 +14,12 @@ TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
     embedding_table = Variable::create(table, true);
 }
 
-
 // Accepts token IDs in any of three layouts, all contiguous row-major:
 //   (batch, seq, 1) 3D -> (batch, seq, d_model)
 //   (seq, 1)        2D -> (seq, d_model)
 //   (batch, seq)    2D -> (batch, seq, d_model)
-std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> input_ids) const {
+std::shared_ptr<Variable> TokenEmbedding::forward(
+    const std::shared_ptr<Variable>& input_ids) const {
     const Tensor& input_tensor = input_ids->getData();
 
     bool output_3d;
@@ -47,8 +44,8 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
     const size_t total = batch_size * seq_len;
     const size_t d = static_cast<size_t>(d_model_);
     // Every row is written below, so no zero-fill.
-    Tensor result = Tensor::uninitialized(
-        output_3d ? Shape{batch_size, seq_len, d} : Shape{seq_len, d});
+    Tensor result =
+        Tensor::uninitialized(output_3d ? Shape{batch_size, seq_len, d} : Shape{seq_len, d});
 
     // Validated ids as table row indices, kept for the backward pass.
     std::vector<size_t> token_rows(total);

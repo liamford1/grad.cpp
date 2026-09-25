@@ -15,9 +15,10 @@ int run_watch(const Invocation& invocation) {
     bool once = false;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("Loss curves (raw and EMA), the validation track with its running best, "
-                 "gradient-norm and step-time sparklines, progress and ETA. Refreshes once a "
-                 "second; q quits. Open it in a second terminal while training.");
+    cmd.describe(
+        "Loss curves (raw and EMA), the validation track with its running best, "
+        "gradient-norm and step-time sparklines, progress and ETA. Refreshes once a "
+        "second; q quits. Open it in a second terminal while training.");
     cmd.optional("run", run,
                  "a run prefix (tinystories_modern) or a metrics CSV path; defaults to the "
                  "most recently modified *_metrics.csv in this directory");

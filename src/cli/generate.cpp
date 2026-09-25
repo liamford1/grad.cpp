@@ -28,7 +28,8 @@ std::vector<Prompt> held_out_prompts(const std::string& corpus_path, int vocab_s
     constexpr int kWindow = 6;
     const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
     if (tokenfile::exists(val_bin)) {
-        return sample_prompts(corpus_path, tokenizer, MappedTokenDataset(val_bin, kWindow, kWindow));
+        return sample_prompts(corpus_path, tokenizer,
+                              MappedTokenDataset(val_bin, kWindow, kWindow));
     }
     const std::vector<int> tokens = tokenizer.encode(read_text_file(corpus_path));
     const auto val = std::span<const int>(tokens).subspan(tokens.size() * 95 / 100);
@@ -90,9 +91,9 @@ int run_generate(const Invocation& invocation) {
 
     std::cout << "\n--- Sampling (" << describe_sampling(sampling) << ") ---\n" << std::endl;
     std::cout << "Prompt: \"" << chosen.text << "\"" << std::endl;
-    std::cout << generator.generate_sample(chosen.tokens, sampling.temperature,
-                                           sampling.max_tokens, sampling.repetition_penalty,
-                                           sampling.top_k, sampling.top_p)
+    std::cout << generator.generate_sample(chosen.tokens, sampling.temperature, sampling.max_tokens,
+                                           sampling.repetition_penalty, sampling.top_k,
+                                           sampling.top_p)
               << std::endl;
     return 0;
 }

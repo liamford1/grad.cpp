@@ -12,7 +12,10 @@
 #include <iomanip>
 #include <limits>
 #include <stdexcept>
-#include <signal.h>
+#include <utility>
+// sigaction and sigemptyset are POSIX, declared by <signal.h>; <csignal>
+// promises only the ISO C subset.
+#include <signal.h>  // NOLINT(modernize-deprecated-headers)
 
 namespace grad::training {
 
@@ -39,10 +42,12 @@ class StopSignalGuard {
 public:
     StopSignalGuard() {
         g_stop_requested = 0;
-        struct sigaction action {};
+        struct sigaction action{};
         action.sa_handler = request_stop;
         sigemptyset(&action.sa_mask);
-        action.sa_flags = static_cast<int>(SA_RESETHAND);  // 0x80000000u on glibc; sa_flags is int
+        // glibc defines SA_RESETHAND as 0x80000000u and sa_flags is int, so
+        // the cast is needed there even though it is a no-op on macOS.
+        action.sa_flags = static_cast<int>(SA_RESETHAND);  // NOLINT(readability-redundant-casting)
         sigaction(SIGINT, &action, &prev_int_);
         sigaction(SIGTERM, &action, &prev_term_);
     }
@@ -54,16 +59,16 @@ public:
     StopSignalGuard& operator=(const StopSignalGuard&) = delete;
 
 private:
-    struct sigaction prev_int_ {};
-    struct sigaction prev_term_ {};
+    struct sigaction prev_int_{};
+    struct sigaction prev_term_{};
 };
 
 // rename() replaces the destination atomically within a filesystem, so a
 // reader (or a crash) sees either the old file or the complete new one.
 bool replace_file(const std::string& tmp, const std::string& path) {
     if (std::rename(tmp.c_str(), path.c_str()) != 0) {
-        std::cerr << "Warning: failed to rename " << tmp << " -> " << path
-                  << ": " << std::strerror(errno) << std::endl;
+        std::cerr << "Warning: failed to rename " << tmp << " -> " << path << ": "
+                  << std::strerror(errno) << std::endl;
         std::remove(tmp.c_str());
         return false;
     }
@@ -84,25 +89,19 @@ std::optional<int> peek_resume_step(const std::string& state_path) {
     return next_step;
 }
 
-Trainer::Trainer(const TrainingConfig& config,
-                 GPTModel& model,
-                 DataLoader& loader,
-                 DataLoader* val_loader)
-    : config_(config), model_(model), loader_(loader), val_loader_(val_loader) {
-
+Trainer::Trainer(TrainingConfig config, GPTModel& model, DataLoader& loader, DataLoader* val_loader)
+    : config_(std::move(config)), model_(model), loader_(loader), val_loader_(val_loader) {
     auto params = model_.getAllParameters();
-    optimizer_ = std::make_unique<AdamOptimizer>(params, config_.learning_rate,
-                                                  0.9f, 0.999f, 1e-8f,
-                                                  config_.weight_decay);
+    optimizer_ = std::make_unique<AdamOptimizer>(params, config_.learning_rate, 0.9f, 0.999f, 1e-8f,
+                                                 config_.weight_decay);
     // Linear warmup, then cosine decay to 10% of the base learning rate.
-    optimizer_->set_schedule(config_.warmup_steps, config_.num_steps,
-                             config_.learning_rate * 0.1f);
+    optimizer_->set_schedule(config_.warmup_steps, config_.num_steps, config_.learning_rate * 0.1f);
 
     metrics_ = std::make_unique<utils::TrainingMetrics>(config_.num_steps);
 
     if (val_loader_ && config_.max_eval_batches > 0) {
         const size_t windows = static_cast<size_t>(config_.max_eval_batches)
-                             * static_cast<size_t>(val_loader_->batch_size());
+                               * static_cast<size_t>(val_loader_->batch_size());
         eval_loader_ = std::make_unique<DataLoader>(
             std::make_shared<SpreadSubset>(val_loader_->dataset(), windows),
             val_loader_->batch_size(), /*shuffle=*/false);
@@ -191,14 +190,13 @@ bool Trainer::train() {
 
     std::cout << "Config:" << std::endl;
     std::cout << "  Vocab size: " << config_.vocab_size << std::endl;
-    std::cout << "  Model: d_model=" << config_.d_model
-              << " layers=" << config_.num_layers
+    std::cout << "  Model: d_model=" << config_.d_model << " layers=" << config_.num_layers
               << " heads=" << config_.num_heads << std::endl;
     std::cout << "  Sequence length: " << config_.seq_length << std::endl;
     if (config_.grad_accum > 1) {
-        std::cout << "  Batch size: " << config_.batch_size << " x "
-                  << config_.grad_accum << " accum (effective "
-                  << config_.batch_size * config_.grad_accum << ")" << std::endl;
+        std::cout << "  Batch size: " << config_.batch_size << " x " << config_.grad_accum
+                  << " accum (effective " << config_.batch_size * config_.grad_accum << ")"
+                  << std::endl;
     } else {
         std::cout << "  Batch size: " << config_.batch_size << std::endl;
     }
@@ -210,9 +208,8 @@ bool Trainer::train() {
     if (start_step_ > 0) std::cout << " (resuming at " << start_step_ << ")";
     std::cout << "\n" << std::endl;
 
-    std::cout << std::setw(10) << "Step"
-              << std::setw(15) << "Loss"
-              << std::setw(15) << "Grad Norm" << std::endl;
+    std::cout << std::setw(10) << "Step" << std::setw(15) << "Loss" << std::setw(15) << "Grad Norm"
+              << std::endl;
     std::cout << std::string(40, '-') << std::endl;
 
     metrics_->start_training(start_step_);
@@ -223,13 +220,11 @@ bool Trainer::train() {
     for (const auto& p : model_.getAllParameters()) param_count += p->getData().numel();
     char desc[128];
     std::snprintf(desc, sizeof(desc), "%s d%d L%d H%d seq%d b%dx%d vocab%d",
-                  model_.getArch() == GPTArch::Modern ? "modern" : "gpt2",
-                  config_.d_model, config_.num_layers, config_.num_heads,
-                  config_.seq_length, config_.batch_size, config_.grad_accum,
-                  config_.vocab_size);
+                  model_.getArch() == GPTArch::Modern ? "modern" : "gpt2", config_.d_model,
+                  config_.num_layers, config_.num_heads, config_.seq_length, config_.batch_size,
+                  config_.grad_accum, config_.vocab_size);
     mlog_ = std::make_unique<utils::MetricsLog>(
-        config_.checkpoint_prefix + "_metrics.csv", start_step_ > 0,
-        config_.num_steps,
+        config_.checkpoint_prefix + "_metrics.csv", start_step_ > 0, config_.num_steps,
         static_cast<long>(config_.batch_size) * config_.grad_accum * config_.seq_length,
         param_count, desc);
 
@@ -237,8 +232,8 @@ bool Trainer::train() {
     // model starts memorizing (observed on Shakespeare: val perplexity
     // bottomed at step ~6000 of 50000, then quintupled). The checkpoint
     // worth keeping is the val-loss minimum, saved as it happens.
-    float best_val_loss = best_val_loss_restored_ >= 0.0f
-        ? best_val_loss_restored_ : std::numeric_limits<float>::max();
+    float best_val_loss = best_val_loss_restored_ >= 0.0f ? best_val_loss_restored_
+                                                          : std::numeric_limits<float>::max();
 
     bool interrupted = false;
     // The handlers cover the loop only; a Ctrl-C during the end-of-run
@@ -247,13 +242,12 @@ bool Trainer::train() {
     for (int step = start_step_; step < config_.num_steps; step++) {
         training_step(step);
 
-        if (val_loader_ && config_.eval_interval > 0
-            && step > 0 && step % config_.eval_interval == 0) {
+        if (val_loader_ && config_.eval_interval > 0 && step > 0
+            && step % config_.eval_interval == 0) {
             float val_loss = evaluate();
             bool improved = val_loss < best_val_loss;
-            std::cout << "  [step " << step
-                      << " | val loss " << std::fixed << std::setprecision(4) << val_loss
-                      << " | perplexity " << std::setprecision(1) << std::exp(val_loss)
+            std::cout << "  [step " << step << " | val loss " << std::fixed << std::setprecision(4)
+                      << val_loss << " | perplexity " << std::setprecision(1) << std::exp(val_loss)
                       << (improved ? " | best]" : "]") << std::defaultfloat << std::endl;
             // best_val_loss tracks what _best.bin holds, so a failed write
             // leaves the bar where it was and the next improvement retries.
@@ -268,7 +262,8 @@ bool Trainer::train() {
         }
 
         if (step > 0 && step % config_.checkpoint_interval == 0) {
-            std::string checkpoint_path = config_.checkpoint_prefix + "_step_" + std::to_string(step) + ".bin";
+            std::string checkpoint_path =
+                config_.checkpoint_prefix + "_step_" + std::to_string(step) + ".bin";
             if (save_checkpoint(checkpoint_path)) {
                 std::cout << "  [checkpoint: " << checkpoint_path << "]" << std::endl;
             }
@@ -281,8 +276,8 @@ bool Trainer::train() {
                                          + " but could not save resume state; a resume "
                                          "restarts from the previous save");
             }
-            std::cout << "Resume state saved: " << resume_model_path()
-                      << " + " << resume_state_path() << std::endl;
+            std::cout << "Resume state saved: " << resume_model_path() << " + "
+                      << resume_state_path() << std::endl;
             interrupted = true;
             break;
         }
@@ -332,7 +327,8 @@ double mean_loss(GPTModel& model, DataLoader& loader, int max_batches) {
         auto logits = model.forward(in, false);
         auto loss = logits->log_softmax()->nll_loss(tgt);
         const size_t batch_rows = batch.input.getBatchSize();
-        weighted_loss += static_cast<double>(loss->getData().getValue(0, 0)) * static_cast<double>(batch_rows);
+        weighted_loss +=
+            static_cast<double>(loss->getData().getValue(0, 0)) * static_cast<double>(batch_rows);
         rows += batch_rows;
     }
     return rows > 0 ? weighted_loss / static_cast<double>(rows) : -1.0;
@@ -391,9 +387,10 @@ void Trainer::training_step(int step) {
 
     if (mlog_) {
         auto step_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - step_start).count();
-        mlog_->log_step(step, loss_val, optimizer_->current_lr(), grad_norm,
-                        step_ms, static_cast<long>(utils::get_memory_mb()));
+                           std::chrono::steady_clock::now() - step_start)
+                           .count();
+        mlog_->log_step(step, loss_val, optimizer_->current_lr(), grad_norm, step_ms,
+                        static_cast<long>(utils::get_memory_mb()));
     }
 
     if (step % 10 == 0) {

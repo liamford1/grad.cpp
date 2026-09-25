@@ -1,0 +1,32 @@
+# clang-format 19. Chosen as the configuration that reproduces the tree's
+# majority style with the fewest changed lines (see the commit that added
+# it). Run tools/lint.sh format to check, tools/lint.sh format --fix to apply.
+BasedOnStyle: Google
+
+# 4-space indent, 100 columns, `float* x`.
+IndentWidth: 4
+ColumnLimit: 100
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+# public:/private: flush with the class keyword, members one level in.
+AccessModifierOffset: -4
+
+# Include order is left alone: some headers are order-dependent (the
+# Accelerate/cblas switch in blas_wrapper.h, the Objective-C++ backend),
+# and grouping is by hand.
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+# One-line member functions in class bodies stay on one line; free and
+# out-of-line functions get a body.
+AllowShortFunctionsOnASingleLine: Inline
+# `if (x) return;` and short if / else-if / else ladders stay compact.
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+
+# A lambda passed as the last argument (setBackward, parallel_for) has its
+# body indented from the statement, not from the lambda's column.
+LambdaBodyIndentation: OuterScope
+
+# Continuation lines start with the operator (`<<`, `&&`, `?`, `:`, `*`).
+BreakBeforeBinaryOperators: NonAssignment

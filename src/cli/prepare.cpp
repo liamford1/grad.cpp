@@ -67,9 +67,10 @@ int run_prepare(const Invocation& invocation) {
     int vocab = 5000;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("Trains a BPE tokenizer on the corpus (on its first 32MB for larger "
-                 "corpora) and writes <corpus>.<vocab>.train.bin and .val.bin, a 95/5 split "
-                 "that train, eval, and generate memory-map instead of re-encoding the text.");
+    cmd.describe(
+        "Trains a BPE tokenizer on the corpus (on its first 32MB for larger "
+        "corpora) and writes <corpus>.<vocab>.train.bin and .val.bin, a 95/5 split "
+        "that train, eval, and generate memory-map instead of re-encoding the text.");
     cmd.positional("corpus", corpus, "plain-text corpus");
     cmd.optional("vocab", vocab, "BPE vocabulary size").at_least(1);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;

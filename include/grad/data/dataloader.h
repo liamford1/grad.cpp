@@ -9,10 +9,9 @@ namespace grad {
 struct Batch {
     Tensor input;
     Tensor target;
-    
+
     Batch(size_t batch_size, size_t seq_length)
-        : input(batch_size, seq_length, 1),
-          target(batch_size, seq_length, 1) {}
+        : input(batch_size, seq_length, 1), target(batch_size, seq_length, 1) {}
 };
 
 // Shuffled loading draws each row's window uniformly at random (sampling
@@ -26,23 +25,20 @@ private:
     std::shared_ptr<Dataset> dataset_;
     size_t batch_size_;
     bool shuffle_;
-    size_t current_index_;
+    size_t current_index_ = 0;
     std::mt19937 rng_;
 
 public:
-    DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle = true, unsigned int seed = 42);
-    
+    DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle = true,
+               unsigned int seed = 42);
+
     [[nodiscard]] bool has_next() const;
     [[nodiscard]] Batch next_batch();
     void reset();
-    
-    size_t num_batches() const {
-        return (dataset_->size() + batch_size_ - 1) / batch_size_;
-    }
-    
-    size_t dataset_size() const {
-        return dataset_->size();
-    }
+
+    size_t num_batches() const { return (dataset_->size() + batch_size_ - 1) / batch_size_; }
+
+    size_t dataset_size() const { return dataset_->size(); }
 
     const std::shared_ptr<Dataset>& dataset() const { return dataset_; }
     // batch_size was validated >= 1 as an int, so it converts back.

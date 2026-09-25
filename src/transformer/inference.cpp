@@ -98,8 +98,8 @@ void matvec_nobias(const float* x, const Tensor& W, float* y) {
 // Rotates one row's heads by the position angles in cos/sin (head_size/2
 // entries each) - the incremental-decoding counterpart of the training
 // path's rope_apply. Must pair dims exactly the same way: (2j, 2j+1).
-void rope_row(float* row, size_t num_heads, size_t head_size,
-              const float* cos_p, const float* sin_p) {
+void rope_row(float* row, size_t num_heads, size_t head_size, const float* cos_p,
+              const float* sin_p) {
     const size_t half = head_size / 2;
     for (size_t h = 0; h < num_heads; h++) {
         float* head = row + h * head_size;
@@ -168,8 +168,8 @@ const float* InferenceSession::step(int token_id) {
         }
         const size_t half = head_size_ / 2;
         for (size_t j = 0; j < half; j++) {
-            const float theta = std::pow(10000.0f, -2.0f * static_cast<float>(j) /
-                                                       static_cast<float>(head_size_));
+            const float theta =
+                std::pow(10000.0f, -2.0f * static_cast<float>(j) / static_cast<float>(head_size_));
             rope_cos_[j] = std::cos(static_cast<float>(pos_) * theta);
             rope_sin_[j] = std::sin(static_cast<float>(pos_) * theta);
         }
@@ -237,11 +237,11 @@ const float* InferenceSession::step(int token_id) {
             for (size_t j = 0; j < d_ff_; j++) {
                 ffn_hidden_[j] *= ffn_gate_[j];
             }
-            blas_sgemm_ex(ffn_hidden_.data(), ffn.getLayer2Weights()->getData().raw(),
-                          x_.data(), 1, d_model_, d_ff_, false, false, 1.0f, 1.0f);
+            blas_sgemm_ex(ffn_hidden_.data(), ffn.getLayer2Weights()->getData().raw(), x_.data(), 1,
+                          d_model_, d_ff_, false, false, 1.0f, 1.0f);
         } else {
-            matvec(h_.data(), ffn.getLayer1Weights()->getData(),
-                   ffn.getLayer1Bias()->getData(), ffn_hidden_.data());
+            matvec(h_.data(), ffn.getLayer1Weights()->getData(), ffn.getLayer1Bias()->getData(),
+                   ffn_hidden_.data());
             gelu_row(ffn_hidden_.data(), d_ff_);
             matvec_add(ffn_hidden_.data(), ffn.getLayer2Weights()->getData(),
                        ffn.getLayer2Bias()->getData(), x_.data());
@@ -251,8 +251,7 @@ const float* InferenceSession::step(int token_id) {
     layer_norm_row(x_.data(), model_.getFinalNorm(), d_model_, h_.data());
 
     // Weight-tied output projection: logits = h @ E^T.
-    blas_sgemm_ex(h_.data(), E.raw(), logits_.data(),
-                  1, vocab_, d_model_, false, true, 1.0f, 0.0f);
+    blas_sgemm_ex(h_.data(), E.raw(), logits_.data(), 1, vocab_, d_model_, false, true, 1.0f, 0.0f);
 
     pos_++;
     return logits_.data();

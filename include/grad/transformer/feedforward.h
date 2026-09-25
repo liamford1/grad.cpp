@@ -2,6 +2,7 @@
 #include "grad/transformer/tensor.h"
 #include "grad/transformer/linear.h"
 #include <memory>
+#include <utility>
 
 namespace grad {
 
@@ -13,48 +14,52 @@ namespace grad {
 // In gated mode layer1 is W_up and layer2 is W_down, so the existing
 // accessors (and the d_ff probe in InferenceSession) stay meaningful.
 class FeedForward {
-    private:
-        Linear layer1;
-        Linear layer2;
-        std::unique_ptr<Linear> gate_;
-        bool gated_;
-        float dropout_rate_;
+private:
+    Linear layer1;
+    Linear layer2;
+    std::unique_ptr<Linear> gate_;
+    bool gated_;
+    float dropout_rate_;
 
-        static int resolve_hidden(int d_model, int hidden_dim, bool gated) {
-            if (hidden_dim != -1) return hidden_dim;
-            if (!gated) return 4 * d_model;
-            return ((8 * d_model / 3) + 63) / 64 * 64;
-        }
-    public:
-        explicit FeedForward(int d_model, int hidden_dim = -1, float dropout_rate = 0.1f,
-                    bool gated = false);
-        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
+    static int resolve_hidden(int d_model, int hidden_dim, bool gated) {
+        if (hidden_dim != -1) return hidden_dim;
+        if (!gated) return 4 * d_model;
+        return ((8 * d_model / 3) + 63) / 64 * 64;
+    }
 
-        bool isGated() const { return gated_; }
+public:
+    explicit FeedForward(int d_model, int hidden_dim = -1, float dropout_rate = 0.1f,
+                         bool gated = false);
+    std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& input,
+                                      bool training = false) const;
 
-        const Linear& getLayer1() const { return layer1; }
-        const Linear& getLayer2() const { return layer2; }
+    bool isGated() const { return gated_; }
 
-        std::shared_ptr<Variable> getLayer1Weights() const { return layer1.getWeights(); }
-        std::shared_ptr<Variable> getLayer1Bias() const { return layer1.getBias(); }
-        std::shared_ptr<Variable> getLayer2Weights() const { return layer2.getWeights(); }
-        std::shared_ptr<Variable> getLayer2Bias() const { return layer2.getBias(); }
-        std::shared_ptr<Variable> getGateWeights() const {
-            return gate_ ? gate_->getWeights() : nullptr;
-        }
+    const Linear& getLayer1() const { return layer1; }
+    const Linear& getLayer2() const { return layer2; }
 
-        void setWeights(std::shared_ptr<Variable> layer1_weights, std::shared_ptr<Variable> layer1_bias, std::shared_ptr<Variable> layer2_weights, std::shared_ptr<Variable> layer2_bias) {
-            layer1.setWeights(layer1_weights, layer1_bias);
-            layer2.setWeights(layer2_weights, layer2_bias);
-        }
+    std::shared_ptr<Variable> getLayer1Weights() const { return layer1.getWeights(); }
+    std::shared_ptr<Variable> getLayer1Bias() const { return layer1.getBias(); }
+    std::shared_ptr<Variable> getLayer2Weights() const { return layer2.getWeights(); }
+    std::shared_ptr<Variable> getLayer2Bias() const { return layer2.getBias(); }
+    std::shared_ptr<Variable> getGateWeights() const {
+        return gate_ ? gate_->getWeights() : nullptr;
+    }
 
-        void setGatedWeights(std::shared_ptr<Variable> gate_weights,
-                             std::shared_ptr<Variable> up_weights,
-                             std::shared_ptr<Variable> down_weights) {
-            gate_->setWeights(gate_weights, nullptr);
-            layer1.setWeights(up_weights, nullptr);
-            layer2.setWeights(down_weights, nullptr);
-        }
+    void setWeights(std::shared_ptr<Variable> layer1_weights, std::shared_ptr<Variable> layer1_bias,
+                    std::shared_ptr<Variable> layer2_weights,
+                    std::shared_ptr<Variable> layer2_bias) {
+        layer1.setWeights(std::move(layer1_weights), std::move(layer1_bias));
+        layer2.setWeights(std::move(layer2_weights), std::move(layer2_bias));
+    }
+
+    void setGatedWeights(std::shared_ptr<Variable> gate_weights,
+                         std::shared_ptr<Variable> up_weights,
+                         std::shared_ptr<Variable> down_weights) {
+        gate_->setWeights(std::move(gate_weights), nullptr);
+        layer1.setWeights(std::move(up_weights), nullptr);
+        layer2.setWeights(std::move(down_weights), nullptr);
+    }
 };
 
 }  // namespace grad

@@ -48,11 +48,18 @@ public:
 // or std::optional of one of those (for "unset unless given").
 template <class T>
 concept Scalar = std::same_as<T, std::string> || std::floating_point<T>
-              || (std::integral<T> && !std::same_as<T, bool>);
+                 || (std::integral<T> && !std::same_as<T, bool>);
 
-template <class T> struct optional_value { using type = T; };
-template <class T> struct optional_value<std::optional<T>> { using type = T; };
-template <class T> using optional_value_t = typename optional_value<T>::type;
+template <class T>
+struct optional_value {
+    using type = T;
+};
+template <class T>
+struct optional_value<std::optional<T>> {
+    using type = T;
+};
+template <class T>
+using optional_value_t = typename optional_value<T>::type;
 
 template <class T>
 concept Bindable = Scalar<optional_value_t<T>>;
@@ -135,8 +142,8 @@ private:
     }
 
     Kind kind_;
-    std::string name_;      // positional name, or the option's flag
-    std::string flag_;      // flag that sets it by name ("" for a required positional)
+    std::string name_;  // positional name, or the option's flag
+    std::string flag_;  // flag that sets it by name ("" for a required positional)
     std::string metavar_;
     std::string help_;
     std::string default_;
@@ -155,6 +162,7 @@ public:
     Command(std::string usage_name, std::string summary);
     Command(const Command&) = delete;
     Command& operator=(const Command&) = delete;
+    ~Command() = default;
 
     // Adds a paragraph to --help, between the summary and the argument list.
     Command& describe(std::string paragraph);
@@ -178,10 +186,10 @@ public:
     // A named switch: --flag sets out to true.
     Arg& flag(std::string flag, bool& out, std::string help);
 
-    // Binds args (the tokens after the command name). Throws UsageError on
+    // Binds tokens (the arguments after the command name). Throws UsageError on
     // a malformed command line; prints help and returns HelpShown when
     // -h/--help appears before any "--".
-    [[nodiscard]] ParseResult parse(std::span<const std::string_view> args);
+    [[nodiscard]] ParseResult parse(std::span<const std::string_view> tokens);
 
     [[nodiscard]] std::string help() const;
 
