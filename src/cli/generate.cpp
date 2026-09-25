@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -97,4 +97,4 @@ int run_generate(const Invocation& invocation) {
     return 0;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

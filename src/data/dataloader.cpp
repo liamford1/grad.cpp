@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <vector>
 
+namespace grad {
+
 DataLoader::DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle, unsigned int seed)
     : dataset_(dataset),
       batch_size_(batch_size),
@@ -56,3 +58,5 @@ void DataLoader::reset() {
     // draws fresh windows, matching the old permute-every-epoch behavior.
     current_index_ = 0;
 }
+
+}  // namespace grad

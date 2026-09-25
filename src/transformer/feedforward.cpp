@@ -3,6 +3,8 @@
 #include "grad/transformer/activations.h"
 #include "grad/transformer/feedforward.h"
 
+namespace grad {
+
 FeedForward::FeedForward(int d_model, int hidden_dim, float dropout_rate, bool gated) :
     layer1(d_model, resolve_hidden(d_model, hidden_dim, gated), !gated),
     layer2(resolve_hidden(d_model, hidden_dim, gated), d_model, !gated),
@@ -28,3 +30,5 @@ std::shared_ptr<Variable> FeedForward::forward(std::shared_ptr<Variable> input, 
     output = layer2.forward(output);
     return output->dropout(dropout_rate, training);
 }
+
+}  // namespace grad

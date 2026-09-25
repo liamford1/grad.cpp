@@ -4,6 +4,8 @@
 #include <memory>
 #include <random>
 
+namespace grad {
+
 struct Batch {
     Tensor input;
     Tensor target;
@@ -45,3 +47,5 @@ public:
     const std::shared_ptr<Dataset>& dataset() const { return dataset_; }
     int batch_size() const { return batch_size_; }
 };
+
+}  // namespace grad

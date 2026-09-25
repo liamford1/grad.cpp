@@ -3,6 +3,8 @@
 #include "grad/transformer/linear.h"
 #include <memory>
 
+namespace grad {
+
 // Two variants behind one class:
 //   gated = false (GPT-2 style): out = W2(gelu(W1 x + b1)) + b2, hidden 4d.
 //   gated = true (SwiGLU):       out = W_down(silu(W_gate x) * W_up x),
@@ -54,3 +56,5 @@ class FeedForward {
             layer2.setWeights(down_weights, nullptr);
         }
 };
+
+}  // namespace grad

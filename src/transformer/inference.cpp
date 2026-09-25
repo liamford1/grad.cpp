@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <vector>
 
+namespace grad {
+
 namespace {
 
 // y = x @ W + b for a single row x. W is (in, out) row-major, b is (1, out).
@@ -255,3 +257,5 @@ const float* InferenceSession::step(int token_id) {
     pos_++;
     return logits_.data();
 }
+
+}  // namespace grad

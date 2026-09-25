@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+namespace grad {
+
 LayerNorm::LayerNorm(int d_model, bool rms) :
     d_model(d_model),
     epsilon(1e-5f),
@@ -232,3 +234,5 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
 
     return output;
 }
+
+}  // namespace grad

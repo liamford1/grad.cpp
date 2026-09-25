@@ -9,6 +9,8 @@
 #include <fstream>
 #include <stdexcept>
 
+namespace grad {
+
 namespace {
 
 constexpr char kMagic[4] = {'T', 'O', 'K', '1'};
@@ -156,3 +158,5 @@ std::pair<std::vector<int>, std::vector<int>> MappedTokenDataset::get_item(size_
     }
     return {input, target};
 }
+
+}  // namespace grad

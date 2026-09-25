@@ -5,6 +5,8 @@
 #include <cmath>
 #include <memory>
 
+using namespace grad;
+
 // Numerical gradient computation for 2D tensors
 float numerical_gradient_2d(
     MultiHeadAttention& attention,

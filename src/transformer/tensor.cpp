@@ -14,6 +14,8 @@
 #include <type_traits>
 #include <utility>
 
+namespace grad {
+
 namespace {
 
 // Large tensor storage is page-aligned and page-rounded. On Apple Silicon
@@ -43,10 +45,10 @@ void check_dims(const Shape& shape) {
         }
         // Compared by division so the check cannot itself overflow: a
         // product that wraps size_t would otherwise pass as a small tensor.
-        if (n > MAX_TENSOR_ELEMENTS / total) {
+        if (n > kMaxTensorElements / total) {
             throw std::overflow_error("Tensor too large: " + shape.to_string() +
                                       " exceeds the maximum of " +
-                                      std::to_string(MAX_TENSOR_ELEMENTS) + " elements");
+                                      std::to_string(kMaxTensorElements) + " elements");
         }
         total *= n;
     }
@@ -500,3 +502,5 @@ void Tensor::multiply_inplace(const Tensor& other) {
 void Tensor::zero() {
     if (numel() > 0) std::memset(data.get(), 0, numel() * sizeof(float));
 }
+
+}  // namespace grad

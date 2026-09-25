@@ -14,7 +14,7 @@
 #include <stdexcept>
 #include <signal.h>
 
-namespace training {
+namespace grad::training {
 
 namespace {
 
@@ -413,4 +413,4 @@ bool Trainer::save_checkpoint(const std::string& path) {
     return true;
 }
 
-} // namespace training
+}  // namespace grad::training

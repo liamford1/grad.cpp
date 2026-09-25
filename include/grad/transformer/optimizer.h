@@ -7,6 +7,8 @@
 #include <cmath>
 #include <iosfwd>
 
+namespace grad {
+
 class Optimizer {
     public:
         virtual ~Optimizer() = default;
@@ -72,3 +74,5 @@ class AdamOptimizer : public Optimizer {
 
         float current_lr() const { return lr_; }
 };
+
+}  // namespace grad

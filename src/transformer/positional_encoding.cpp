@@ -1,6 +1,8 @@
 #include "grad/transformer/positional_encoding.h"
 #include <stdexcept>
 
+namespace grad {
+
 PositionalEncoding::PositionalEncoding(int max_len, int d_model) : 
     max_len(max_len),
     d_model(d_model)
@@ -56,3 +58,5 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
     }
     return output;
 }
+
+}  // namespace grad

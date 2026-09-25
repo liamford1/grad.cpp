@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+namespace grad {
+
 // Fills mask[i] with 0 (dropped) or scale (kept), keeping each element with
 // probability 1 - dropout_rate. Draws come from xorshift128+ compared in the
 // integer domain, a few cycles per element instead of a std::mt19937 +
@@ -28,3 +30,5 @@ void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale,
 // follow are reproducible. The default seed is fixed; a run that wants
 // fresh masks per process must seed explicitly.
 void set_dropout_seed(uint64_t seed);
+
+}  // namespace grad

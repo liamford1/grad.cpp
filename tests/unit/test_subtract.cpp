@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cmath>
 
+using namespace grad;
+
 void test_basic_subtract() {
     std::cout << "Test 1: Basic Subtraction\n";
     

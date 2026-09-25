@@ -4,6 +4,8 @@
 #include "grad/transformer/linear.h"
 #include <memory>
 
+namespace grad {
+
 class MultiHeadAttention {
     private:
         int d_model;
@@ -42,3 +44,5 @@ class MultiHeadAttention {
             return {W_q, W_k, W_v, W_o, b_q, b_k, b_v, b_o};
         }
 };
+
+}  // namespace grad

@@ -27,6 +27,8 @@
 #include <thread>
 #include <vector>
 
+using namespace grad;
+
 namespace {
 
 int g_failures = 0;

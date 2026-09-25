@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 inline constexpr const char* kDefaultCorpus = "data/shakespeare.txt";
 
@@ -107,4 +107,4 @@ struct InferenceModel {
                                                 const std::string& corpus_path,
                                                 std::optional<int> requested_vocab);
 
-}  // namespace cli
+}  // namespace grad::cli

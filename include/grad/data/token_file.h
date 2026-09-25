@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+namespace grad {
+
 // Pre-tokenized corpus files: encode once with `prepare`, then train from
 // the binary directly. Format: "TOK1" magic, uint32 vocab_size,
 // uint64 token count, then uint16 token ids (so vocab must fit in 65536).
@@ -62,3 +64,5 @@ class MappedTokenDataset : public Dataset {
         int vocabSize() const { return vocab_size_; }
         size_t tokenCount() const { return count_; }
 };
+
+}  // namespace grad

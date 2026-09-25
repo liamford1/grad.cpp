@@ -19,7 +19,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-namespace utils {
+namespace grad::utils {
 namespace {
 
 // ---------------------------------------------------------------- palette
@@ -627,4 +627,4 @@ int run_dashboard(const std::string& csv_path, bool once) {
     return 0;
 }
 
-}  // namespace utils
+}  // namespace grad::utils

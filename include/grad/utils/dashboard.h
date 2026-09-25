@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-namespace utils {
+namespace grad::utils {
 
 // Full-screen live terminal dashboard over a training metrics CSV (see
 // MetricsLog): loss curves drawn on a braille canvas, validation track,
@@ -14,4 +14,4 @@ int run_dashboard(const std::string& csv_path, bool once);
 // default target for `grad watch`.
 std::string newest_metrics_csv(const std::string& dir);
 
-}  // namespace utils
+}  // namespace grad::utils

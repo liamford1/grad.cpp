@@ -4,7 +4,7 @@
 #include <iostream>
 #include <iomanip>
 
-namespace utils {
+namespace grad::utils {
 
 namespace {
 std::string fixed_wall(double s) {
@@ -126,4 +126,4 @@ void print_section(const std::string& title) {
     std::cout << "\n=== " << title << " ===" << std::endl;
 }
 
-} // namespace utils
+}  // namespace grad::utils

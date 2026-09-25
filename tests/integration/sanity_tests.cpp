@@ -19,6 +19,8 @@
 #include <cstdio>
 #include <functional>
 
+using namespace grad;
+
 void test_overfit_tiny_sequence() {
     utils::print_header("Overfitting Test: Memorize 5 Tokens");
 

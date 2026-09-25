@@ -27,7 +27,7 @@
 #include <string>
 #include <utility>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -115,4 +115,4 @@ int run_eval(const Invocation& invocation) {
     return 0;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

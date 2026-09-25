@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstring>
 
+namespace grad {
+
 TextGen::TextGen(const GPTModel& model, const BPETokenizer* tok) : model(model), tokenizer(tok) {}
 
 namespace {
@@ -200,3 +202,5 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
     }
     return probabilities.getCols() - 1;
 }
+
+}  // namespace grad

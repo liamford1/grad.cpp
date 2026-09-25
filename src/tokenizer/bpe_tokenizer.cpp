@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <stdexcept>
 
+namespace grad {
+
 BPETokenizer::BPETokenizer(int vocab_size) : vocab_size(vocab_size) {
     vocab[pad_token] = pad_token_id;
     vocab[eos_token] = eos_token_id;
@@ -393,3 +395,5 @@ void BPETokenizer::load(const std::string& filepath) {
     id_to_token.swap(new_id_to_token);
     merges.swap(new_merges);
 }
+
+}  // namespace grad

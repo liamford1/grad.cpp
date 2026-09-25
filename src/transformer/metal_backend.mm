@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace metalgpu {
+namespace grad::metal {
 namespace {
 
 constexpr size_t kPageBytes = 16384;
@@ -224,4 +224,4 @@ bool sgemm(const float* A, const float* B, float* C,
     return true;
 }
 
-}  // namespace metalgpu
+}  // namespace grad::metal

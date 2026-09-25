@@ -14,7 +14,7 @@
 #include <cerrno>
 #endif
 
-namespace cli {
+namespace grad::cli {
 
 namespace detail {
 
@@ -366,4 +366,4 @@ std::string Command::help() const {
     return out;
 }
 
-}  // namespace cli
+}  // namespace grad::cli

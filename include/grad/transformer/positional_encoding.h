@@ -4,6 +4,8 @@
 #include "grad/transformer/variable.h"
 #include <memory>
 
+namespace grad {
+
 class PositionalEncoding {
     private:
         int max_len;
@@ -19,3 +21,5 @@ class PositionalEncoding {
         std::shared_ptr<Variable> getPositionEmbeddings() const { return position_embeddings; }
         void setPositionEmbeddings(const Tensor& new_embeddings) { position_embeddings = Variable::create(new_embeddings, true); }
 };
+
+}  // namespace grad

@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <utility>
 
+namespace grad {
+
 TextDataset::TextDataset(const std::vector<int>& tokens, int seq_length, int stride)
     : token_ids_(tokens), seq_length_(seq_length), stride_(stride) {
     if (tokens.size() < static_cast<size_t>(seq_length + 1)) {
@@ -53,3 +55,5 @@ std::pair<std::vector<int>, std::vector<int>> SpreadSubset::get_item(size_t inde
     const size_t source_index = index * (n / count_) + index * (n % count_) / count_;
     return source_->get_item(source_index);
 }
+
+}  // namespace grad

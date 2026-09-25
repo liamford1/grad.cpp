@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdlib>
 
+namespace grad {
+
 // Matmuls above this many FLOPs (2*M*N*K) route to the Metal GPU when one
 // is available. The default crossover comes from measuring MPS against
 // Accelerate on an M2 Pro across model scales (see BENCHMARKS.md): below
@@ -33,7 +35,7 @@ inline bool metal_worthwhile(size_t flops)
 // beta = 1 accumulates into C in place - used by backward passes to add
 // gradient contributions without materializing a temporary.
 //
-// Large products try the GPU first. metalgpu::sgemm returns false only
+// Large products try the GPU first. metal::sgemm returns false only
 // when it submitted nothing and left C untouched, which is what makes
 // rerunning on the CPU with the same beta correct; a GPU failure after
 // submission throws instead of coming back here.
@@ -44,7 +46,7 @@ inline void blas_sgemm_ex(const float* A, const float* B, float* C,
 {
     const size_t flops = 2ull * M * N * K;
     if (metal_worthwhile(flops)
-        && metalgpu::sgemm(A, B, C, M, N, K, transA, transB, alpha, beta)) {
+        && metal::sgemm(A, B, C, M, N, K, transA, transB, alpha, beta)) {
         return;
     }
 
@@ -167,3 +169,4 @@ inline void blas_vfill(float value, float* C, size_t n)
 #endif
 }
 
+}  // namespace grad

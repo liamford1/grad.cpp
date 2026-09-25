@@ -23,7 +23,7 @@
 //   TRANSFORMER_METAL=0            disable the GPU entirely
 //   TRANSFORMER_METAL_THRESHOLD=N  min FLOPs (2*M*N*K) to go to GPU
 //   TRANSFORMER_METAL_FP16=1       fp16 operands, fp32 accumulate
-namespace metalgpu {
+namespace grad::metal {
 
 #if defined(__APPLE__)
 // True if a Metal device is present and not disabled via environment.
@@ -50,4 +50,4 @@ inline bool sgemm(const float*, const float*, float*,
                   int, int, int, bool, bool, float, float) { return false; }
 #endif
 
-}  // namespace metalgpu
+}  // namespace grad::metal

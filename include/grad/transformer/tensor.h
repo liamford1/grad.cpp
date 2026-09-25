@@ -8,7 +8,11 @@
 #include <span>
 #include <string>
 
-constexpr size_t MAX_TENSOR_ELEMENTS = 1ULL << 30;
+namespace grad {
+
+// Largest element count a Tensor allocates (4 GiB of floats); a larger
+// shape throws std::overflow_error at construction.
+inline constexpr size_t kMaxTensorElements = size_t{1} << 30;
 
 // The extent of a dense, contiguous, row-major tensor: up to kMaxRank
 // dimensions, outermost first. Strides are implicit. Rank 0 is the empty
@@ -195,3 +199,5 @@ class Tensor {
         [[nodiscard]] std::span<float> values() noexcept { return {data.get(), numel()}; }
         [[nodiscard]] std::span<const float> values() const noexcept { return {data.get(), numel()}; }
 };
+
+}  // namespace grad

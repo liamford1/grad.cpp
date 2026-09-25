@@ -15,6 +15,8 @@
 #include <cstdio>
 #include <random>
 
+using namespace grad;
+
 namespace {
 
 void fill_random(Tensor& t, std::mt19937& gen) {
@@ -50,7 +52,7 @@ bool run_case(int M, int N, int K, bool tA, bool tB,
     Tensor C_gpu = C_init;
 
     cpu_reference(A.raw(), B.raw(), C_cpu.raw(), M, N, K, tA, tB, alpha, beta);
-    if (!metalgpu::sgemm(A.raw(), B.raw(), C_gpu.raw(), M, N, K, tA, tB, alpha, beta)) {
+    if (!metal::sgemm(A.raw(), B.raw(), C_gpu.raw(), M, N, K, tA, tB, alpha, beta)) {
         std::printf("  FAIL M=%d N=%d K=%d tA=%d tB=%d: metal sgemm refused the call\n",
                     M, N, K, tA, tB);
         return false;
@@ -69,7 +71,7 @@ bool run_case(int M, int N, int K, bool tA, bool tB,
     // relative per element, accumulating as ~sqrt(K) absolute for O(1)
     // inputs); accumulation itself stays fp32. Garbage-level bugs are
     // still orders of magnitude outside these bounds.
-    const bool half_inputs = metalgpu::fp16_active();
+    const bool half_inputs = metal::fp16_active();
     const float atol = half_inputs ? 5e-4f * std::sqrt(static_cast<float>(K)) + 1e-3f
                                    : 1e-6f * K + 1e-4f;
     const float rtol = half_inputs ? 1e-2f : 2e-3f;
@@ -93,11 +95,11 @@ bool run_case(int M, int N, int K, bool tA, bool tB,
 int main() {
     std::printf("=== METAL MATMUL VS CPU BLAS ===\n");
 
-    if (!metalgpu::available()) {
+    if (!metal::available()) {
         std::printf("No Metal device available - skipping.\n");
         return 77;
     }
-    std::printf("Operand precision: %s\n", metalgpu::fp16_active() ? "fp16" : "fp32");
+    std::printf("Operand precision: %s\n", metal::fp16_active() ? "fp16" : "fp32");
 
     std::mt19937 gen(1234);
     int passed = 0, total = 0;

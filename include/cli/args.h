@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 // A command line that does not match the command's declaration.
 class UsageError : public std::runtime_error {
@@ -230,4 +230,4 @@ private:
     std::deque<Arg> args_;
 };
 
-}  // namespace cli
+}  // namespace grad::cli

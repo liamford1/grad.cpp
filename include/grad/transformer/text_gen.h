@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+namespace grad {
+
 class TextGen {
     private:
         const GPTModel& model;
@@ -28,3 +30,5 @@ class TextGen {
                             float temperature = 1.0f, int max_tokens = 50,
                             float repetition_penalty = 1.2f, int top_k = 0, float top_p = 1.0f);
 };
+
+}  // namespace grad

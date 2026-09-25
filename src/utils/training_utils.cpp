@@ -12,7 +12,7 @@
     #include <unistd.h>
 #endif
 
-namespace utils {
+namespace grad::utils {
 
 float compute_grad_norm(const std::vector<std::shared_ptr<Variable>>& params) {
     float grad_norm = 0.0f;
@@ -74,4 +74,4 @@ void reshape_batch_to_2d(const Tensor& batch_input, const Tensor& batch_target,
     }
 }
 
-} // namespace utils
+}  // namespace grad::utils

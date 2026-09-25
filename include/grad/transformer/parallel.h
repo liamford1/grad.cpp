@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 
+namespace grad {
+
 // A minimal persistent thread pool exposing one primitive:
 //
 //   parallel_for(n, grain, [](size_t begin, size_t end) { ... });
@@ -185,3 +187,5 @@ inline void parallel_for(size_t n, size_t grain,
                          const std::function<void(size_t, size_t)>& fn) {
     ThreadPool::instance().parallel_for(n, grain, fn);
 }
+
+}  // namespace grad

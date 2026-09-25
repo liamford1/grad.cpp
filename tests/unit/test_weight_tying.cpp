@@ -5,6 +5,8 @@
 #include "grad/transformer/tensor.h"
 #include "../test_util.h"
 
+using namespace grad;
+
 int main() {
     std::cout << "=== Weight Tying Verification ===" << std::endl;
     

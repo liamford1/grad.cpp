@@ -3,6 +3,8 @@
 #include <atomic>
 #include <cstdint>
 
+namespace grad {
+
 namespace {
 
 constexpr uint64_t kDefaultDropoutSeed = 0x9E3779B97F4A7C15ull;
@@ -86,3 +88,5 @@ void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale,
         }
     });
 }
+
+}  // namespace grad

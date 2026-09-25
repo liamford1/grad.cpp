@@ -3,6 +3,8 @@
 #include "grad/transformer/gpt_model.h"
 #include <vector>
 
+namespace grad {
+
 // Incremental decoding with a KV cache.
 //
 // The autograd path re-runs the whole prefix through the model for every
@@ -51,3 +53,5 @@ private:
     std::vector<float> rope_sin_;
     std::vector<float> logits_;     // output logits (vocab)
 };
+
+}  // namespace grad

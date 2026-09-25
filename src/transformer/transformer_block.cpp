@@ -5,6 +5,8 @@
 #include "grad/transformer/activations.h"
 #include "grad/transformer/transformer_block.h"
 
+namespace grad {
+
 TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim,
                                    float dropout_rate, bool modern) :
     attention(d_model, num_heads, dropout_rate, /*rope=*/modern),
@@ -21,3 +23,5 @@ std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> in
     auto ffn_output = ffn.forward(normed2, training);
     return residual1->add(ffn_output);
 }
+
+}  // namespace grad

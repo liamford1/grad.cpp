@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+namespace grad {
+
 namespace {
 
 // Sums a broadcasting add's output gradient g (viewed as batch x rows x
@@ -643,3 +645,5 @@ void Variable::release_graph() {
     children.clear();
     backward_fn = nullptr;
 }
+
+}  // namespace grad

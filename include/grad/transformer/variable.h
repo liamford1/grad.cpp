@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
+namespace grad {
+
 // Grad mode: whether ops record the autograd graph. On by default. It is
 // thread-local, so a NoGradGuard around evaluation on one thread leaves
 // training on another untouched; parallel_for workers never build graph
@@ -139,3 +141,5 @@ template <typename... Inputs>
 [[nodiscard]] bool compute_requires_grad(const Inputs&... inputs) {
     return GradMode::is_enabled() && (... || inputs->requiresGrad());
 }
+
+}  // namespace grad

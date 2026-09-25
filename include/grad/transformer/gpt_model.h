@@ -10,6 +10,8 @@
 #include <memory>
 #include <string>
 
+namespace grad {
+
 // GPT2: LayerNorm, learned absolute positional embeddings, GELU FFN with
 // biases. Modern: RMSNorm, RoPE, bias-free SwiGLU FFN - same parameter
 // count at equal d_model. The arch is stored in the checkpoint (format v2;
@@ -66,3 +68,5 @@ class GPTModel {
         GPTModel(GPTModel&&) = default;
         GPTModel& operator=(GPTModel&&) = default;
 };
+
+}  // namespace grad

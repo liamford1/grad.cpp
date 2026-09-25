@@ -4,7 +4,7 @@
 #include <fstream>
 #include <string>
 
-namespace utils {
+namespace grad::utils {
 
 // Append-only per-step training log, one CSV row per step plus eval and
 // meta rows. This is the data source for `grad watch` (the live
@@ -58,4 +58,4 @@ private:
 void print_header(const std::string& title);
 void print_section(const std::string& title);
 
-} // namespace utils
+}  // namespace grad::utils

@@ -11,6 +11,8 @@
 #include <string_view>
 #include <vector>
 
+using namespace grad;
+
 namespace {
 
 using cli::Command;

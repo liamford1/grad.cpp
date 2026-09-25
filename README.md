@@ -88,7 +88,7 @@ The build also produces an installable `grad::core` CMake target:
 cmake --install build --prefix ./dist
 ```
 
-Downstream CMake projects can use `find_package(grad CONFIG REQUIRED)` and link `grad::core` after adding `dist` to `CMAKE_PREFIX_PATH`.
+Downstream CMake projects can use `find_package(grad CONFIG REQUIRED)` and link `grad::core` after adding `dist` to `CMAKE_PREFIX_PATH`. Headers install under `dist/include/grad/` (`#include "grad/transformer/gpt_model.h"`) and everything is in `namespace grad` (`grad::GPTModel`, `grad::training::Trainer`); [tests/package](tests/package/main.cpp) is a minimal consumer.
 
 Release builds are tuned for the build machine with `-march=native` (that is how every number in [BENCHMARKS.md](BENCHMARKS.md) was measured). For a binary you intend to run on another CPU, configure with `-DGRAD_NATIVE_ARCH=OFF`.
 

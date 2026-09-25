@@ -1,5 +1,7 @@
 #include "grad/transformer/linear.h"
 
+namespace grad {
+
 Linear::Linear(int input_dim, int output_dim, bool use_bias) :
     use_bias(use_bias)
 {
@@ -19,3 +21,5 @@ std::shared_ptr<Variable> Linear::forward(std::shared_ptr<Variable> input) const
     }
     return result;
 }
+
+}  // namespace grad

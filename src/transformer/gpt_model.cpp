@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace grad {
+
 GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
                    float dropout_rate, GPTArch arch) :
     vocab_size(vocab_size),
@@ -421,3 +423,5 @@ GPTModel GPTModel::load(const std::string& filepath) {
         throw std::runtime_error("Error loading model from " + filepath + ": " + e.what());
     }
 }
+
+}  // namespace grad

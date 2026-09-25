@@ -27,7 +27,7 @@
 #include <string_view>
 #include <vector>
 
-namespace cli {
+namespace grad::cli {
 
 namespace {
 
@@ -361,4 +361,4 @@ int run_train_fast(const Invocation& invocation) {
                   .via_train_fast = true});
 }
 
-}  // namespace cli
+}  // namespace grad::cli

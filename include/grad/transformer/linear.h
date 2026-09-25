@@ -3,6 +3,8 @@
 #include "grad/transformer/variable.h"
 #include <memory>
 
+namespace grad {
+
 class Linear {
     private:
         std::shared_ptr<Variable> weights;
@@ -21,3 +23,5 @@ class Linear {
             bias = new_bias;
         }
 };
+
+}  // namespace grad

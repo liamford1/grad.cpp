@@ -3,6 +3,8 @@
 #include "grad/transformer/variable.h"
 #include <memory>
 
+namespace grad {
+
 // rms = true turns the layer into an RMSNorm: y = x / rms(x) * gamma with
 // no mean subtraction and no beta shift (the modern-arch norm). beta is
 // still constructed (zeros) so the class shape and checkpoint layout stay
@@ -33,3 +35,5 @@ class LayerNorm {
             beta = Variable::create(new_beta, true);
         }
 };
+
+}  // namespace grad

@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+namespace grad {
+
 namespace {
 
 inline void fill_bias_rows(float* out, const float* bias, int rows, int cols) {
@@ -502,3 +504,5 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     }
     return final_output;
 }
+
+}  // namespace grad

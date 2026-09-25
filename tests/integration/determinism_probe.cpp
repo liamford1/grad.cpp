@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+using namespace grad;
+
 namespace {
 
 constexpr int kVocab = 97;

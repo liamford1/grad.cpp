@@ -2,6 +2,8 @@
 #include <stdexcept>
 #include <vector>
 
+namespace grad {
+
 TokenEmbedding::TokenEmbedding(int vocab_size, int d_model) :
     vocab_size(vocab_size),
     d_model(d_model),
@@ -92,3 +94,5 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
     }
     return output;
 }
+
+}  // namespace grad

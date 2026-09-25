@@ -3,6 +3,8 @@
 #include "grad/transformer/variable.h"
 #include <memory>
 
+namespace grad {
+
 class TokenEmbedding {
     private:
         int vocab_size;
@@ -27,3 +29,5 @@ class TokenEmbedding {
             embedding_table = Variable::create(new_embedding_table, true);
         }
 };
+
+}  // namespace grad

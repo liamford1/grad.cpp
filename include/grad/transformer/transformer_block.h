@@ -4,6 +4,8 @@
 #include "grad/transformer/layer_norm.h"
 #include "grad/transformer/feedforward.h"
 
+namespace grad {
+
 class TransformerBlock {
     private:
         MultiHeadAttention attention;
@@ -28,3 +30,5 @@ class TransformerBlock {
         LayerNorm& getNorm1Ref() { return norm1; }
         LayerNorm& getNorm2Ref() { return norm2; }
 };
+
+}  // namespace grad
