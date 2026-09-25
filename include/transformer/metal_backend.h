@@ -2,13 +2,13 @@
 
 // Metal (MPS) matmul backend, Apple Silicon only.
 //
-// Design, informed by this repo's failed CUDA port: tensors never move.
-// They stay CPU-owned; unified memory means the GPU computes on the same
-// physical pages (MTLBuffer wraps them with no copy - which is why Tensor
-// storage is page-aligned). The GPU is invoked through exactly one seam,
-// blas_sgemm_ex in blas_wrapper.h, and only for matmuls large enough to
-// amortize the dispatch latency. Every call can fall back to the CPU BLAS
-// path by returning false, so there is no device state to corrupt.
+// Design: tensors never move. They stay CPU-owned; unified memory means the
+// GPU computes on the same physical pages (MTLBuffer wraps them with no
+// copy - which is why Tensor storage is page-aligned), so there are no
+// device copies to keep coherent. The GPU is invoked through exactly one
+// seam, blas_sgemm_ex in blas_wrapper.h, and only for matmuls large enough
+// to amortize the dispatch latency. Any call can decline before submitting
+// work, and the caller then runs the CPU BLAS path instead.
 //
 // Mixed precision (opt-in): with TRANSFORMER_METAL_FP16=1, operands are
 // converted to fp16 on the GPU (a compute kernel writes fp16 copies into
@@ -34,9 +34,12 @@ bool available();
 bool fp16_active();
 
 // C = alpha * op(A) @ op(B) + beta * C, row-major, same contract as
-// blas_sgemm_ex. Returns false (leaving C untouched) if the GPU path is
-// unavailable or the pointers are not page-aligned; the caller then runs
-// the CPU path.
+// blas_sgemm_ex. Returns true once the GPU has computed C. Returns false
+// only when nothing was submitted and C is untouched (GPU unavailable,
+// pointers not page-aligned, or a Metal object could not be created); the
+// caller then runs the CPU path. A command buffer that fails after
+// submission may have partially written C, so it throws std::runtime_error
+// rather than returning false.
 bool sgemm(const float* A, const float* B, float* C,
            int M, int N, int K, bool transA, bool transB,
            float alpha, float beta);

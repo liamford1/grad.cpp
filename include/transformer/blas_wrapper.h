@@ -32,6 +32,11 @@ inline bool metal_worthwhile(size_t flops)
 // A, B, C are row-major. op(A) is (M,K), op(B) is (K,N), C is (M,N).
 // beta = 1 accumulates into C in place - used by backward passes to add
 // gradient contributions without materializing a temporary.
+//
+// Large products try the GPU first. metalgpu::sgemm returns false only
+// when it submitted nothing and left C untouched, which is what makes
+// rerunning on the CPU with the same beta correct; a GPU failure after
+// submission throws instead of coming back here.
 inline void blas_sgemm_ex(const float* A, const float* B, float* C,
                           int M, int N, int K,
                           bool transA, bool transB,
