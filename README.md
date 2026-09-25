@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/liamford1/grad.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/liamford1/grad.cpp/actions/workflows/ci.yml)
 
-A from-scratch autograd engine and the GPT-style language models it trains, implemented in C++17: tensors, reverse-mode automatic differentiation with hand-derived backward passes, multi-head attention, AdamW, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
+A from-scratch autograd engine and the GPT-style language models it trains, implemented in C++20: tensors, reverse-mode automatic differentiation with hand-derived backward passes, multi-head attention, AdamW, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
 
 The largest model trained with it so far is a **70M-parameter GPT trained from scratch on TinyStories**: 40,000 optimizer steps, 328M tokens and 37 hours on a single M2 Pro. It reaches a held-out loss of 1.693 (perplexity 5.44). Here is a sample from it, at temperature 0.8, the first draw, unedited:
 
@@ -41,7 +41,7 @@ Both are standard GPT-2-style decoder-only transformers: pre-LayerNorm residual 
 
 ## Build and run
 
-Requires CMake ≥ 3.16 and a C++17 compiler. On Linux, install OpenBLAS first (`sudo apt-get install libopenblas-dev`); macOS uses the built-in Accelerate framework.
+Requires CMake ≥ 3.16 and a C++20 compiler (GCC 11+, Clang 14+, or Xcode 15+). On Linux, install OpenBLAS first (`sudo apt-get install libopenblas-dev`); macOS uses the built-in Accelerate framework.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTS=ON
