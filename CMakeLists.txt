@@ -100,6 +100,7 @@ set(GRAD_CORE_SOURCES
     src/transformer/variable.cpp
     src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
+    src/tokenizer/pretokenize.cpp
     src/data/dataset.cpp
     src/data/token_file.cpp
     src/data/dataloader.cpp
