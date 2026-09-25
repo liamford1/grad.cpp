@@ -44,7 +44,7 @@
 
 std::string read_text_file(const std::string& data_path) {
     std::cout << "Reading " << data_path << "..." << std::flush;
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::steady_clock::now();
     std::ifstream file(data_path);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open " + data_path);
@@ -52,7 +52,7 @@ std::string read_text_file(const std::string& data_path) {
     std::string text((std::istreambuf_iterator<char>(file)),
                      std::istreambuf_iterator<char>());
     file.close();
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::steady_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::cout << " " << (text.size() / 1024) << "KB (" << ms << "ms)" << std::endl;
     return text;
@@ -68,16 +68,16 @@ void load_tokenizer(const std::string& text,
     if (cache_check.good()) {
         cache_check.close();
         std::cout << "Loading tokenizer from cache..." << std::flush;
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::steady_clock::now();
         tokenizer.load(cache_file);
-        auto end = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::steady_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
         std::cout << " done (" << ms << "ms)" << std::endl;
     } else {
         std::cout << "Training new tokenizer..." << std::flush;
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::steady_clock::now();
         tokenizer.train(text);
-        auto end = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::steady_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
         std::cout << " done (" << ms << "ms)" << std::endl;
         tokenizer.save(cache_file);
@@ -99,9 +99,9 @@ void load_data_and_tokenizer(const std::string& data_path,
     load_tokenizer(text, cache_prefix, vocab_size, tokenizer);
 
     std::cout << "Encoding text..." << std::flush;
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::steady_clock::now();
     tokens = tokenizer.encode(text);
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::steady_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::cout << " " << tokens.size() << " tokens (" << ms << "ms)" << std::endl;
 }
@@ -487,7 +487,7 @@ void write_benchmark_json(const BenchmarkOptions& options,
 // Repeatable performance benchmark: initialization and tokenization stay
 // outside the timed region; each reported number is the median of trials.
 int run_benchmark(const BenchmarkOptions& options) {
-    std::cout << "\nTransformer Benchmark\n" << std::endl;
+    std::cout << "\ngrad.cpp Benchmark\n" << std::endl;
 
     try {
         const int vocab_size = 5000;
@@ -596,7 +596,7 @@ int run_benchmark(const BenchmarkOptions& options) {
 // whole text, and write 95/5 train/val token files. Training then memory-
 // maps those files instead of re-encoding the corpus on every run.
 int run_prepare(const std::string& corpus_path, int vocab_size) {
-    std::cout << "\nTransformer Prepare\n" << std::endl;
+    std::cout << "\ngrad.cpp Prepare\n" << std::endl;
 
     try {
         utils::print_section("Tokenizing corpus");
@@ -617,9 +617,9 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
         }
 
         std::cout << "Encoding text..." << std::flush;
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::steady_clock::now();
         std::vector<int> tokens = tokenizer.encode(text);
-        auto end = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::steady_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
         std::cout << " " << tokens.size() << " tokens (" << ms << "ms)" << std::endl;
 
@@ -718,7 +718,7 @@ std::string checkpoint_stem(const std::string& corpus_path) {
 // warm-start from - weights only, fresh optimizer and schedule.
 int run_training(const Preset& preset, const std::string& corpus_path,
                  const std::string& init_arg) {
-    std::cout << "\nTransformer Training (" << preset.name << ")\n" << std::endl;
+    std::cout << "\ngrad.cpp Training (" << preset.name << ")\n" << std::endl;
 
     try {
         const int vocab_size = preset.vocab_size;
@@ -823,7 +823,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         config.eval_interval = preset.eval_interval;
         config.max_eval_batches = preset.max_eval_batches;
 
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::steady_clock::now();
         GPTModel model = [&]() -> GPTModel {
             if (resume) return GPTModel::load(prefix + "_resume_model.bin");
             if (!warm_start_path.empty()) {
@@ -834,7 +834,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
             return GPTModel(config.vocab_size, config.d_model, config.num_layers,
                             config.num_heads, config.max_len, config.dropout, arch);
         }();
-        auto end = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::steady_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
         if (model.getVocabSize() != config.vocab_size
@@ -847,11 +847,11 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         }
 
         auto params = model.getAllParameters();
-        int total_params = 0;
+        size_t total_params = 0;
         for (const auto& p : params) total_params += p->getData().numel();
 
         std::cout << "Model initialized (" << ms << "ms)" << std::endl;
-        std::cout << "Parameters: " << (total_params / 1e6f) << "M" << std::endl;
+        std::cout << "Parameters: " << (static_cast<double>(total_params) / 1e6) << "M" << std::endl;
 
         // The training loader samples windows with replacement, so any run
         // that starts from existing weights must not repeat the seed those
@@ -871,7 +871,7 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         std::cout << "Dataset: " << dataset->size() << " train / "
                   << val_dataset->size() << " val sequences\n" << std::endl;
 
-        training::Trainer trainer(config, model, loader, tokenizer, &val_loader);
+        training::Trainer trainer(config, model, loader, &val_loader);
         if (resume && !trainer.load_resume_state()) {
             throw std::runtime_error("Failed to load resume state ("
                                      + prefix + "_resume_state.bin)");

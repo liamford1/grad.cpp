@@ -1,6 +1,5 @@
 #include "data/dataset.h"
 #include <stdexcept>
-#include <iostream>
 
 TextDataset::TextDataset(const std::vector<int>& tokens, int seq_length, int stride)
     : token_ids_(tokens), seq_length_(seq_length), stride_(stride) {
@@ -10,8 +9,6 @@ TextDataset::TextDataset(const std::vector<int>& tokens, int seq_length, int str
     if (stride < 1) {
         throw std::invalid_argument("stride must be >= 1");
     }
-    std::cout << "Created TextDataset with " << tokens.size() << " tokens, seq_length="
-              << seq_length << ", stride=" << stride << std::endl;
 }
 
 size_t TextDataset::size() const {

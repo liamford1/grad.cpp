@@ -87,10 +87,8 @@ std::optional<int> peek_resume_step(const std::string& state_path) {
 Trainer::Trainer(const TrainingConfig& config,
                  GPTModel& model,
                  DataLoader& loader,
-                 BPETokenizer& tokenizer,
                  DataLoader* val_loader)
-    : config_(config), model_(model), loader_(loader), tokenizer_(tokenizer),
-      val_loader_(val_loader) {
+    : config_(config), model_(model), loader_(loader), val_loader_(val_loader) {
 
     auto params = model_.getAllParameters();
     optimizer_ = std::make_unique<AdamOptimizer>(params, config_.learning_rate,
@@ -288,13 +286,14 @@ bool Trainer::train() {
     metrics_->print_summary();
     if (val_loader_) {
         float val_loss = evaluate();
-        std::cout << "Final val loss: " << val_loss
-                  << " | perplexity: " << std::exp(val_loss) << std::endl;
+        std::cout << std::fixed << "Final val loss: " << std::setprecision(4) << val_loss
+                  << " | perplexity: " << std::setprecision(2) << std::exp(val_loss) << std::endl;
         if (best_val_loss < std::numeric_limits<float>::max()) {
-            std::cout << "Best val loss: " << best_val_loss
-                      << " | perplexity: " << std::exp(best_val_loss)
+            std::cout << "Best val loss: " << std::setprecision(4) << best_val_loss
+                      << " | perplexity: " << std::setprecision(2) << std::exp(best_val_loss)
                       << " (saved as " << config_.checkpoint_prefix << "_best.bin)" << std::endl;
         }
+        std::cout << std::defaultfloat;
     }
     // The final checkpoint is the run's deliverable: failing to write it is
     // an error, not a warning, and the resume state is left at the last
@@ -374,9 +373,7 @@ void Trainer::training_step(int step) {
     // track and clip-rate statistic.
     auto params = model_.getAllParameters();
     float grad_norm = utils::compute_grad_norm(params);
-    if (step % 100 == 0) {
-        metrics_->record_step(step, loss_val, grad_norm);
-    }
+    metrics_->record_step(step, loss_val, grad_norm);
 
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();

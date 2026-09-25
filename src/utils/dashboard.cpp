@@ -369,7 +369,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
     std::string out;
     double done = 100.0 * (last.step + 1) / total;
     {
-        std::string left = std::string(WHT) + " TRANSFORMER" + RST + DIM + " ▮ " + RST +
+        std::string left = std::string(WHT) + " grad.cpp" + RST + DIM + " ▮ " + RST +
                            LBL + name + RST;
         if (!d.desc.empty()) left += std::string(DIM) + " · " + d.desc + RST;
         if (d.params > 0) left += std::string(DIM) + " · " + fmt_count(double(d.params)) +

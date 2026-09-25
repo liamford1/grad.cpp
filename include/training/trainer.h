@@ -3,7 +3,6 @@
 #include "transformer/gpt_model.h"
 #include "transformer/optimizer.h"
 #include "data/dataloader.h"
-#include "tokenizer/bpe_tokenizer.h"
 #include "utils/metrics.h"
 #include <string>
 #include <memory>
@@ -44,7 +43,6 @@ public:
     Trainer(const TrainingConfig& config,
             GPTModel& model,
             DataLoader& loader,
-            BPETokenizer& tokenizer,
             DataLoader* val_loader = nullptr);
 
     // Returns false when the run was interrupted (SIGINT/SIGTERM): resume
@@ -71,7 +69,6 @@ private:
     TrainingConfig config_;
     GPTModel& model_;
     DataLoader& loader_;
-    BPETokenizer& tokenizer_;
     DataLoader* val_loader_;
     std::unique_ptr<AdamOptimizer> optimizer_;
     std::unique_ptr<utils::TrainingMetrics> metrics_;
@@ -84,7 +81,6 @@ private:
     std::string resume_state_path() const;
     // False (after a warning) if either file of the pair failed to write.
     [[nodiscard]] bool save_resume_state(int next_step, float best_val_loss);
-    void log_performance_breakdown();
 };
 
 // Mean next-token cross-entropy (nats) over up to max_batches batches of
