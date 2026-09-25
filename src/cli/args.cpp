@@ -82,6 +82,9 @@ Arg& Arg::named(std::string flag) {
     if (kind_ != Kind::Optional) {
         throw std::logic_error("cli: only an optional positional takes an alias flag");
     }
+    if (flag.size() < 3 || flag.compare(0, 2, "--") != 0) {
+        throw std::logic_error("cli: alias '" + flag + "' must be spelled --name");
+    }
     flag_ = std::move(flag);
     return *this;
 }
@@ -189,6 +192,11 @@ ParseResult Command::parse(std::span<const std::string_view> tokens) {
     std::vector<Arg*> positionals;
     for (Arg& arg : args_) {
         if (arg.is_positional()) positionals.push_back(&arg);
+        // Checked here rather than at declaration because named() can
+        // rename an alias after it was added.
+        if (!arg.flag_.empty() && find_named(arg.flag_) != &arg) {
+            throw std::logic_error("cli: " + arg.flag_ + " is declared twice");
+        }
     }
 
     // An option's value is the next token unless that token is itself a

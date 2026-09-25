@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -255,6 +256,36 @@ void test_help() {
     }
 }
 
+// Mistakes in a command's declaration are programming errors, not usage
+// errors, so they surface as std::logic_error.
+void test_declaration_errors() {
+    const auto declaration_rejected = [](const auto& declare) {
+        try {
+            Command cmd("grad x", "X.");
+            declare(cmd);
+            (void)parse(cmd, {});
+        } catch (const std::logic_error&) {
+            return true;
+        }
+        return false;
+    };
+    int a = 0;
+    int b = 0;
+    CHECK(declaration_rejected([&](Command& cmd) {
+        cmd.optional("seq", a, "a");
+        cmd.option("--seq", b, "b");
+    }));
+    CHECK(declaration_rejected([&](Command& cmd) {
+        cmd.optional("a", a, "a");
+        cmd.optional("b", b, "b").named("--a");
+    }));
+    CHECK(declaration_rejected([&](Command& cmd) {
+        cmd.optional("a", a, "a");
+        cmd.positional("b", b, "b");
+    }));
+    CHECK(declaration_rejected([&](Command& cmd) { cmd.option("-x", a, "x"); }));
+}
+
 void test_parse_value() {
     CHECK(cli::parse_value<int>("-12", "n") == -12);
     CHECK(cli::parse_value<std::string>("x y", "s") == "x y");
@@ -283,6 +314,7 @@ int main() {
     test_options_and_switches();
     test_option_terminator_and_dashes();
     test_help();
+    test_declaration_errors();
     test_parse_value();
     return test_util::exit_code();
 }
