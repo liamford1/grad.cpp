@@ -2,9 +2,9 @@
 
 // Cross-platform BLAS + vDSP Wrapper
 #if defined(__APPLE__)
-    #include <Accelerate/Accelerate.h>
+#include <Accelerate/Accelerate.h>
 #else
-    #include <cblas.h>
+#include <cblas.h>
 #endif
 #include "grad/transformer/metal_backend.h"
 #include "grad/utils/env.h"
@@ -24,10 +24,10 @@ namespace grad {
 // on CPU - measured, not assumed); above it the GPU pulls ahead, reaching
 // 1.5-1.8x at 60-120M-param shapes. Tune with GRAD_METAL_THRESHOLD;
 // disable with GRAD_METAL=0.
-inline bool metal_worthwhile(size_t flops)
-{
+inline bool metal_worthwhile(size_t flops) {
     static const long long threshold = [] {
-        if (const char* value = env::lookup("GRAD_METAL_THRESHOLD", "TRANSFORMER_METAL_THRESHOLD")) {
+        if (const char* value =
+                env::lookup("GRAD_METAL_THRESHOLD", "TRANSFORMER_METAL_THRESHOLD")) {
             return static_cast<long long>(std::atoll(value));
         }
         return 10LL * 1000 * 1000 * 1000;
@@ -64,14 +64,10 @@ inline blas_int vec_length(size_t n) noexcept {
 // when it submitted nothing and left C untouched, which is what makes
 // rerunning on the CPU with the same beta correct; a GPU failure after
 // submission throws instead of coming back here.
-inline void blas_sgemm_ex(const float* A, const float* B, float* C,
-                          size_t M, size_t N, size_t K,
-                          bool transA, bool transB,
-                          float alpha, float beta)
-{
+inline void blas_sgemm_ex(const float* A, const float* B, float* C, size_t M, size_t N, size_t K,
+                          bool transA, bool transB, float alpha, float beta) {
     const size_t flops = 2ull * M * N * K;
-    if (metal_worthwhile(flops)
-        && metal::sgemm(A, B, C, M, N, K, transA, transB, alpha, beta)) {
+    if (metal_worthwhile(flops) && metal::sgemm(A, B, C, M, N, K, transA, transB, alpha, beta)) {
         return;
     }
 
@@ -82,21 +78,12 @@ inline void blas_sgemm_ex(const float* A, const float* B, float* C,
     const blas_int ldb = transB ? k : n;
     const blas_int ldc = n;
 
-    cblas_sgemm(CblasRowMajor,
-                transA ? CblasTrans : CblasNoTrans,
-                transB ? CblasTrans : CblasNoTrans,
-                m, n, k,
-                alpha,
-                A, lda,
-                B, ldb,
-                beta,
-                C, ldc);
+    cblas_sgemm(CblasRowMajor, transA ? CblasTrans : CblasNoTrans,
+                transB ? CblasTrans : CblasNoTrans, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
 
-inline void blas_sgemm(const float* A, const float* B, float* C,
-                       size_t M, size_t N, size_t K,
-                       bool transA = false, bool transB = false)
-{
+inline void blas_sgemm(const float* A, const float* B, float* C, size_t M, size_t N, size_t K,
+                       bool transA = false, bool transB = false) {
     blas_sgemm_ex(A, B, C, M, N, K, transA, transB, 1.0f, 0.0f);
 }
 
@@ -104,28 +91,19 @@ inline void blas_sgemm(const float* A, const float* B, float* C,
 // row pitches of A, B and C, so each can be a column slice of a wider
 // matrix (one attention head of a (rows, d_model) projection). Never sent
 // to the GPU, whose path needs whole page-aligned buffers.
-inline void blas_sgemm_strided(bool transA, bool transB,
-                               size_t M, size_t N, size_t K, float alpha,
-                               const float* A, size_t lda,
-                               const float* B, size_t ldb,
-                               float beta, float* C, size_t ldc)
-{
-    cblas_sgemm(CblasRowMajor,
-                transA ? CblasTrans : CblasNoTrans,
-                transB ? CblasTrans : CblasNoTrans,
-                narrow<blas_int>(M), narrow<blas_int>(N), narrow<blas_int>(K),
-                alpha,
-                A, narrow<blas_int>(lda),
-                B, narrow<blas_int>(ldb),
-                beta,
-                C, narrow<blas_int>(ldc));
+inline void blas_sgemm_strided(bool transA, bool transB, size_t M, size_t N, size_t K, float alpha,
+                               const float* A, size_t lda, const float* B, size_t ldb, float beta,
+                               float* C, size_t ldc) {
+    cblas_sgemm(CblasRowMajor, transA ? CblasTrans : CblasNoTrans,
+                transB ? CblasTrans : CblasNoTrans, narrow<blas_int>(M), narrow<blas_int>(N),
+                narrow<blas_int>(K), alpha, A, narrow<blas_int>(lda), B, narrow<blas_int>(ldb),
+                beta, C, narrow<blas_int>(ldc));
 }
 
 // Element-wise transcendentals. Scalar libm calls dominate profiles for
 // GELU and softmax; Accelerate's vForce computes them SIMD-wide.
 // In-place (x == y) is allowed.
-inline void vec_tanh(const float* x, float* y, size_t n)
-{
+inline void vec_tanh(const float* x, float* y, size_t n) {
 #if defined(__APPLE__)
     const int count = static_cast<int>(vec_length(n));
     vvtanhf(y, x, &count);
@@ -134,8 +112,7 @@ inline void vec_tanh(const float* x, float* y, size_t n)
 #endif
 }
 
-inline void vec_exp(const float* x, float* y, size_t n)
-{
+inline void vec_exp(const float* x, float* y, size_t n) {
 #if defined(__APPLE__)
     const int count = static_cast<int>(vec_length(n));
     vvexpf(y, x, &count);
@@ -145,25 +122,21 @@ inline void vec_exp(const float* x, float* y, size_t n)
 }
 
 // Sum of squares over a buffer (SIMD dot product with itself).
-inline float vec_sum_squares(const float* x, size_t n)
-{
+inline float vec_sum_squares(const float* x, size_t n) {
     return cblas_sdot(vec_length(n), x, 1, x, 1);
 }
 
 // Dot product of two contiguous buffers.
-inline float vec_dot(const float* x, const float* y, size_t n)
-{
+inline float vec_dot(const float* x, const float* y, size_t n) {
     return cblas_sdot(vec_length(n), x, 1, y, 1);
 }
 
 // y += alpha * x
-inline void vec_axpy(float alpha, const float* x, float* y, size_t n)
-{
+inline void vec_axpy(float alpha, const float* x, float* y, size_t n) {
     cblas_saxpy(vec_length(n), alpha, x, 1, y, 1);
 }
 
-inline float vec_sum(const float* x, size_t n)
-{
+inline float vec_sum(const float* x, size_t n) {
 #if defined(__APPLE__)
     float s;
     vDSP_sve(x, 1, &s, static_cast<vDSP_Length>(n));
@@ -176,59 +149,48 @@ inline float vec_sum(const float* x, size_t n)
 }
 
 // x *= alpha
-inline void vec_scale_inplace(float* x, float alpha, size_t n)
-{
+inline void vec_scale_inplace(float* x, float alpha, size_t n) {
     cblas_sscal(vec_length(n), alpha, x, 1);
 }
 
 // vDSP-style Vector Operations
-inline void blas_vadd(const float* A, const float* B, float* C, size_t n)
-{
+inline void blas_vadd(const float* A, const float* B, float* C, size_t n) {
 #if defined(__APPLE__)
     vDSP_vadd(A, 1, B, 1, C, 1, n);
 #else
-    for (size_t i = 0; i < n; ++i)
-        C[i] = A[i] + B[i];
+    for (size_t i = 0; i < n; ++i) C[i] = A[i] + B[i];
 #endif
 }
 
-inline void blas_vsub(const float* A, const float* B, float* C, size_t n)
-{
+inline void blas_vsub(const float* A, const float* B, float* C, size_t n) {
 #if defined(__APPLE__)
     vDSP_vsub(B, 1, A, 1, C, 1, n);
 #else
-    for (size_t i = 0; i < n; ++i)
-        C[i] = A[i] - B[i];
+    for (size_t i = 0; i < n; ++i) C[i] = A[i] - B[i];
 #endif
 }
 
-inline void blas_vmul(const float* A, const float* B, float* C, size_t n)
-{
+inline void blas_vmul(const float* A, const float* B, float* C, size_t n) {
 #if defined(__APPLE__)
     vDSP_vmul(A, 1, B, 1, C, 1, n);
 #else
-    for (size_t i = 0; i < n; ++i)
-        C[i] = A[i] * B[i];
+    for (size_t i = 0; i < n; ++i) C[i] = A[i] * B[i];
 #endif
 }
 
-inline void blas_vsmul(const float* A, float scalar, float* C, size_t n)
-{
+inline void blas_vsmul(const float* A, float scalar, float* C, size_t n) {
 #if defined(__APPLE__)
     vDSP_vsmul(A, 1, &scalar, C, 1, n);
 #else
-    for (size_t i = 0; i < n; ++i)
-        C[i] = A[i] * scalar;
+    for (size_t i = 0; i < n; ++i) C[i] = A[i] * scalar;
 #endif
 }
 
-inline void blas_vfill(float value, float* C, size_t n)
-{
+inline void blas_vfill(float value, float* C, size_t n) {
 #if defined(__APPLE__)
     vDSP_vfill(&value, C, 1, static_cast<vDSP_Length>(n));
 #else
-    for (size_t i = 0; i < n; ++i)
-        C[i] = value;
+    for (size_t i = 0; i < n; ++i) C[i] = value;
 #endif
 }
 

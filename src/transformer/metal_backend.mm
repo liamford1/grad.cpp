@@ -72,8 +72,9 @@ struct Context {
         }
         if (want_fp16) {
             NSError* error = nil;
-            id<MTLLibrary> lib =
-                [device newLibraryWithSource:@(kConvertSource) options:nil error:&error];
+            id<MTLLibrary> lib = [device newLibraryWithSource:@(kConvertSource)
+                                                      options:nil
+                                                        error:&error];
             id<MTLFunction> fn = lib ? [lib newFunctionWithName:@"f32_to_f16"] : nil;
             convert = fn ? [device newComputePipelineStateWithFunction:fn error:&error] : nil;
             fp16 = (convert != nil);
@@ -102,11 +103,10 @@ id<MTLBuffer> wrap(id<MTLDevice> device, const void* p, size_t bytes) {
 
 MPSMatrix* make_matrix(id<MTLBuffer> buf, size_t rows, size_t cols, MPSDataType dtype) {
     const size_t elem = (dtype == MPSDataTypeFloat16) ? 2 : sizeof(float);
-    MPSMatrixDescriptor* desc =
-        [MPSMatrixDescriptor matrixDescriptorWithRows:rows
-                                              columns:cols
-                                             rowBytes:cols * elem
-                                             dataType:dtype];
+    MPSMatrixDescriptor* desc = [MPSMatrixDescriptor matrixDescriptorWithRows:rows
+                                                                      columns:cols
+                                                                     rowBytes:cols * elem
+                                                                     dataType:dtype];
     return [[MPSMatrix alloc] initWithBuffer:buf descriptor:desc];
 }
 
@@ -130,9 +130,8 @@ bool fp16_active() {
     return ctx().ok && ctx().fp16;
 }
 
-bool sgemm(const float* A, const float* B, float* C,
-           size_t M, size_t N, size_t K, bool transA, bool transB,
-           float alpha, float beta) {
+bool sgemm(const float* A, const float* B, float* C, size_t M, size_t N, size_t K, bool transA,
+           bool transB, float alpha, float beta) {
     Context& c = ctx();
     if (!c.ok) return false;
     if (!page_aligned(A) || !page_aligned(B) || !page_aligned(C)) return false;
@@ -167,15 +166,14 @@ bool sgemm(const float* A, const float* B, float* C,
         }
         const bool use_fp16 = (halfA != nil && halfB != nil);
 
-        MPSMatrixMultiplication* mm =
-            [[MPSMatrixMultiplication alloc] initWithDevice:c.device
-                                              transposeLeft:transA
-                                             transposeRight:transB
-                                                 resultRows:M
-                                              resultColumns:N
-                                            interiorColumns:K
-                                                      alpha:alpha
-                                                       beta:beta];
+        MPSMatrixMultiplication* mm = [[MPSMatrixMultiplication alloc] initWithDevice:c.device
+                                                                        transposeLeft:transA
+                                                                       transposeRight:transB
+                                                                           resultRows:M
+                                                                        resultColumns:N
+                                                                      interiorColumns:K
+                                                                                alpha:alpha
+                                                                                 beta:beta];
         if (!mm) return false;
 
         id<MTLCommandBuffer> cb = [c.queue commandBuffer];
@@ -220,7 +218,8 @@ bool sgemm(const float* A, const float* B, float* C,
     }
     if (!failure.empty()) {
         throw std::runtime_error("Metal sgemm failed after submission (C may be partially "
-                                 "written, so it cannot fall back to the CPU): " + failure);
+                                 "written, so it cannot fall back to the CPU): "
+                                 + failure);
     }
     return true;
 }

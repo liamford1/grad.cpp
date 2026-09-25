@@ -2,14 +2,14 @@
 #include <cmath>
 
 #if defined(__APPLE__) || defined(__linux__)
-    #include <sys/resource.h>
+#include <sys/resource.h>
 #endif
 
 #ifdef __APPLE__
-    #include <mach/mach.h>
+#include <mach/mach.h>
 #elif defined(__linux__)
-    #include <fstream>
-    #include <unistd.h>
+#include <fstream>
+#include <unistd.h>
 #endif
 
 namespace grad::utils {
@@ -30,10 +30,8 @@ size_t get_memory_mb() {
 #ifdef __APPLE__
     struct task_basic_info info;
     mach_msg_type_number_t size = sizeof(info);
-    kern_return_t kerr = task_info(mach_task_self(),
-                                    TASK_BASIC_INFO,
-                                    reinterpret_cast<task_info_t>(&info),
-                                    &size);
+    kern_return_t kerr =
+        task_info(mach_task_self(), TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&info), &size);
     return (kerr == KERN_SUCCESS) ? info.resident_size / (1024 * 1024) : 0;
 #elif defined(__linux__)
     long rss = 0L;
@@ -50,7 +48,7 @@ size_t get_memory_mb() {
 
 size_t get_peak_memory_mb() {
 #if defined(__APPLE__) || defined(__linux__)
-    struct rusage usage {};
+    struct rusage usage{};
     if (getrusage(RUSAGE_SELF, &usage) != 0) return 0;
 #ifdef __APPLE__
     return static_cast<size_t>(usage.ru_maxrss) / (1024 * 1024);
@@ -62,8 +60,8 @@ size_t get_peak_memory_mb() {
 #endif
 }
 
-void reshape_batch_to_2d(const Tensor& batch_input, const Tensor& batch_target,
-                         Tensor& input_2d, Tensor& target_2d) {
+void reshape_batch_to_2d(const Tensor& batch_input, const Tensor& batch_target, Tensor& input_2d,
+                         Tensor& target_2d) {
     const size_t batch_size = batch_input.getBatchSize();
     const size_t seq_len = batch_input.getRows();
 

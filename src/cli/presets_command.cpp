@@ -46,7 +46,8 @@ constexpr std::array kFields{
     Field{"dropout", [](const Preset& p) { return format_float(p.dropout); }},
     Field{"warmup_steps", [](const Preset& p) { return std::to_string(p.warmup_steps); }},
     Field{"num_steps", [](const Preset& p) { return std::to_string(p.num_steps); }},
-    Field{"checkpoint_interval", [](const Preset& p) { return std::to_string(p.checkpoint_interval); }},
+    Field{"checkpoint_interval",
+          [](const Preset& p) { return std::to_string(p.checkpoint_interval); }},
     Field{"eval_interval", [](const Preset& p) { return std::to_string(p.eval_interval); }},
     Field{"max_eval_batches", [](const Preset& p) { return std::to_string(p.max_eval_batches); }},
 };

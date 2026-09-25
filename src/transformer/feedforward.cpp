@@ -5,18 +5,19 @@
 
 namespace grad {
 
-FeedForward::FeedForward(int d_model, int hidden_dim, float dropout_rate, bool gated) :
-    layer1(d_model, resolve_hidden(d_model, hidden_dim, gated), !gated),
-    layer2(resolve_hidden(d_model, hidden_dim, gated), d_model, !gated),
-    gated_(gated),
-    dropout_rate_(dropout_rate) {
+FeedForward::FeedForward(int d_model, int hidden_dim, float dropout_rate, bool gated)
+    : layer1(d_model, resolve_hidden(d_model, hidden_dim, gated), !gated),
+      layer2(resolve_hidden(d_model, hidden_dim, gated), d_model, !gated),
+      gated_(gated),
+      dropout_rate_(dropout_rate) {
     if (gated) {
-        gate_ = std::make_unique<Linear>(
-            d_model, resolve_hidden(d_model, hidden_dim, gated), /*use_bias=*/false);
+        gate_ = std::make_unique<Linear>(d_model, resolve_hidden(d_model, hidden_dim, gated),
+                                         /*use_bias=*/false);
     }
 }
 
-std::shared_ptr<Variable> FeedForward::forward(std::shared_ptr<Variable> input, bool training) const {
+std::shared_ptr<Variable> FeedForward::forward(std::shared_ptr<Variable> input,
+                                               bool training) const {
     if (gated_) {
         auto gate = gate_->forward(input)->silu();
         auto hidden = gate->mul(layer1.forward(input));

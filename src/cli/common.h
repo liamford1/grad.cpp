@@ -72,8 +72,8 @@ struct Prompt {
 // opening tokens of `count` held-out windows spread evenly across the val
 // split: text the model has not trained on, in the corpus's own style.
 [[nodiscard]] std::vector<Prompt> sample_prompts(const std::string& corpus_path,
-                                                 const BPETokenizer& tokenizer,
-                                                 const Dataset& val, size_t count = 3);
+                                                 const BPETokenizer& tokenizer, const Dataset& val,
+                                                 size_t count = 3);
 
 // Decoding settings for generate and chat, as TextGen takes them.
 struct SamplingOptions {

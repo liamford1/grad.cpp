@@ -11,8 +11,7 @@ TextGen::TextGen(const GPTModel& model, const BPETokenizer* tok) : model_(model)
 
 namespace {
 
-Tensor logits_with_penalty(const float* logits, int vocab,
-                           const std::vector<int>& tokens,
+Tensor logits_with_penalty(const float* logits, int vocab, const std::vector<int>& tokens,
                            float repetition_penalty) {
     const size_t n = static_cast<size_t>(vocab);  // a model's vocab, so > 0
     Tensor out(1, n);
@@ -35,7 +34,8 @@ Tensor logits_with_penalty(const float* logits, int vocab,
 
 }  // namespace
 
-std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens, float repetition_penalty) {
+std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens,
+                                     float repetition_penalty) {
     std::vector<int> tokens = prompt_tokens;
     if (tokens.empty()) return "";
 
@@ -46,8 +46,8 @@ std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int 
     }
 
     for (int i = 0; i < max_tokens; i++) {
-        Tensor last_token_logits = logits_with_penalty(
-            logits, session.vocabSize(), tokens, repetition_penalty);
+        Tensor last_token_logits =
+            logits_with_penalty(logits, session.vocabSize(), tokens, repetition_penalty);
 
         const float* data = last_token_logits.raw();
         int next_token = 0;
@@ -65,7 +65,9 @@ std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int 
     return tokens_to_string(tokens);
 }
 
-std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, float temperature, int max_tokens, float repetition_penalty, int top_k, float top_p) {
+std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, float temperature,
+                                     int max_tokens, float repetition_penalty, int top_k,
+                                     float top_p) {
     std::vector<int> tokens = prompt_tokens;
     if (tokens.empty()) return "";
 
@@ -76,8 +78,8 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
     }
 
     for (int i = 0; i < max_tokens; i++) {
-        Tensor last_token_logits = logits_with_penalty(
-            logits, session.vocabSize(), tokens, repetition_penalty);
+        Tensor last_token_logits =
+            logits_with_penalty(logits, session.vocabSize(), tokens, repetition_penalty);
 
         int next_token = sample_from_logits(last_token_logits, temperature, top_k, top_p);
 
@@ -90,8 +92,8 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
 
 int TextGen::generate_stream(const std::vector<int>& prompt_tokens,
                              const std::function<void(const std::string&)>& on_text,
-                             float temperature, int max_tokens,
-                             float repetition_penalty, int top_k, float top_p) {
+                             float temperature, int max_tokens, float repetition_penalty, int top_k,
+                             float top_p) {
     std::vector<int> tokens = prompt_tokens;
     if (tokens.empty()) return 0;
 
@@ -103,8 +105,8 @@ int TextGen::generate_stream(const std::vector<int>& prompt_tokens,
 
     int generated = 0;
     for (int i = 0; i < max_tokens; i++) {
-        Tensor last_token_logits = logits_with_penalty(
-            logits, session.vocabSize(), tokens, repetition_penalty);
+        Tensor last_token_logits =
+            logits_with_penalty(logits, session.vocabSize(), tokens, repetition_penalty);
 
         int next_token = sample_from_logits(last_token_logits, temperature, top_k, top_p);
         tokens.push_back(next_token);
@@ -121,7 +123,7 @@ std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
     if (tokenizer_ != nullptr) {
         return tokenizer_->decode(tokens);
     }
-    
+
     std::string result = "";
     result.reserve(tokens.size());
     for (size_t i = 0; i < tokens.size(); i++) {

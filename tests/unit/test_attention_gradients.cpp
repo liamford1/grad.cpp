@@ -8,12 +8,8 @@
 using namespace grad;
 
 // Numerical gradient computation for 2D tensors
-float numerical_gradient_2d(
-    MultiHeadAttention& attention,
-    std::shared_ptr<Variable> input,
-    size_t input_idx_i, size_t input_idx_j,
-    float epsilon = 1e-3f
-) {
+float numerical_gradient_2d(MultiHeadAttention& attention, std::shared_ptr<Variable> input,
+                            size_t input_idx_i, size_t input_idx_j, float epsilon = 1e-3f) {
     // Forward with input + epsilon
     float original = input->getData().getValue(input_idx_i, input_idx_j);
 
@@ -52,12 +48,9 @@ float numerical_gradient_2d(
 }
 
 // Numerical gradient computation for 3D tensors
-float numerical_gradient_3d(
-    MultiHeadAttention& attention,
-    std::shared_ptr<Variable> input,
-    size_t input_idx_i, size_t input_idx_j, size_t input_idx_k,
-    float epsilon = 1e-3f
-) {
+float numerical_gradient_3d(MultiHeadAttention& attention, std::shared_ptr<Variable> input,
+                            size_t input_idx_i, size_t input_idx_j, size_t input_idx_k,
+                            float epsilon = 1e-3f) {
     // Forward with input + epsilon
     float original = input->getData().getValue(input_idx_i, input_idx_j, input_idx_k);
 
@@ -102,9 +95,11 @@ float numerical_gradient_3d(
     } catch (const std::exception& e) {
         std::cerr << "\n!!! ERROR in numerical gradient computation !!!" << std::endl;
         std::cerr << "Exception: " << e.what() << std::endl;
-        std::cerr << "  param index: [" << input_idx_i << "," << input_idx_j << "," << input_idx_k << "]" << std::endl;
+        std::cerr << "  param index: [" << input_idx_i << "," << input_idx_j << "," << input_idx_k
+                  << "]" << std::endl;
         std::cerr << "  input shape: (" << input->getData().getBatchSize() << ","
-                  << input->getData().getRows() << "," << input->getData().getCols() << ")" << std::endl;
+                  << input->getData().getRows() << "," << input->getData().getCols() << ")"
+                  << std::endl;
 
         // Restore original value before rethrowing
         input->getData().setValue(input_idx_i, input_idx_j, input_idx_k, original);
@@ -170,10 +165,11 @@ int main() {
         loss->backward();
 
         // Check gradients at multiple points
-        std::vector<std::pair<size_t, size_t>> test_points = {
-            {0, 0}, {0, d_model-1}, {seq_len-1, 0}, {seq_len-1, d_model-1},
-            {seq_len/2, d_model/2}
-        };
+        std::vector<std::pair<size_t, size_t>> test_points = {{0, 0},
+                                                              {0, d_model - 1},
+                                                              {seq_len - 1, 0},
+                                                              {seq_len - 1, d_model - 1},
+                                                              {seq_len / 2, d_model / 2}};
 
         for (const auto& point : test_points) {
             const size_t i = point.first;
@@ -182,8 +178,8 @@ int main() {
             float analytical_grad = input->getGrad().getValue(i, j);
             float numerical_grad = numerical_gradient_2d(attention, input, i, j);
             float abs_error = std::abs(analytical_grad - numerical_grad);
-            float rel_error = abs_error /
-                             (std::abs(analytical_grad) + std::abs(numerical_grad) + 1e-8f);
+            float rel_error =
+                abs_error / (std::abs(analytical_grad) + std::abs(numerical_grad) + 1e-8f);
 
             std::cout << "Input gradient [" << i << "," << j << "]:" << std::endl;
             std::cout << "  Analytical: " << analytical_grad << std::endl;
@@ -259,9 +255,11 @@ int main() {
 
         // Check gradients at multiple points
         std::vector<std::tuple<size_t, size_t, size_t>> test_points = {
-            {0, 0, 0}, {0, 0, d_model-1}, {0, seq_len-1, 0},
-            {batch_size-1, seq_len-1, d_model-1}, {batch_size-1, seq_len/2, d_model/2}
-        };
+            {0, 0, 0},
+            {0, 0, d_model - 1},
+            {0, seq_len - 1, 0},
+            {batch_size - 1, seq_len - 1, d_model - 1},
+            {batch_size - 1, seq_len / 2, d_model / 2}};
 
         for (size_t pt_idx = 0; pt_idx < test_points.size(); pt_idx++) {
             const auto& point = test_points[pt_idx];
@@ -269,8 +267,10 @@ int main() {
             const size_t i = std::get<1>(point);
             const size_t j = std::get<2>(point);
 
-            std::cout << "\n[Test Point " << (pt_idx + 1) << "/" << test_points.size() << "]" << std::endl;
-            std::cout << "Checking gradient at input[" << b << "," << i << "," << j << "]" << std::endl;
+            std::cout << "\n[Test Point " << (pt_idx + 1) << "/" << test_points.size() << "]"
+                      << std::endl;
+            std::cout << "Checking gradient at input[" << b << "," << i << "," << j << "]"
+                      << std::endl;
 
             try {
                 float analytical_grad = input->getGrad().getValue(b, i, j);
@@ -281,8 +281,8 @@ int main() {
                 std::cout << "  Numerical gradient:  " << numerical_grad << std::endl;
 
                 float abs_error = std::abs(analytical_grad - numerical_grad);
-                float rel_error = abs_error /
-                                 (std::abs(analytical_grad) + std::abs(numerical_grad) + 1e-8f);
+                float rel_error =
+                    abs_error / (std::abs(analytical_grad) + std::abs(numerical_grad) + 1e-8f);
 
                 std::cout << "  Relative Error:  " << rel_error << std::endl;
 
@@ -296,7 +296,8 @@ int main() {
                 }
             } catch (const std::exception& e) {
                 std::cerr << "\n!!! EXCEPTION CAUGHT IN MAIN TEST !!!" << std::endl;
-                std::cerr << "Test point " << (pt_idx + 1) << "/" << test_points.size() << std::endl;
+                std::cerr << "Test point " << (pt_idx + 1) << "/" << test_points.size()
+                          << std::endl;
                 std::cerr << "Position: [" << b << "," << i << "," << j << "]" << std::endl;
                 std::cerr << "Exception: " << e.what() << std::endl;
                 tests_total++;

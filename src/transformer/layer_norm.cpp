@@ -10,11 +10,7 @@
 
 namespace grad {
 
-LayerNorm::LayerNorm(int d_model, bool rms) :
-    d_model_(d_model),
-    epsilon(1e-5f),
-    rms_(rms) {
-
+LayerNorm::LayerNorm(int d_model, bool rms) : d_model_(d_model), epsilon(1e-5f), rms_(rms) {
     const size_t d = narrow<size_t>(d_model);
     Tensor gamma_tensor(1, d);
     Tensor beta_tensor(1, d);
@@ -30,8 +26,8 @@ LayerNorm::LayerNorm(int d_model, bool rms) :
 std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) const {
     const Tensor& input_tensor = input->getData();
     if (input_tensor.getCols() != static_cast<size_t>(d_model_)) {
-        throw std::invalid_argument("LayerNorm: input " + input_tensor.shape().to_string() +
-                                    " does not end in d_model " + std::to_string(d_model_));
+        throw std::invalid_argument("LayerNorm: input " + input_tensor.shape().to_string()
+                                    + " does not end in d_model " + std::to_string(d_model_));
     }
 
     const size_t total_rows = input_tensor.getFlatRows();
@@ -106,8 +102,8 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         auto self_beta = beta;
 
         output->setBackward({input, gamma, beta},
-                            [self_input, self_gamma, self_beta,
-                             means, inv_stds, d, df, total_rows, rms](Variable& node) {
+                            [self_input, self_gamma, self_beta, means, inv_stds, d, df, total_rows,
+                             rms](Variable& node) {
             // Each gradient is computed only if its target requires grad
             // (beta never does in RMS mode): ensureGrad leaves a frozen
             // tensor's grad unallocated, so it must not be written.
@@ -165,8 +161,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                             const float k = dot * r * r * r / df;
                             float* dInput_row = dInput_out + i * d;
                             for (size_t j = 0; j < d; j++) {
-                                dInput_row[j] += gamma_vals[j] * dout_row[j] * r
-                                               - input_row[j] * k;
+                                dInput_row[j] += gamma_vals[j] * dout_row[j] * r - input_row[j] * k;
                             }
                         }
                         continue;
@@ -209,7 +204,8 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                         for (size_t j = 0; j < d; j++) {
                             const float dnorm = dout_row[j] * gamma_vals[j];
                             const float x_minus_mean = input_row[j] - mean;
-                            dInput_row[j] += dnorm * std_inv + dvar * 2.0f * x_minus_mean / df + dmean / df;
+                            dInput_row[j] +=
+                                dnorm * std_inv + dvar * 2.0f * x_minus_mean / df + dmean / df;
                         }
                     }
                 }

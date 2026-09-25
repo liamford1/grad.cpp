@@ -171,7 +171,9 @@ int main(int argc, char* argv[]) {
                                     std::istreambuf_iterator<char>());
         if (reference != result) {
             std::cerr << "FAIL: parameters differ from the reference run\n"
-                      << "reference:\n" << reference << "this run:\n" << result;
+                      << "reference:\n"
+                      << reference << "this run:\n"
+                      << result;
             return 1;
         }
         std::cout << "matches " << argv[2] << "\n";

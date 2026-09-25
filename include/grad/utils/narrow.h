@@ -17,8 +17,8 @@ template <typename To, typename From>
     static_assert(std::is_integral_v<To> && std::is_integral_v<From>,
                   "grad::narrow converts between integer types");
     if (!std::in_range<To>(value)) {
-        throw std::overflow_error("grad::narrow: " + std::to_string(value) +
-                                  " does not fit the target integer type");
+        throw std::overflow_error("grad::narrow: " + std::to_string(value)
+                                  + " does not fit the target integer type");
     }
     return static_cast<To>(value);
 }

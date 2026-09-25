@@ -49,8 +49,7 @@ public:
 
     int threads() const { return num_threads_; }
 
-    void parallel_for(size_t n, size_t grain,
-                      const std::function<void(size_t, size_t)>& fn) {
+    void parallel_for(size_t n, size_t grain, const std::function<void(size_t, size_t)>& fn) {
         if (n == 0) return;
         if (grain == 0) grain = 1;
         if (num_threads_ <= 1 || n <= grain || in_parallel_region()) {
@@ -169,7 +168,7 @@ private:
     std::vector<std::thread> threads_;
     int num_threads_ = 1;
 
-    std::mutex job_mutex_;   // serializes parallel_for calls
+    std::mutex job_mutex_;  // serializes parallel_for calls
     std::mutex wake_mutex_;
     std::condition_variable wake_cv_;
     std::condition_variable done_cv_;
@@ -185,8 +184,7 @@ private:
 };
 
 // Convenience wrapper.
-inline void parallel_for(size_t n, size_t grain,
-                         const std::function<void(size_t, size_t)>& fn) {
+inline void parallel_for(size_t n, size_t grain, const std::function<void(size_t, size_t)>& fn) {
     ThreadPool::instance().parallel_for(n, grain, fn);
 }
 

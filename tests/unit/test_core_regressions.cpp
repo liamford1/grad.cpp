@@ -35,13 +35,12 @@ namespace {
 
 int g_failures = 0;
 
-#define CHECK(cond)                                                         \
-    do {                                                                    \
-        if (!(cond)) {                                                      \
-            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__,    \
-                         #cond);                                            \
-            g_failures++;                                                   \
-        }                                                                   \
+#define CHECK(cond)                                                              \
+    do {                                                                         \
+        if (!(cond)) {                                                           \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+            g_failures++;                                                        \
+        }                                                                        \
     } while (0)
 
 template <typename E>
@@ -162,8 +161,14 @@ void test_parallel_for() {
 void test_tensor_shapes() {
     // 2^66 elements wraps size_t to 0; it must be rejected, not allocated.
     const size_t big = size_t{1} << 22;
-    CHECK(throws<std::overflow_error>([&] { Tensor t(big, big, big); (void)t; }));
-    CHECK(throws<std::overflow_error>([&] { Tensor t(size_t{1} << 31, size_t{1} << 31); (void)t; }));
+    CHECK(throws<std::overflow_error>([&] {
+        Tensor t(big, big, big);
+        (void)t;
+    }));
+    CHECK(throws<std::overflow_error>([&] {
+        Tensor t(size_t{1} << 31, size_t{1} << 31);
+        (void)t;
+    }));
 
     // 3D + 2D: only the 2D operand may broadcast.
     Tensor a3(2, 1, 4);
@@ -205,9 +210,18 @@ void test_shape() {
     CHECK(s == (Shape{2, 3, 4}) && s != (Shape{2, 3, 5}) && s != (Shape{2, 3}));
     CHECK(s.with_last_dim(7) == (Shape{2, 3, 7}) && s.with_last_dim(7).numel() == 42);
     CHECK(s.transposed() == (Shape{2, 4, 3}) && (Shape{5}).transposed() == Shape{5});
-    CHECK(throws<std::invalid_argument>([] { Shape t{1, 2, 3, 4, 5}; (void)t; }));
-    CHECK(throws<std::invalid_argument>([] { Tensor t(Shape{}); (void)t; }));
-    CHECK(throws<std::invalid_argument>([] { Tensor t(Shape{3, 0}); (void)t; }));
+    CHECK(throws<std::invalid_argument>([] {
+        Shape t{1, 2, 3, 4, 5};
+        (void)t;
+    }));
+    CHECK(throws<std::invalid_argument>([] {
+        Tensor t(Shape{});
+        (void)t;
+    }));
+    CHECK(throws<std::invalid_argument>([] {
+        Tensor t(Shape{3, 0});
+        (void)t;
+    }));
 
     // The 2D/3D view over each rank; leading dimensions fold into the batch.
     const Tensor v(Shape{6});
@@ -243,7 +257,8 @@ void test_shape() {
 void test_nll_upstream_gradient() {
     const size_t rows = 3, vocab = 5;
     Tensor logits(rows, vocab);
-    for (size_t i = 0; i < logits.numel(); i++) logits.raw()[i] = std::cos(1.3f * static_cast<float>(i));
+    for (size_t i = 0; i < logits.numel(); i++)
+        logits.raw()[i] = std::cos(1.3f * static_cast<float>(i));
     Tensor targets(rows, 1);
     targets.raw()[0] = 4.0f;
     targets.raw()[1] = 0.0f;
@@ -272,12 +287,10 @@ void test_nll_upstream_gradient() {
 
     // One target per row, or it throws.
     auto x = Variable::create(logits, true);
-    CHECK(throws<std::invalid_argument>([&] {
-        (void)x->log_softmax()->nll_loss(Variable::create(Tensor(rows + 1, 1), false));
-    }));
-    CHECK(throws<std::invalid_argument>([&] {
-        (void)x->log_softmax()->nll_loss(Variable::create(Tensor(rows - 1, 1), false));
-    }));
+    CHECK(throws<std::invalid_argument>(
+        [&] { (void)x->log_softmax()->nll_loss(Variable::create(Tensor(rows + 1, 1), false)); }));
+    CHECK(throws<std::invalid_argument>(
+        [&] { (void)x->log_softmax()->nll_loss(Variable::create(Tensor(rows - 1, 1), false)); }));
 }
 
 // Scalar loss sum(out * R) whose backward seeds out's grad with R.
@@ -318,7 +331,8 @@ void test_attention_2d_dropout_gradients(bool rope) {
         auto in = Variable::create(xin, false);
         auto out = attn.forward(in, /*training=*/true);
         double sum = 0.0;
-        for (size_t i = 0; i < R.size(); i++) sum += static_cast<double>(out->getData().raw()[i]) * R[i];
+        for (size_t i = 0; i < R.size(); i++)
+            sum += static_cast<double>(out->getData().raw()[i]) * R[i];
         out->release_graph();
         return sum;
     };
@@ -336,7 +350,8 @@ void test_attention_2d_dropout_gradients(bool rope) {
         std::memcpy(x3.raw(), x.raw(), x.numel() * sizeof(float));
         auto out3 = attn.forward(Variable::create(x3, false), true);
         CHECK(std::memcmp(out3->getData().raw(), out->getData().raw(),
-                          out3->getData().numel() * sizeof(float)) == 0);
+                          out3->getData().numel() * sizeof(float))
+              == 0);
         out3->release_graph();
     }
 
@@ -347,7 +362,8 @@ void test_attention_2d_dropout_gradients(bool rope) {
         const double err = std::fabs(analytic - numeric);
         const double rel = err / (std::fabs(analytic) + std::fabs(numeric) + 1e-8);
         const bool ok = rel < 3e-2 || err < 2e-3;
-        if (!ok) std::fprintf(stderr, "  grad mismatch: analytic %g numeric %g\n", analytic, numeric);
+        if (!ok)
+            std::fprintf(stderr, "  grad mismatch: analytic %g numeric %g\n", analytic, numeric);
         CHECK(ok);
     };
 
@@ -407,8 +423,8 @@ bool load_fails_with(const std::string& path, const std::string& needle) {
 
 void test_checkpoint(GPTArch arch) {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() /
-        ("grad_core_regressions_" + std::to_string(static_cast<int>(arch)));
+    const fs::path dir = fs::temp_directory_path()
+                         / ("grad_core_regressions_" + std::to_string(static_cast<int>(arch)));
     fs::create_directories(dir);
     const std::string good = (dir / "model.bin").string();
     const std::string bad = (dir / "bad.bin").string();
@@ -427,8 +443,8 @@ void test_checkpoint(GPTArch arch) {
         for (size_t i = 0; same && i < a.size(); i++) {
             const Tensor& x = a[i]->getData();
             const Tensor& y = b[i]->getData();
-            same = x.getRows() == y.getRows() && x.getCols() == y.getCols() &&
-                   std::memcmp(x.raw(), y.raw(), x.numel() * sizeof(float)) == 0;
+            same = x.getRows() == y.getRows() && x.getCols() == y.getCols()
+                   && std::memcmp(x.raw(), y.raw(), x.numel() * sizeof(float)) == 0;
         }
         CHECK(same);
     }
@@ -483,11 +499,11 @@ void test_env_lookup() {
     ::unsetenv(legacy);
     CHECK(env::lookup(name, legacy) == nullptr);
     ::setenv(legacy, "old", 1);
-    CHECK(env::lookup(name, legacy) != nullptr &&
-          std::strcmp(env::lookup(name, legacy), "old") == 0);
+    CHECK(env::lookup(name, legacy) != nullptr
+          && std::strcmp(env::lookup(name, legacy), "old") == 0);
     ::setenv(name, "new", 1);
-    CHECK(env::lookup(name, legacy) != nullptr &&
-          std::strcmp(env::lookup(name, legacy), "new") == 0);
+    CHECK(env::lookup(name, legacy) != nullptr
+          && std::strcmp(env::lookup(name, legacy), "new") == 0);
     ::unsetenv(name);
     ::unsetenv(legacy);
 }

@@ -24,17 +24,13 @@ void fill_random(Tensor& t, std::mt19937& gen) {
 
 // The CPU BLAS path alone (blas_sgemm_ex would route these sizes to the
 // GPU under test).
-void cpu_reference(const float* A, const float* B, float* C,
-                   size_t M, size_t N, size_t K, bool tA, bool tB,
-                   float alpha, float beta) {
-    blas_sgemm_strided(tA, tB, M, N, K, alpha,
-                       A, tA ? M : K,
-                       B, tB ? K : N,
-                       beta, C, N);
+void cpu_reference(const float* A, const float* B, float* C, size_t M, size_t N, size_t K, bool tA,
+                   bool tB, float alpha, float beta) {
+    blas_sgemm_strided(tA, tB, M, N, K, alpha, A, tA ? M : K, B, tB ? K : N, beta, C, N);
 }
 
-bool run_case(size_t M, size_t N, size_t K, bool tA, bool tB,
-              float alpha, float beta, std::mt19937& gen) {
+bool run_case(size_t M, size_t N, size_t K, bool tA, bool tB, float alpha, float beta,
+              std::mt19937& gen) {
     Tensor A(tA ? K : M, tA ? M : K);
     Tensor B(tB ? N : K, tB ? K : N);
     Tensor C_init(M, N);
@@ -47,8 +43,8 @@ bool run_case(size_t M, size_t N, size_t K, bool tA, bool tB,
 
     cpu_reference(A.raw(), B.raw(), C_cpu.raw(), M, N, K, tA, tB, alpha, beta);
     if (!metal::sgemm(A.raw(), B.raw(), C_gpu.raw(), M, N, K, tA, tB, alpha, beta)) {
-        std::printf("  FAIL M=%zu N=%zu K=%zu tA=%d tB=%d: metal sgemm refused the call\n",
-                    M, N, K, tA, tB);
+        std::printf("  FAIL M=%zu N=%zu K=%zu tA=%d tB=%d: metal sgemm refused the call\n", M, N, K,
+                    tA, tB);
         return false;
     }
 
@@ -98,7 +94,11 @@ int main() {
     std::mt19937 gen(1234);
     int passed = 0, total = 0;
 
-    struct Case { size_t M, N, K; bool tA, tB; float alpha, beta; };
+    struct Case {
+        size_t M, N, K;
+        bool tA, tB;
+        float alpha, beta;
+    };
     const Case cases[] = {
         // logits projection and its two backward forms
         {768, 5000, 512, false, true, 1.0f, 0.0f},

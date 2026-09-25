@@ -58,17 +58,16 @@ void evaluate(const std::string& checkpoint_path, const std::string& corpus_path
 
     constexpr unsigned kSeed = 20260921;
     DataLoader val_loader(val, kBatchSize, /*shuffle=*/max_batches > 0, kSeed);
-    const int val_batches = max_batches > 0
-        ? std::min<int>(max_batches, static_cast<int>(val_loader.num_batches()))
-        : static_cast<int>(val_loader.num_batches());
+    const int val_batches =
+        max_batches > 0 ? std::min<int>(max_batches, static_cast<int>(val_loader.num_batches()))
+                        : static_cast<int>(val_loader.num_batches());
     DataLoader train_loader(train, kBatchSize, /*shuffle=*/true, kSeed + 1);
 
     const auto report = [](const char* split, double loss, long tokens, double seconds) {
-        std::cout << std::left << std::setw(8) << split << std::right << std::fixed
-                  << " loss " << std::setprecision(4) << loss
-                  << "  perplexity " << std::setprecision(3) << std::exp(loss)
-                  << "  (" << tokens << " tokens, " << std::setprecision(0) << seconds
-                  << "s)" << std::defaultfloat << std::endl;
+        std::cout << std::left << std::setw(8) << split << std::right << std::fixed << " loss "
+                  << std::setprecision(4) << loss << "  perplexity " << std::setprecision(3)
+                  << std::exp(loss) << "  (" << tokens << " tokens, " << std::setprecision(0)
+                  << seconds << "s)" << std::defaultfloat << std::endl;
     };
     const auto timed = [&](DataLoader& loader) {
         const auto start = std::chrono::steady_clock::now();
@@ -79,7 +78,8 @@ void evaluate(const std::string& checkpoint_path, const std::string& corpus_path
 
     utils::print_section("Scoring");
     const long tokens = static_cast<long>(std::min<size_t>(
-        static_cast<size_t>(val_batches) * kBatchSize, val->size())) * seq_length;
+                            static_cast<size_t>(val_batches) * kBatchSize, val->size()))
+                        * seq_length;
     const auto [val_loss, val_s] = timed(val_loader);
     report("val", val_loss, tokens, val_s);
     const auto [train_loss, train_s] = timed(train_loader);
@@ -96,9 +96,10 @@ int run_eval(const Invocation& invocation) {
     int max_batches = 0;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("Scores the val split and an equal-sized uniform sample of training windows "
-                 "in non-overlapping windows with a fixed seed, so every checkpoint sees the "
-                 "same windows. Needs the corpus's prepared token files (see prepare).");
+    cmd.describe(
+        "Scores the val split and an equal-sized uniform sample of training windows "
+        "in non-overlapping windows with a fixed seed, so every checkpoint sees the "
+        "same windows. Needs the corpus's prepared token files (see prepare).");
     cmd.positional("ckpt", checkpoint, "checkpoint to score");
     cmd.positional("corpus", corpus, "the corpus the checkpoint was trained on");
     cmd.optional("vocab", vocab, "vocab size; must match the checkpoint's")

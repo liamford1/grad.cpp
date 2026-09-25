@@ -16,7 +16,8 @@ size_t checked_batch_size(int batch_size) {
 
 }  // namespace
 
-DataLoader::DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle, unsigned int seed)
+DataLoader::DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle,
+                       unsigned int seed)
     : dataset_(dataset),
       batch_size_(checked_batch_size(batch_size)),
       shuffle_(shuffle),

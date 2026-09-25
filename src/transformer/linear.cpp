@@ -3,9 +3,7 @@
 
 namespace grad {
 
-Linear::Linear(int input_dim, int output_dim, bool use_bias) :
-    use_bias_(use_bias)
-{
+Linear::Linear(int input_dim, int output_dim, bool use_bias) : use_bias_(use_bias) {
     const size_t in = narrow<size_t>(input_dim);
     const size_t out = narrow<size_t>(output_dim);
     Tensor w_tensor(in, out);

@@ -146,8 +146,7 @@ void write_benchmark_json(const BenchmarkOptions& options,
     out << ",\n"
         << "  \"median_training_steps_per_second\": " << median(train_steps_per_s) << ",\n"
         << "  \"median_training_tokens_per_second\": " << median(train_tokens_per_s) << ",\n"
-        << "  \"median_generation_tokens_per_second\": " << median(generation_tokens_per_s)
-        << ",\n"
+        << "  \"median_generation_tokens_per_second\": " << median(generation_tokens_per_s) << ",\n"
         << "  \"peak_rss_mb\": " << peak_memory_mb << "\n"
         << "}\n";
     if (!out.good()) {
@@ -179,8 +178,8 @@ void benchmark(const BenchmarkOptions& options) {
 
     utils::print_section("Training throughput");
     std::cout << "Config: d_model=" << kConfig.d_model << " layers=" << kConfig.num_layers
-              << " heads=" << kConfig.num_heads << " seq=" << seq_length
-              << " batch=" << batch_size << " params=" << parameter_count << std::endl;
+              << " heads=" << kConfig.num_heads << " seq=" << seq_length << " batch=" << batch_size
+              << " params=" << parameter_count << std::endl;
 
     const auto run_step = [&]() {
         if (!loader.has_next()) loader.reset();
@@ -196,8 +195,8 @@ void benchmark(const BenchmarkOptions& options) {
         optimizer.step();
     };
 
-    std::cout << "Protocol: " << options.warmup << " warmup, " << options.trials
-              << " trials x " << options.steps << " steps\n"
+    std::cout << "Protocol: " << options.warmup << " warmup, " << options.trials << " trials x "
+              << options.steps << " steps\n"
               << "Build: grad.cpp " << GRAD_VERSION << " (" << GRAD_GIT_SHA << "), "
               << GRAD_BUILD_TYPE << ", " << GRAD_COMPILER << std::endl;
 
@@ -256,9 +255,10 @@ int run_bench(const Invocation& invocation) {
     BenchmarkOptions options;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("Times optimizer steps of the 22M 'small' model on Tiny Shakespeare, then "
-                 "64-token sampled generation, reporting the median of --trials windows. "
-                 "Run it on an otherwise idle machine.");
+    cmd.describe(
+        "Times optimizer steps of the 22M 'small' model on Tiny Shakespeare, then "
+        "64-token sampled generation, reporting the median of --trials windows. "
+        "Run it on an otherwise idle machine.");
     cmd.optional("steps", options.steps, "timed optimizer steps per trial").at_least(1);
     cmd.option("--warmup", options.warmup, "untimed steps before the first trial").at_least(0);
     cmd.option("--trials", options.trials, "timed windows; the median is reported").at_least(1);

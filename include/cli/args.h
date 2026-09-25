@@ -48,11 +48,18 @@ public:
 // or std::optional of one of those (for "unset unless given").
 template <class T>
 concept Scalar = std::same_as<T, std::string> || std::floating_point<T>
-              || (std::integral<T> && !std::same_as<T, bool>);
+                 || (std::integral<T> && !std::same_as<T, bool>);
 
-template <class T> struct optional_value { using type = T; };
-template <class T> struct optional_value<std::optional<T>> { using type = T; };
-template <class T> using optional_value_t = typename optional_value<T>::type;
+template <class T>
+struct optional_value {
+    using type = T;
+};
+template <class T>
+struct optional_value<std::optional<T>> {
+    using type = T;
+};
+template <class T>
+using optional_value_t = typename optional_value<T>::type;
 
 template <class T>
 concept Bindable = Scalar<optional_value_t<T>>;
@@ -135,8 +142,8 @@ private:
     }
 
     Kind kind_;
-    std::string name_;      // positional name, or the option's flag
-    std::string flag_;      // flag that sets it by name ("" for a required positional)
+    std::string name_;  // positional name, or the option's flag
+    std::string flag_;  // flag that sets it by name ("" for a required positional)
     std::string metavar_;
     std::string help_;
     std::string default_;

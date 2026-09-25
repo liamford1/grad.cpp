@@ -6,28 +6,27 @@
 namespace grad {
 
 class TokenEmbedding {
-    private:
-        int vocab_size_;
-        int d_model_;
-        float embedding_scale;
-        std::shared_ptr<Variable> embedding_table;
-    public:
-        TokenEmbedding(int vocab_size, int d_model);
-        std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input_ids) const;
+private:
+    int vocab_size_;
+    int d_model_;
+    float embedding_scale;
+    std::shared_ptr<Variable> embedding_table;
 
-        int getVocabSize() const { return vocab_size_; }
-        int getDModel() const { return d_model_; }
+public:
+    TokenEmbedding(int vocab_size, int d_model);
+    std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input_ids) const;
 
-        std::shared_ptr<Variable> getEmbeddingTable() const { return embedding_table; }
-        float getScale() const { return embedding_scale; }
+    int getVocabSize() const { return vocab_size_; }
+    int getDModel() const { return d_model_; }
 
-        std::vector<std::shared_ptr<Variable>> parameters() const {
-            return {embedding_table};
-        }
+    std::shared_ptr<Variable> getEmbeddingTable() const { return embedding_table; }
+    float getScale() const { return embedding_scale; }
 
-        void setEmbeddingTable(const Tensor& new_embedding_table) {
-            embedding_table = Variable::create(new_embedding_table, true);
-        }
+    std::vector<std::shared_ptr<Variable>> parameters() const { return {embedding_table}; }
+
+    void setEmbeddingTable(const Tensor& new_embedding_table) {
+        embedding_table = Variable::create(new_embedding_table, true);
+    }
 };
 
 }  // namespace grad

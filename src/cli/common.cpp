@@ -28,8 +28,8 @@ void load_tokenizer_for_inference(const std::string& corpus_path, int vocab_size
     const std::string cache_file = tokenizer_cache_path(corpus_path, vocab_size);
     if (file_exists(cache_file)) {
         tokenizer.load(cache_file);
-        std::cout << "Tokenizer: " << cache_file << " (vocab "
-                  << tokenizer.getCurrentVocabSize() << ")" << std::endl;
+        std::cout << "Tokenizer: " << cache_file << " (vocab " << tokenizer.getCurrentVocabSize()
+                  << ")" << std::endl;
         return;
     }
     struct stat st;
@@ -111,8 +111,7 @@ Prompt prompt_from_text(const BPETokenizer& tokenizer, const std::string& text) 
 std::vector<Prompt> sample_prompts(const std::string& corpus_path, const BPETokenizer& tokenizer,
                                    const Dataset& val, size_t count) {
     if (is_default_corpus(corpus_path)) {
-        return {prompt_from_text(tokenizer, "ROMEO:\n"),
-                prompt_from_text(tokenizer, "JULIET:\n"),
+        return {prompt_from_text(tokenizer, "ROMEO:\n"), prompt_from_text(tokenizer, "JULIET:\n"),
                 prompt_from_text(tokenizer, "First Citizen:\n")};
     }
     constexpr size_t kPromptTokens = 6;

@@ -23,15 +23,23 @@ struct CommandEntry {
 };
 
 constexpr std::array kCommands{
-    CommandEntry{"prepare", grad::cli::run_prepare, "Pre-tokenize a corpus into memory-mapped .bin token files"},
-    CommandEntry{"train", grad::cli::run_train, "Train a preset on a corpus; Ctrl-C saves a resumable state"},
-    CommandEntry{"train-fast", grad::cli::run_train_fast, "Train the tiny 'fast' preset: a one-minute smoke test"},
-    CommandEntry{"generate", grad::cli::run_generate, "Sample greedy and sampled continuations from a checkpoint"},
-    CommandEntry{"chat", grad::cli::run_chat, "Interactive REPL: type a prompt, watch the model continue it"},
-    CommandEntry{"eval", grad::cli::run_eval, "Loss and perplexity on held-out and training windows"},
-    CommandEntry{"bench", grad::cli::run_bench, "Training and generation throughput, median of repeated trials"},
+    CommandEntry{"prepare", grad::cli::run_prepare,
+                 "Pre-tokenize a corpus into memory-mapped .bin token files"},
+    CommandEntry{"train", grad::cli::run_train,
+                 "Train a preset on a corpus; Ctrl-C saves a resumable state"},
+    CommandEntry{"train-fast", grad::cli::run_train_fast,
+                 "Train the tiny 'fast' preset: a one-minute smoke test"},
+    CommandEntry{"generate", grad::cli::run_generate,
+                 "Sample greedy and sampled continuations from a checkpoint"},
+    CommandEntry{"chat", grad::cli::run_chat,
+                 "Interactive REPL: type a prompt, watch the model continue it"},
+    CommandEntry{"eval", grad::cli::run_eval,
+                 "Loss and perplexity on held-out and training windows"},
+    CommandEntry{"bench", grad::cli::run_bench,
+                 "Training and generation throughput, median of repeated trials"},
     CommandEntry{"watch", grad::cli::run_watch, "Live terminal dashboard for a training run"},
-    CommandEntry{"presets", grad::cli::run_presets, "List the model and training presets (--json for tools)"},
+    CommandEntry{"presets", grad::cli::run_presets,
+                 "List the model and training presets (--json for tools)"},
 };
 
 void print_usage(std::ostream& out, std::string_view program) {

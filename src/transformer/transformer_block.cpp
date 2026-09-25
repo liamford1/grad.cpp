@@ -8,13 +8,14 @@
 namespace grad {
 
 TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim,
-                                   float dropout_rate, bool modern) :
-    attention(d_model, num_heads, dropout_rate, /*rope=*/modern),
-    ffn(d_model, ffn_hidden_dim, dropout_rate, /*gated=*/modern),
-    norm1(d_model, /*rms=*/modern),
-    norm2(d_model, /*rms=*/modern) {}
+                                   float dropout_rate, bool modern)
+    : attention(d_model, num_heads, dropout_rate, /*rope=*/modern),
+      ffn(d_model, ffn_hidden_dim, dropout_rate, /*gated=*/modern),
+      norm1(d_model, /*rms=*/modern),
+      norm2(d_model, /*rms=*/modern) {}
 
-std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> input, bool training) const {
+std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> input,
+                                                    bool training) const {
     auto normed1 = norm1.forward(input);
     auto attention_output = attention.forward(normed1, training);
     auto residual1 = input->add(attention_output);

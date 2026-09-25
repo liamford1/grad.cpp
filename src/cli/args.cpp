@@ -34,7 +34,7 @@ double parse_double(std::string_view text, std::string_view label) {
     // accepted syntax matches the from_chars path.
     const std::string copy(text);
     const bool plain = !copy.empty() && !std::isspace(static_cast<unsigned char>(copy[0]))
-                    && copy.find_first_of("xX") == std::string::npos;
+                       && copy.find_first_of("xX") == std::string::npos;
     char* end = nullptr;
     errno = 0;
     value = std::strtod(copy.c_str(), &end);
@@ -170,7 +170,9 @@ std::string Command::uppercase(std::string_view text) {
 
 namespace {
 
-bool is_help(std::string_view token) { return token == "-h" || token == "--help"; }
+bool is_help(std::string_view token) {
+    return token == "-h" || token == "--help";
+}
 
 // Only "--name" tokens are options. A single dash stays positional, so a
 // prompt such as "- a list" or a negative number is never mistaken for one.
@@ -239,7 +241,8 @@ ParseResult Command::parse(std::span<const std::string_view> tokens) {
             if (arg->given_ == Arg::Given::Positionally) {
                 throw UsageError(arg->name_ + ": given both as an argument and as " + label);
             }
-            if (arg->given_ == Arg::Given::ByName) throw UsageError(label + ": given more than once");
+            if (arg->given_ == Arg::Given::ByName)
+                throw UsageError(label + ": given more than once");
             arg->store_(value, label);
             arg->given_ = Arg::Given::ByName;
             continue;
@@ -327,7 +330,8 @@ std::string Command::help() const {
                 arguments.push_back({"<" + arg.name_ + ">", text});
                 break;
             case Arg::Kind::Optional:
-                arguments.push_back({"[" + arg.name_ + "], " + arg.flag_ + " " + arg.metavar_, text});
+                arguments.push_back(
+                    {"[" + arg.name_ + "], " + arg.flag_ + " " + arg.metavar_, text});
                 break;
             case Arg::Kind::Option:
                 options.push_back({arg.flag_ + " " + arg.metavar_, text});

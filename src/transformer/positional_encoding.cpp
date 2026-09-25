@@ -4,10 +4,8 @@
 
 namespace grad {
 
-PositionalEncoding::PositionalEncoding(int max_len, int d_model) :
-    max_len_(max_len),
-    d_model_(d_model)
-{
+PositionalEncoding::PositionalEncoding(int max_len, int d_model)
+    : max_len_(max_len), d_model_(d_model) {
     const size_t rows = narrow<size_t>(max_len);
     const size_t cols = narrow<size_t>(d_model);
     Tensor pos_emb(rows, cols);
@@ -24,8 +22,8 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
         throw std::out_of_range("Sequence length exceeds max_len");
     }
 
-    const Tensor pos_slice = position_embeddings->getData().slice(
-        0, seq_len, 0, static_cast<size_t>(d_model_));
+    const Tensor pos_slice =
+        position_embeddings->getData().slice(0, seq_len, 0, static_cast<size_t>(d_model_));
     const bool needs_grad = compute_requires_grad(embeddings, position_embeddings);
     auto output = Variable::create(emb_tensor.add(pos_slice), needs_grad);
 

@@ -69,8 +69,8 @@ void accumulate_add_grad(const Tensor& dO, const Tensor& x, Tensor& grad) {
         return;
     }
     if (x.getIs3D()) {
-        throw std::runtime_error("add backward: operand " + x.shape().to_string() +
-                                 " does not broadcast to " + dO.shape().to_string());
+        throw std::runtime_error("add backward: operand " + x.shape().to_string()
+                                 + " does not broadcast to " + dO.shape().to_string());
     }
     const size_t C = dO.getCols();
     if (x.getRows() == 1 && x.getCols() == C && C > 1) {
@@ -124,7 +124,8 @@ std::shared_ptr<Variable> Variable::create(size_t rows, size_t cols, bool requir
     return std::make_shared<Variable>(Private{}, rows, cols, requires_grad);
 }
 
-std::shared_ptr<Variable> Variable::create(size_t batch_size, size_t rows, size_t cols, bool requires_grad) {
+std::shared_ptr<Variable> Variable::create(size_t batch_size, size_t rows, size_t cols,
+                                           bool requires_grad) {
     return std::make_shared<Variable>(Private{}, batch_size, rows, cols, requires_grad);
 }
 
@@ -138,9 +139,9 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
 
     Tensor result = this->data.matmul(other->data);
     const bool needs_grad = compute_requires_grad(this, other);
-    
+
     auto node = createOutput(std::move(result), needs_grad);
-    
+
     if (needs_grad) {
         auto self_ptr = shared_from_this();
         node->setBackward({self_ptr, other}, [self_ptr, other](Variable& output) {
@@ -161,14 +162,14 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
                 if (self_ptr->requires_grad) {
                     self_ptr->ensureGrad();
                     // dX += dY @ W^T
-                    blas_sgemm_ex(dY.raw(), other->data.raw(), self_ptr->grad.raw(),
-                                  flat, K, N, false, true, 1.0f, 1.0f);
+                    blas_sgemm_ex(dY.raw(), other->data.raw(), self_ptr->grad.raw(), flat, K, N,
+                                  false, true, 1.0f, 1.0f);
                 }
                 if (other->requires_grad) {
                     other->ensureGrad();
                     // dW += X^T @ dY
-                    blas_sgemm_ex(X.raw(), dY.raw(), other->grad.raw(),
-                                  K, N, flat, true, false, 1.0f, 1.0f);
+                    blas_sgemm_ex(X.raw(), dY.raw(), other->grad.raw(), K, N, flat, true, false,
+                                  1.0f, 1.0f);
                 }
             } else {
                 if (self_ptr->requires_grad) {
@@ -213,14 +214,13 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
     return node;
 }
 
-
 std::shared_ptr<Variable> Variable::scale(float factor) {
     data.assertValid("Variable::scale(x)");
 
     Tensor result = this->data.scale(factor);
     const bool needs_grad = compute_requires_grad(this);
     auto node = createOutput(std::move(result), needs_grad);
-    
+
     if (needs_grad) {
         auto self_ptr = shared_from_this();
         node->setBackward({self_ptr}, [self_ptr, factor](Variable& output) {
@@ -240,7 +240,7 @@ std::shared_ptr<Variable> Variable::softmax() {
     Tensor result = this->data.softmax();
     const bool needs_grad = compute_requires_grad(this);
     auto node = createOutput(std::move(result), needs_grad);
-    
+
     if (needs_grad) {
         auto self_ptr = shared_from_this();
         // The softmax output needed by backward IS this node's data; the
@@ -330,8 +330,8 @@ std::shared_ptr<Variable> Variable::gelu() {
                     float xi = x_data[begin + i];
                     float tv = t[i];
                     float sech_sq = 1.0f - tv * tv;
-                    float dgelu = 0.5f * (1.0f + tv
-                        + xi * sech_sq * k * (1.0f + 3.0f * a * xi * xi));
+                    float dgelu =
+                        0.5f * (1.0f + tv + xi * sech_sq * k * (1.0f + 3.0f * a * xi * xi));
                     dX[begin + i] += dgelu * dY[begin + i];
                 }
             });
@@ -435,7 +435,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
     Tensor result = this->data.elementwise(mask);
     const bool needs_grad = compute_requires_grad(this);
     auto node = createOutput(std::move(result), needs_grad);
-    
+
     if (needs_grad) {
         auto self_ptr = shared_from_this();
         auto mask_ptr = std::make_shared<Tensor>(std::move(mask));
@@ -529,8 +529,8 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
     const size_t vocab = data.getCols();
     const size_t n = data.numel() / vocab;
     if (targets->data.numel() != n) {
-        throw std::invalid_argument("nll_loss: " + std::to_string(targets->data.numel()) +
-                                    " targets for " + std::to_string(n) + " rows");
+        throw std::invalid_argument("nll_loss: " + std::to_string(targets->data.numel())
+                                    + " targets for " + std::to_string(n) + " rows");
     }
 
     const float* logp = data.raw();
@@ -572,17 +572,18 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
     return node;
 }
 
-void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) {
+void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted,
+                               std::unordered_set<Variable*>& visited) {
     if (visited.find(this) != visited.end()) {
         return;
     }
-    
+
     visited.insert(this);
-    
+
     for (const auto& child : children) {
         child->topologicalSort(sorted, visited);
     }
-    
+
     sorted.push_back(shared_from_this());
 }
 
@@ -594,8 +595,8 @@ void Variable::backward() {
         throw std::logic_error("Variable::backward(): root does not require grad");
     }
     if (data.numel() != 1) {
-        throw std::logic_error("Variable::backward(): root must be a scalar, got " +
-                               std::to_string(data.numel()) + " elements");
+        throw std::logic_error("Variable::backward(): root must be a scalar, got "
+                               + std::to_string(data.numel()) + " elements");
     }
     ensureGrad();
     grad.fill(1.0f);

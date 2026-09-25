@@ -26,8 +26,8 @@ inline uint64_t splitmix64(uint64_t& x) {
     return z ^ (z >> 31);
 }
 
-void fill_block(float* mask, size_t begin, size_t end, uint64_t stream_key,
-                uint32_t threshold, float scale) {
+void fill_block(float* mask, size_t begin, size_t end, uint64_t stream_key, uint32_t threshold,
+                float scale) {
     // State lives in registers for the block. The block index is folded
     // into the splitmix input, so neighbouring blocks (and neighbouring
     // streams) start from unrelated states.
@@ -69,8 +69,7 @@ void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale) {
     fill_dropout_mask(mask, n, dropout_rate, scale, reserve_dropout_streams(1));
 }
 
-void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale,
-                       uint64_t stream) {
+void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale, uint64_t stream) {
     // One xorshift128+ draw yields four independent 16-bit lanes, so the
     // RNG steps once per four mask values - per-element draws measured at
     // ~14% of training-step CPU (BENCHMARKS.md #10). 16-bit thresholds

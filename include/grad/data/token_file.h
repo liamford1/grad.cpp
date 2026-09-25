@@ -42,27 +42,28 @@ struct Unmap {
 // (a compare per token, next to a full forward pass) rather than by a scan
 // at open, which would page in the whole file: 726MB for TinyStories.
 class MappedTokenDataset : public Dataset {
-    private:
-        // munmap on destruction. The file descriptor is closed as soon as
-        // the mapping exists; the mapping keeps the file alive by itself.
-        std::unique_ptr<void, tokenfile::Unmap> map_;
-        const uint16_t* tokens_ = nullptr;
-        size_t count_ = 0;
-        int vocab_size_ = 0;
-        size_t seq_length_;
-        size_t stride_;
-    public:
-        // stride = 1 for training windows, seq_length for non-overlapping
-        // evaluation windows (same convention as TextDataset).
-        MappedTokenDataset(const std::string& path, int seq_length, int stride = 1);
-        MappedTokenDataset(const MappedTokenDataset&) = delete;
-        MappedTokenDataset& operator=(const MappedTokenDataset&) = delete;
+private:
+    // munmap on destruction. The file descriptor is closed as soon as
+    // the mapping exists; the mapping keeps the file alive by itself.
+    std::unique_ptr<void, tokenfile::Unmap> map_;
+    const uint16_t* tokens_ = nullptr;
+    size_t count_ = 0;
+    int vocab_size_ = 0;
+    size_t seq_length_;
+    size_t stride_;
 
-        size_t size() const override;
-        std::pair<std::vector<int>, std::vector<int>> get_item(size_t index) const override;
+public:
+    // stride = 1 for training windows, seq_length for non-overlapping
+    // evaluation windows (same convention as TextDataset).
+    MappedTokenDataset(const std::string& path, int seq_length, int stride = 1);
+    MappedTokenDataset(const MappedTokenDataset&) = delete;
+    MappedTokenDataset& operator=(const MappedTokenDataset&) = delete;
 
-        int vocabSize() const { return vocab_size_; }
-        size_t tokenCount() const { return count_; }
+    size_t size() const override;
+    std::pair<std::vector<int>, std::vector<int>> get_item(size_t index) const override;
+
+    int vocabSize() const { return vocab_size_; }
+    size_t tokenCount() const { return count_; }
 };
 
 }  // namespace grad

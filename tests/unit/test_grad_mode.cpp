@@ -27,13 +27,12 @@ namespace {
 
 int g_failures = 0;
 
-#define CHECK(cond)                                                         \
-    do {                                                                    \
-        if (!(cond)) {                                                      \
-            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__,    \
-                         #cond);                                            \
-            g_failures++;                                                   \
-        }                                                                   \
+#define CHECK(cond)                                                              \
+    do {                                                                         \
+        if (!(cond)) {                                                           \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+            g_failures++;                                                        \
+        }                                                                        \
     } while (0)
 
 bool throws_logic_error(const std::function<void()>& fn) {
@@ -110,8 +109,10 @@ void test_ops_under_guard() {
 
     NoGradGuard no_grad;
     const std::vector<std::shared_ptr<Variable>> outputs = {
-        x->matmul(w), x->add(y), x->scale(2.0f), x->softmax(), x->gelu(),
-        x->silu(), x->mul(y), x->dropout(0.5f, /*training=*/true),
+        x->matmul(w),     x->add(y),
+        x->scale(2.0f),   x->softmax(),
+        x->gelu(),        x->silu(),
+        x->mul(y),        x->dropout(0.5f, /*training=*/true),
         x->log_softmax(), x->log_softmax()->nll_loss(targets),
     };
     for (const auto& out : outputs) CHECK(!out->requiresGrad());
@@ -123,7 +124,9 @@ void test_ops_under_guard() {
     CHECK(!x->hasGrad() && !y->hasGrad() && !w->hasGrad());
 }
 
-float loss_value(const std::shared_ptr<Variable>& loss) { return loss->getData().raw()[0]; }
+float loss_value(const std::shared_ptr<Variable>& loss) {
+    return loss->getData().raw()[0];
+}
 
 void test_model_under_guard(GPTArch arch) {
     Tensor::set_init_seed(21);
@@ -136,7 +139,8 @@ void test_model_under_guard(GPTArch arch) {
     auto params = model.getAllParameters();
     auto loss_of = [&](bool training) {
         return model.forward(Variable::create(ids, false), training)
-            ->log_softmax()->nll_loss(Variable::create(next, false));
+            ->log_softmax()
+            ->nll_loss(Variable::create(next, false));
     };
     auto grads_of_one_step = [&] {
         for (auto& p : params) p->zeroGrad();

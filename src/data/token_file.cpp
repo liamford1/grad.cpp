@@ -95,7 +95,9 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
     // the throws below; the mapping outlives it.
     struct Fd {
         int fd;
-        ~Fd() { if (fd >= 0) ::close(fd); }
+        ~Fd() {
+            if (fd >= 0) ::close(fd);
+        }
     } file{::open(path.c_str(), O_RDONLY)};
     if (file.fd < 0) {
         throw std::runtime_error("Cannot open token file: " + path);
@@ -159,10 +161,9 @@ std::pair<std::vector<int>, std::vector<int>> MappedTokenDataset::get_item(size_
     const uint16_t* window = tokens_ + start;
     for (size_t i = 0; i <= seq_length_; i++) {
         if (window[i] >= vocab_size_) {
-            throw std::runtime_error("token id " + std::to_string(window[i])
-                                     + " at offset " + std::to_string(start + i)
-                                     + " is outside the file's vocab of "
-                                     + std::to_string(vocab_size_));
+            throw std::runtime_error(
+                "token id " + std::to_string(window[i]) + " at offset " + std::to_string(start + i)
+                + " is outside the file's vocab of " + std::to_string(vocab_size_));
         }
     }
     for (size_t i = 0; i < seq_length_; i++) {

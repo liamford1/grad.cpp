@@ -9,7 +9,7 @@ using namespace grad;
 
 int main() {
     std::cout << "=== Weight Tying Verification ===" << std::endl;
-    
+
     int vocab_size = 256;
     int d_model = 128;
     int num_layers = 2;
@@ -17,12 +17,12 @@ int main() {
     int max_len = 512;
     const size_t vocab = static_cast<size_t>(vocab_size);
     const size_t dm = static_cast<size_t>(d_model);
-    
+
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, 0.0f);
-    
+
     auto params = model.getAllParameters();
     std::cout << "Total parameter tensors: " << params.size() << std::endl;
-    
+
     size_t total_params = 0;
     for (const auto& p : params) {
         total_params += p->getData().numel();
@@ -30,21 +30,22 @@ int main() {
     std::cout << "Total parameter count: " << total_params << std::endl;
 
     size_t without_tying = total_params + dm * vocab + vocab;
-    
+
     std::cout << "\nWith weight tying: " << total_params << " parameters" << std::endl;
     std::cout << "Without tying would be: " << without_tying << " parameters" << std::endl;
     std::cout << "Saved: " << (without_tying - total_params) << " parameters" << std::endl;
-    
+
     auto input = Variable::create(Tensor(1, 10), true);
     for (size_t i = 0; i < 10; i++) {
         input->getData().setValue(0, i, static_cast<float>(i % vocab));
     }
-    
+
     std::cout << "\nRunning forward pass..." << std::endl;
     auto output = model.forward(input, false);
-    
+
     std::cout << "Input shape: (1, " << input->getData().getCols() << ")" << std::endl;
-    std::cout << "Output shape: (" << output->getData().getRows() << ", " << output->getData().getCols() << ")" << std::endl;
+    std::cout << "Output shape: (" << output->getData().getRows() << ", "
+              << output->getData().getCols() << ")" << std::endl;
     std::cout << "Expected output cols: " << vocab_size << std::endl;
 
     CHECK(output->getData().getCols() == static_cast<size_t>(vocab_size));
@@ -70,7 +71,8 @@ int main() {
     }
     for (const auto& p : params) p->zeroGrad();
     auto loss = model.forward(Variable::create(ids, false), false)
-                    ->log_softmax()->nll_loss(Variable::create(targets, false));
+                    ->log_softmax()
+                    ->nll_loss(Variable::create(targets, false));
     loss->backward();
     const Tensor& grad = table->getGrad();
     bool unused_rows_have_grad = true;

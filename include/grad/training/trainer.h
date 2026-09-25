@@ -40,9 +40,7 @@ struct TrainingConfig {
 
 class Trainer {
 public:
-    Trainer(const TrainingConfig& config,
-            GPTModel& model,
-            DataLoader& loader,
+    Trainer(const TrainingConfig& config, GPTModel& model, DataLoader& loader,
             DataLoader* val_loader = nullptr);
 
     // Returns false when the run was interrupted (SIGINT/SIGTERM): resume

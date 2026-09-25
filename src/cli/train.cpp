@@ -44,7 +44,7 @@ std::string checkpoint_stem(const std::string& corpus_path) {
 
 std::string checkpoint_prefix(const std::string& corpus_path, const Preset& preset) {
     return checkpoint_stem(corpus_path) + (preset.modern ? "_modern" : "")
-         + (preset.is_smoke_test() ? "_fast" : "");
+           + (preset.is_smoke_test() ? "_fast" : "");
 }
 
 struct TrainingData {
@@ -221,8 +221,9 @@ int train(const TrainRequest& request) {
     }
 
     BPETokenizer tokenizer(preset.vocab_size);
-    const bool prepared = tokenfile::exists(token_bin_path(corpus_path, preset.vocab_size, "train"))
-                       && tokenfile::exists(token_bin_path(corpus_path, preset.vocab_size, "val"));
+    const bool prepared =
+        tokenfile::exists(token_bin_path(corpus_path, preset.vocab_size, "train"))
+        && tokenfile::exists(token_bin_path(corpus_path, preset.vocab_size, "val"));
     const TrainingData data =
         prepared ? map_prepared(corpus_path, preset.vocab_size, preset.seq_length, tokenizer)
                  : encode_in_memory(corpus_path, preset.vocab_size, preset.seq_length, tokenizer);
@@ -238,8 +239,8 @@ int train(const TrainRequest& request) {
     GPTModel model = [&]() -> GPTModel {
         if (resume) return GPTModel::load(prefix + "_resume_model.bin");
         if (!warm_start_path.empty()) {
-            std::cout << "Warm start from " << warm_start_path
-                      << " (weights only, fresh optimizer)" << std::endl;
+            std::cout << "Warm start from " << warm_start_path << " (weights only, fresh optimizer)"
+                      << std::endl;
             return GPTModel::load(warm_start_path);
         }
         return GPTModel(config.vocab_size, config.d_model, config.num_layers, config.num_heads,
@@ -265,7 +266,8 @@ int train(const TrainRequest& request) {
     DataLoader val_loader(data.val, config.batch_size, false);
 
     std::cout << "Dataset: " << data.train->size() << " train / " << data.val->size()
-              << " val sequences\n" << std::endl;
+              << " val sequences\n"
+              << std::endl;
 
     training::Trainer trainer(config, model, loader, &val_loader);
     if (resume && !trainer.load_resume_state()) {
@@ -282,7 +284,8 @@ int train(const TrainRequest& request) {
                           : "train " + corpus_path + " " + std::string(preset.name))
                   << " resume"
                   << (request.seed != kDefaultSeed ? " --seed " + std::to_string(request.seed) : "")
-                  << "\n" << std::endl;
+                  << "\n"
+                  << std::endl;
         return 0;
     }
 
@@ -319,10 +322,11 @@ int run_train(const Invocation& invocation) {
     std::uint32_t seed = kDefaultSeed;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("Uses the corpus's prepared .bin token files when they exist (see prepare), "
-                 "else encodes it in memory. Ctrl-C, or SIGTERM, stops at the next step and "
-                 "saves <prefix>_resume_model.bin and _resume_state.bin, which are also "
-                 "refreshed at every eval interval.");
+    cmd.describe(
+        "Uses the corpus's prepared .bin token files when they exist (see prepare), "
+        "else encodes it in memory. Ctrl-C, or SIGTERM, stops at the next step and "
+        "saves <prefix>_resume_model.bin and _resume_state.bin, which are also "
+        "refreshed at every eval interval.");
     cmd.optional("corpus", corpus, "plain-text corpus");
     cmd.optional("preset", preset_name, "one of " + train_preset_names() + "; see grad presets");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
@@ -331,8 +335,8 @@ int run_train(const Invocation& invocation) {
 
     const Preset* preset = find_preset(preset_name);
     if (!preset || preset->name == "fast") {
-        throw UsageError("unknown preset '" + preset_name + "' (available: "
-                         + train_preset_names() + ")");
+        throw UsageError("unknown preset '" + preset_name + "' (available: " + train_preset_names()
+                         + ")");
     }
     return train({.preset = *preset,
                   .corpus_path = corpus,
@@ -347,8 +351,9 @@ int run_train_fast(const Invocation& invocation) {
     std::uint32_t seed = kDefaultSeed;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("Runs train with the 'fast' preset: a 2-layer model for 50 steps, about a minute. "
-                 "Checkpoints are prefixed <corpus>_fast so they never overwrite a real run.");
+    cmd.describe(
+        "Runs train with the 'fast' preset: a 2-layer model for 50 steps, about a minute. "
+        "Checkpoints are prefixed <corpus>_fast so they never overwrite a real run.");
     cmd.optional("corpus", corpus, "plain-text corpus");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
     cmd.option("--seed", seed, kSeedHelp);

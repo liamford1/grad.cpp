@@ -41,14 +41,15 @@ void check_dims(const Shape& shape) {
     for (size_t axis = 0; axis < shape.rank(); axis++) {
         const size_t n = shape[axis];
         if (n == 0) {
-            throw std::invalid_argument("Tensor dimensions must be positive, got " + shape.to_string());
+            throw std::invalid_argument("Tensor dimensions must be positive, got "
+                                        + shape.to_string());
         }
         // Compared by division so the check cannot itself overflow: a
         // product that wraps size_t would otherwise pass as a small tensor.
         if (n > kMaxTensorElements / total) {
-            throw std::overflow_error("Tensor too large: " + shape.to_string() +
-                                      " exceeds the maximum of " +
-                                      std::to_string(kMaxTensorElements) + " elements");
+            throw std::overflow_error("Tensor too large: " + shape.to_string()
+                                      + " exceeds the maximum of "
+                                      + std::to_string(kMaxTensorElements) + " elements");
         }
         total *= n;
     }
@@ -66,8 +67,8 @@ bool same_leading_dims(const Shape& a, const Shape& b) {
 
 void require_same_shape(const Tensor& a, const Tensor& b, const char* op) {
     if (a.shape() != b.shape()) {
-        throw std::invalid_argument(std::string(op) + ": shapes " + a.shape().to_string() +
-                                    " and " + b.shape().to_string() + " differ");
+        throw std::invalid_argument(std::string(op) + ": shapes " + a.shape().to_string() + " and "
+                                    + b.shape().to_string() + " differ");
     }
 }
 
@@ -81,14 +82,12 @@ struct BroadcastOperand {
 
 BroadcastOperand broadcast_operand(const Tensor& t, size_t rows, size_t cols) {
     const bool batched = t.getIs3D();
-    return {t.raw(),
-            batched ? t.getRows() * t.getCols() : 0,
-            t.getRows() == rows ? t.getCols() : 0,
+    return {t.raw(), batched ? t.getRows() * t.getCols() : 0, t.getRows() == rows ? t.getCols() : 0,
             t.getCols() == cols ? size_t{1} : size_t{0}};
 }
 
-void broadcast_add(const BroadcastOperand& a, const BroadcastOperand& b, float* out,
-                   size_t batch, size_t rows, size_t cols) {
+void broadcast_add(const BroadcastOperand& a, const BroadcastOperand& b, float* out, size_t batch,
+                   size_t rows, size_t cols) {
     for (size_t n = 0; n < batch; n++) {
         for (size_t i = 0; i < rows; i++) {
             const float* ar = a.data + n * a.batch_stride + i * a.row_stride;
@@ -97,7 +96,8 @@ void broadcast_add(const BroadcastOperand& a, const BroadcastOperand& b, float* 
             if (a.col_stride == 1 && b.col_stride == 1) {
                 for (size_t j = 0; j < cols; j++) o[j] = ar[j] + br[j];
             } else {
-                for (size_t j = 0; j < cols; j++) o[j] = ar[j * a.col_stride] + br[j * b.col_stride];
+                for (size_t j = 0; j < cols; j++)
+                    o[j] = ar[j * a.col_stride] + br[j * b.col_stride];
             }
         }
     }
@@ -122,8 +122,8 @@ InitStream& init_stream() {
 
 Shape::Shape(std::initializer_list<size_t> dims) {
     if (dims.size() > kMaxRank) {
-        throw std::invalid_argument("Shape: rank " + std::to_string(dims.size()) +
-                                    " exceeds the maximum of " + std::to_string(kMaxRank));
+        throw std::invalid_argument("Shape: rank " + std::to_string(dims.size())
+                                    + " exceeds the maximum of " + std::to_string(kMaxRank));
     }
     numel_ = 1;
     for (size_t n : dims) {
@@ -212,8 +212,7 @@ Tensor::Tensor(const Tensor& other) : shape_(other.shape_) {
 }
 
 Tensor::Tensor(Tensor&& other) noexcept
-    : data(std::move(other.data)),
-      shape_(std::exchange(other.shape_, Shape{})) {}
+    : data(std::move(other.data)), shape_(std::exchange(other.shape_, Shape{})) {}
 
 // Copy-and-swap: the copy may throw, but *this is not touched until it has
 // succeeded, so assignment is strongly exception-safe. The temporary takes
@@ -267,11 +266,11 @@ Tensor Tensor::matmul(const Tensor& other) const {
     other.assertValid("matmul(rhs)");
 
     const bool batched_rhs = other.getIs3D();
-    const bool compatible = getCols() == other.getRows() &&
-        (!batched_rhs || same_leading_dims(shape_, other.shape_));
+    const bool compatible =
+        getCols() == other.getRows() && (!batched_rhs || same_leading_dims(shape_, other.shape_));
     if (rank() < 2 || other.rank() < 2 || !compatible) {
-        throw std::invalid_argument("matmul: cannot multiply " + shape_.to_string() +
-                                    " by " + other.shape_.to_string());
+        throw std::invalid_argument("matmul: cannot multiply " + shape_.to_string() + " by "
+                                    + other.shape_.to_string());
     }
 
     const size_t M = getRows();
@@ -285,10 +284,8 @@ Tensor Tensor::matmul(const Tensor& other) const {
     // (256x768 @ 768x3072) is 1.2 GFLOP against a 10 GFLOP threshold, so
     // each call runs the same cblas_sgemm it always did.
     for (size_t b = 0; b < getBatchSize(); b++) {
-        blas_sgemm_ex(data.get() + b * M * K,
-                      other.data.get() + (batched_rhs ? b * K * N : 0),
-                      result.data.get() + b * M * N,
-                      M, N, K, false, false, 1.0f, 0.0f);
+        blas_sgemm_ex(data.get() + b * M * K, other.data.get() + (batched_rhs ? b * K * N : 0),
+                      result.data.get() + b * M * N, M, N, K, false, false, 1.0f, 0.0f);
     }
     return result;
 }
@@ -307,25 +304,26 @@ Tensor Tensor::add(const Tensor& other) const {
     // broadcast, to the larger extent on each axis.
     const bool fixed_lhs = getIs3D();
     const bool fixed_rhs = other.getIs3D();
-    const Shape out_shape = fixed_lhs ? shape_
-        : fixed_rhs ? other.shape_
-        : Shape{std::max(getRows(), other.getRows()), std::max(getCols(), other.getCols())};
+    const Shape out_shape = fixed_lhs   ? shape_
+                            : fixed_rhs ? other.shape_
+                                        : Shape{std::max(getRows(), other.getRows()),
+                                                std::max(getCols(), other.getCols())};
     const size_t R = out_shape[out_shape.rank() - 2];
     const size_t C = out_shape[out_shape.rank() - 1];
 
     auto fits = [&](const Tensor& t, bool fixed) {
         if (fixed) return t.shape_ == out_shape;
-        return t.rank() == 2 && (t.getRows() == R || t.getRows() == 1) &&
-               (t.getCols() == C || t.getCols() == 1);
+        return t.rank() == 2 && (t.getRows() == R || t.getRows() == 1)
+               && (t.getCols() == C || t.getCols() == 1);
     };
     if (!fits(*this, fixed_lhs) || !fits(other, fixed_rhs)) {
-        throw std::invalid_argument("add: shapes " + shape_.to_string() + " and " +
-                                    other.shape_.to_string() + " do not broadcast");
+        throw std::invalid_argument("add: shapes " + shape_.to_string() + " and "
+                                    + other.shape_.to_string() + " do not broadcast");
     }
 
     Tensor result = uninitialized(out_shape);
-    broadcast_add(broadcast_operand(*this, R, C), broadcast_operand(other, R, C),
-                  result.raw(), result.getBatchSize(), R, C);
+    broadcast_add(broadcast_operand(*this, R, C), broadcast_operand(other, R, C), result.raw(),
+                  result.getBatchSize(), R, C);
     return result;
 }
 
@@ -423,17 +421,15 @@ Tensor Tensor::slice(size_t start_row, size_t num_rows, size_t start_col, size_t
     if (rank() != 2) throw std::invalid_argument("slice: 2D tensors only");
 
     if (start_row + num_rows > getRows() || start_col + num_cols > getCols()) {
-        throw std::invalid_argument("slice: rows [" + std::to_string(start_row) + ", " +
-                                    std::to_string(start_row + num_rows) + ") x cols [" +
-                                    std::to_string(start_col) + ", " +
-                                    std::to_string(start_col + num_cols) + ") is outside " +
-                                    shape_.to_string());
+        throw std::invalid_argument(
+            "slice: rows [" + std::to_string(start_row) + ", "
+            + std::to_string(start_row + num_rows) + ") x cols [" + std::to_string(start_col) + ", "
+            + std::to_string(start_col + num_cols) + ") is outside " + shape_.to_string());
     }
 
     Tensor result = uninitialized(num_rows, num_cols);
     for (size_t i = 0; i < num_rows; i++) {
-        std::memcpy(result.raw() + i * num_cols,
-                    raw() + (start_row + i) * getCols() + start_col,
+        std::memcpy(result.raw() + i * num_cols, raw() + (start_row + i) * getCols() + start_col,
                     num_cols * sizeof(float));
     }
     return result;
@@ -474,8 +470,8 @@ void Tensor::assertValid(const std::string& context) const {
     // Storage exists exactly when the shape passed check_dims, so a null
     // pointer covers both an empty and a moved-from tensor.
     if (!data) {
-        throw std::runtime_error("Tensor error [" + context + "]: no data (shape " +
-                                 shape_.to_string() + ")");
+        throw std::runtime_error("Tensor error [" + context + "]: no data (shape "
+                                 + shape_.to_string() + ")");
     }
 }
 

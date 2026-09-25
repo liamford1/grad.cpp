@@ -102,14 +102,15 @@ constexpr Preset kMedium{
 
 // The modern-architecture twins differ from their GPT-2 originals in the
 // block alone.
-constexpr Preset with_modern_block(Preset preset, std::string_view name,
-                                   std::string_view purpose) {
+constexpr Preset with_modern_block(Preset preset, std::string_view name, std::string_view purpose) {
     preset.name = name;
     preset.purpose = purpose;
     preset.modern = true;
     return preset;
 }
 
+// One preset per line; clang-format would pack the short names into columns.
+// clang-format off
 constexpr std::array kPresets{
     kFast,
     with_modern_block(kFast, "fast-modern", "smoke test of the modern block"),
@@ -117,6 +118,7 @@ constexpr std::array kPresets{
     kMedium,
     with_modern_block(kMedium, "modern", "architecture A/B against medium"),
 };
+// clang-format on
 
 }  // namespace
 

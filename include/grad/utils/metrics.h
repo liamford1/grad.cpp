@@ -18,12 +18,10 @@ namespace grad::utils {
 // wall_s restarts at zero on resume; readers sum segments for elapsed.
 class MetricsLog {
 public:
-    MetricsLog(const std::string& path, bool append,
-               int total_steps, long tokens_per_step,
+    MetricsLog(const std::string& path, bool append, int total_steps, long tokens_per_step,
                size_t param_count, const std::string& model_desc);
 
-    void log_step(int step, float loss, float lr, float grad_norm,
-                  long step_ms, long mem_mb);
+    void log_step(int step, float loss, float lr, float grad_norm, long step_ms, long mem_mb);
     void log_eval(int step, float val_loss);
 
 private:

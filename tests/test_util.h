@@ -30,9 +30,8 @@ inline bool record_near(double actual, double expected, double tol, const char* 
     const bool ok = std::abs(actual - expected) <= tol;
     if (!ok) {
         ++failure_count();
-        std::cerr << file << ":" << line << ": CHECK_NEAR failed: " << expr
-                  << " (actual " << actual << ", expected " << expected
-                  << ", tolerance " << tol << ")" << std::endl;
+        std::cerr << file << ":" << line << ": CHECK_NEAR failed: " << expr << " (actual " << actual
+                  << ", expected " << expected << ", tolerance " << tol << ")" << std::endl;
     }
     return ok;
 }
@@ -51,7 +50,7 @@ inline int exit_code() {
 }  // namespace test_util
 
 #define CHECK(cond) ::test_util::record(static_cast<bool>(cond), #cond, __FILE__, __LINE__)
-#define CHECK_NEAR(actual, expected, tol)                                              \
-    ::test_util::record_near(static_cast<double>(actual), static_cast<double>(expected), \
-                             static_cast<double>(tol),                                  \
-                             #actual " ~= " #expected, __FILE__, __LINE__)
+#define CHECK_NEAR(actual, expected, tol)                                                  \
+    ::test_util::record_near(static_cast<double>(actual), static_cast<double>(expected),   \
+                             static_cast<double>(tol), #actual " ~= " #expected, __FILE__, \
+                             __LINE__)

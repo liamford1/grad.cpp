@@ -18,31 +18,30 @@
 namespace grad {
 
 GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
-                   float dropout_rate, GPTArch arch) :
-    vocab_size_(vocab_size),
-    d_model_(d_model),
-    num_layers_(num_layers),
-    num_heads_(num_heads),
-    max_len_(max_len),
-    dropout_rate_(dropout_rate),
-    arch_(arch),
-    token_embedding(vocab_size, d_model),
-    pos_encoding(max_len, d_model),
-    final_norm(d_model, /*rms=*/arch == GPTArch::Modern)
-{
+                   float dropout_rate, GPTArch arch)
+    : vocab_size_(vocab_size),
+      d_model_(d_model),
+      num_layers_(num_layers),
+      num_heads_(num_heads),
+      max_len_(max_len),
+      dropout_rate_(dropout_rate),
+      arch_(arch),
+      token_embedding(vocab_size, d_model),
+      pos_encoding(max_len, d_model),
+      final_norm(d_model, /*rms=*/arch == GPTArch::Modern) {
     for (int i = 0; i < num_layers; i++) {
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(
             d_model, num_heads, -1, dropout_rate, arch == GPTArch::Modern));
     }
 }
 
-std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
+std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
+                                            bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
     // Modern arch: position comes from RoPE inside attention, not from
     // learned embeddings added to the residual stream.
-    auto transformer_input = arch_ == GPTArch::Modern
-        ? embed_tokens
-        : pos_encoding.forward(embed_tokens);
+    auto transformer_input =
+        arch_ == GPTArch::Modern ? embed_tokens : pos_encoding.forward(embed_tokens);
 
     if (training && dropout_rate_ > 0.0f) {
         transformer_input = transformer_input->dropout(dropout_rate_, training);
@@ -67,17 +66,16 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     // the transpose happens inside the sgemm instead of materializing E^T.
     const size_t flat_rows = norm_data.getFlatRows();
     Tensor logits_tensor = Tensor::uninitialized(norm_data.shape().with_last_dim(vocab));
-    blas_sgemm_ex(norm_data.raw(), emb_data.raw(), logits_tensor.raw(),
-                  flat_rows, vocab, d_model_dim,
-                  false, true, 1.0f, 0.0f);
+    blas_sgemm_ex(norm_data.raw(), emb_data.raw(), logits_tensor.raw(), flat_rows, vocab,
+                  d_model_dim, false, true, 1.0f, 0.0f);
 
     auto logits = Variable::create(std::move(logits_tensor),
                                    compute_requires_grad(normalized_output, embedding_table));
 
     if (logits->requiresGrad()) {
-        logits->setBackward({normalized_output, embedding_table},
-                            [normalized_output, embedding_table,
-                             flat_rows, vocab, d_model_dim](Variable& node) {
+        logits->setBackward(
+            {normalized_output, embedding_table},
+            [normalized_output, embedding_table, flat_rows, vocab, d_model_dim](Variable& node) {
             const Tensor& grad_logits = node.getGrad();
             const Tensor& norm_values = normalized_output->getData();
             const Tensor& emb_values = embedding_table->getData();
@@ -86,8 +84,7 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
                 normalized_output->ensureGrad();
                 // dNorm += dLogits @ E, accumulated in place (beta = 1)
                 blas_sgemm_ex(grad_logits.raw(), emb_values.raw(),
-                              normalized_output->getGrad().raw(),
-                              flat_rows, d_model_dim, vocab,
+                              normalized_output->getGrad().raw(), flat_rows, d_model_dim, vocab,
                               false, false, 1.0f, 1.0f);
             }
 
@@ -95,9 +92,8 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
                 embedding_table->ensureGrad();
                 // dE += dLogits^T @ Norm, summing over batch*seq via the sgemm
                 blas_sgemm_ex(grad_logits.raw(), norm_values.raw(),
-                              embedding_table->getGrad().raw(),
-                              vocab, d_model_dim, flat_rows,
-                              true, false, 1.0f, 1.0f);
+                              embedding_table->getGrad().raw(), vocab, d_model_dim, flat_rows, true,
+                              false, 1.0f, 1.0f);
             }
         });
     }
@@ -107,7 +103,7 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
 
 std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
     std::vector<std::shared_ptr<Variable>> params;
-    
+
     const bool modern = arch_ == GPTArch::Modern;
 
     params.push_back(token_embedding.getEmbeddingTable());
@@ -139,7 +135,7 @@ std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
         params.push_back(norm2.getGamma());
         params.push_back(norm2.getBeta());
     }
-    
+
     params.push_back(final_norm.getGamma());
     params.push_back(final_norm.getBeta());
 
@@ -192,12 +188,11 @@ public:
     Tensor tensor_like(const Tensor& target, const std::string& what) {
         const int rows = scalar<int>(what.c_str());
         const int cols = scalar<int>(what.c_str());
-        if (rows <= 0 || cols <= 0 ||
-            static_cast<size_t>(rows) != target.getRows() ||
-            static_cast<size_t>(cols) != target.getCols()) {
-            fail(what + " is " + std::to_string(rows) + "x" + std::to_string(cols) +
-                 ", model expects " + std::to_string(target.getRows()) + "x" +
-                 std::to_string(target.getCols()));
+        if (rows <= 0 || cols <= 0 || static_cast<size_t>(rows) != target.getRows()
+            || static_cast<size_t>(cols) != target.getCols()) {
+            fail(what + " is " + std::to_string(rows) + "x" + std::to_string(cols)
+                 + ", model expects " + std::to_string(target.getRows()) + "x"
+                 + std::to_string(target.getCols()));
         }
         Tensor t = Tensor::empty_like(target);
         file_.read(reinterpret_cast<char*>(t.raw()),
@@ -206,9 +201,7 @@ public:
         return t;
     }
 
-    [[noreturn]] void fail(const std::string& msg) const {
-        throw std::runtime_error(msg);
-    }
+    [[noreturn]] void fail(const std::string& msg) const { throw std::runtime_error(msg); }
 
 private:
     std::ifstream& file_;
@@ -216,8 +209,8 @@ private:
 
 void check_range(const CheckpointReader& r, const char* name, int value, int lo, int hi) {
     if (value < lo || value > hi) {
-        r.fail(std::string("header field ") + name + " = " + std::to_string(value) +
-               " is outside [" + std::to_string(lo) + ", " + std::to_string(hi) + "]");
+        r.fail(std::string("header field ") + name + " = " + std::to_string(value) + " is outside ["
+               + std::to_string(lo) + ", " + std::to_string(hi) + "]");
     }
 }
 
@@ -327,8 +320,8 @@ GPTModel GPTModel::load(const std::string& filepath) {
         GPTArch arch = GPTArch::GPT2;
         if (version == 2) {
             const uint32_t arch_tag = in.scalar<uint32_t>("architecture tag");
-            if (arch_tag != static_cast<uint32_t>(GPTArch::GPT2) &&
-                arch_tag != static_cast<uint32_t>(GPTArch::Modern)) {
+            if (arch_tag != static_cast<uint32_t>(GPTArch::GPT2)
+                && arch_tag != static_cast<uint32_t>(GPTArch::Modern)) {
                 in.fail("unknown architecture tag " + std::to_string(arch_tag));
             }
             arch = static_cast<GPTArch>(arch_tag);
@@ -348,8 +341,8 @@ GPTModel GPTModel::load(const std::string& filepath) {
         check_range(in, "num_heads", num_heads, 1, d_model);
         check_range(in, "max_len", max_len, 1, kMaxLen);
         if (d_model % num_heads != 0) {
-            in.fail("d_model " + std::to_string(d_model) +
-                    " is not divisible by num_heads " + std::to_string(num_heads));
+            in.fail("d_model " + std::to_string(d_model) + " is not divisible by num_heads "
+                    + std::to_string(num_heads));
         }
         if (!(dropout_rate >= 0.0f && dropout_rate < 1.0f)) {
             in.fail("dropout_rate " + std::to_string(dropout_rate) + " is outside [0, 1)");
@@ -391,10 +384,9 @@ GPTModel GPTModel::load(const std::string& filepath) {
                 Tensor b1 = in.tensor_like(ff.getLayer1Bias()->getData(), layer + "FFN b1");
                 Tensor w2 = in.tensor_like(ff.getLayer2Weights()->getData(), layer + "FFN W2");
                 Tensor b2 = in.tensor_like(ff.getLayer2Bias()->getData(), layer + "FFN b2");
-                ff.setWeights(Variable::create(std::move(w1), true),
-                              Variable::create(std::move(b1), true),
-                              Variable::create(std::move(w2), true),
-                              Variable::create(std::move(b2), true));
+                ff.setWeights(
+                    Variable::create(std::move(w1), true), Variable::create(std::move(b1), true),
+                    Variable::create(std::move(w2), true), Variable::create(std::move(b2), true));
             }
 
             LayerNorm& norm1 = block->getNorm1Ref();
@@ -407,8 +399,10 @@ GPTModel GPTModel::load(const std::string& filepath) {
             norm2.setParams(gamma2, beta2);
         }
 
-        Tensor final_gamma = in.tensor_like(model.final_norm.getGamma()->getData(), "final norm gamma");
-        Tensor final_beta = in.tensor_like(model.final_norm.getBeta()->getData(), "final norm beta");
+        Tensor final_gamma =
+            in.tensor_like(model.final_norm.getGamma()->getData(), "final norm gamma");
+        Tensor final_beta =
+            in.tensor_like(model.final_norm.getBeta()->getData(), "final norm beta");
         model.final_norm.setParams(final_gamma, final_beta);
 
         file.close();
