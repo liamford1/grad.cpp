@@ -66,7 +66,6 @@ class Variable : public std::enable_shared_from_this<Variable> {
         [[nodiscard]] std::shared_ptr<Variable> scale(float factor);
         [[nodiscard]] std::shared_ptr<Variable> softmax();
 
-        [[nodiscard]] std::shared_ptr<Variable> cross_entropy_loss(std::shared_ptr<Variable> targets);
         [[nodiscard]] std::shared_ptr<Variable> gelu();
         [[nodiscard]] std::shared_ptr<Variable> silu();
         // Elementwise product of two same-shape tensors (the SwiGLU gate).

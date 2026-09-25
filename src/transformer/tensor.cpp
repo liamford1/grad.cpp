@@ -564,22 +564,9 @@ Tensor Tensor::scale(float scaler) const {
     }
 }
 
-Tensor Tensor::reshape(size_t new_rows, size_t new_cols) const {
-    assertValid("reshape(this)");
-    if (is_3d) throw std::invalid_argument("reshape: 3D not supported yet");
-    if (new_rows * new_cols != rows * cols) {
-        throw std::invalid_argument("Matrix sizes do not match for reshape");
-    }
-    Tensor result = Tensor::uninitialized(new_rows, new_cols);
-    float* out = result.raw();
-    const float* in = data.get();
-    for (size_t i = 0; i < new_rows * new_cols; ++i) out[i] = in[i];
-    return result;
-}
-
 Tensor Tensor::slice(size_t start_row, size_t num_rows, size_t start_col, size_t num_cols) const {
     assertValid("slice(this)");
-    if (is_3d) throw std::invalid_argument("slice: 3D not supported yet");
+    if (is_3d) throw std::invalid_argument("slice: 2D tensors only");
 
     if (start_row + num_rows > this->rows || start_col + num_cols > this->cols) {
         throw std::invalid_argument("Out of bounds error");
@@ -625,22 +612,6 @@ Tensor Tensor::create_causal_mask(size_t seq_len) {
                 mask.setValue(i, j, -1e9f);
             } else {
                 mask.setValue(i, j, 0.0f);
-            }
-        }
-    }
-    return mask;
-}
-
-Tensor Tensor::create_causal_mask_batch(size_t batch_size, size_t seq_len) {
-    Tensor mask = Tensor::uninitialized(batch_size, seq_len, seq_len);
-    for (size_t b = 0; b < batch_size; b++) {
-        for (size_t i = 0; i < seq_len; i++) {
-            for (size_t j = 0; j < seq_len; j++) {
-                if (j > i) {
-                    mask.setValue(b, i, j, -1e9f);
-                } else {
-                    mask.setValue(b, i, j, 0.0f);
-                }
             }
         }
     }

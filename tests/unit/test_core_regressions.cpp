@@ -216,6 +216,12 @@ void test_nll_upstream_gradient() {
     }
     CHECK(scaled);
 
+    // backward() on a root that cannot seed a gradient is a caller bug.
+    auto frozen = Variable::create(Tensor(1, 1), false);
+    CHECK(throws<std::logic_error>([&] { frozen->backward(); }));
+    auto vec = Variable::create(Tensor(1, 3), true);
+    CHECK(throws<std::logic_error>([&] { vec->backward(); }));
+
     // One target per row, or it throws.
     auto x = Variable::create(logits, true);
     CHECK(throws<std::invalid_argument>([&] {

@@ -3,7 +3,6 @@
 #include "transformer/blas_wrapper.h"
 #include "transformer/parallel.h"
 #include <cmath>
-#include <iostream>
 #include <algorithm>
 #include <stdexcept>
 #include <string>
@@ -413,134 +412,6 @@ std::shared_ptr<Variable> Variable::softmax() {
     return output;
 }
 
-std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable> targets) {
-    data.assertValid("Variable::cross_entropy_loss(input)");
-    targets->data.assertValid("Variable::cross_entropy_loss(targets)");
-    
-    if (!this->data.getIs3D() && !targets->data.getIs3D()) {
-        Tensor loss_tensor(1, 1);
-        float total_loss = 0.0f;
-        
-        if (targets->data.getCols() == 1) {
-            for (size_t i = 0; i < this->data.getRows(); i++) {
-                int target_idx = static_cast<int>(targets->data.getValue(i, 0));
-                if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
-                    float prob = std::max(this->data.getValue(i, target_idx), 1e-15f);
-                    total_loss -= std::log(prob);
-                }
-            }
-        } else {
-            for (size_t i = 0; i < this->data.getRows(); i++) {
-                for (size_t j = 0; j < this->data.getCols(); j++) {
-                    if (targets->data.getValue(i, j) > 0.0f) {
-                        float prob = std::max(this->data.getValue(i, j), 1e-15f);
-                        total_loss -= targets->data.getValue(i, j) * std::log(prob);
-                    }
-                }
-            }
-        }
-        total_loss /= this->data.getRows();
-        loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
-        
-        if (output->requires_grad) {
-            auto self_ptr = shared_from_this();
-            output->addChild(self_ptr);
-            output->addChild(targets);
-            output->setBackwardFn([self_ptr, targets, output_weak = std::weak_ptr<Variable>(output)]() {
-                auto output = output_weak.lock();
-                if (!output) return;
-                if (self_ptr->requires_grad) {
-                    self_ptr->ensureGrad();
-                    if (targets->data.getCols() == 1) {
-                        Tensor grad_tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
-                        grad_tensor.fill(0.0f);
-                        float scale = 1.0f / self_ptr->data.getRows();
-
-                        for (size_t i = 0; i < self_ptr->data.getRows(); i++) {
-                            int target_idx = static_cast<int>(targets->data.getValue(i, 0));
-                            if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
-                                for (size_t j = 0; j < self_ptr->data.getCols(); j++) {
-                                    float grad_val = self_ptr->data.getValue(i, j) * scale;
-                                    if (j == static_cast<size_t>(target_idx)) {
-                                        grad_val -= scale;
-                                    }
-                                    grad_tensor.setValue(i, j, grad_val);
-                                }
-                            }
-                        }
-                        self_ptr->grad.add_inplace(grad_tensor);
-                    } else {
-                        Tensor diff = self_ptr->data.subtract(targets->data);
-                        Tensor scaled_diff = diff.scale(1.0f / self_ptr->data.getRows());
-                        self_ptr->grad.add_inplace(scaled_diff);
-                    }
-                }
-            });
-        }
-        return output;
-        
-    } else if (this->data.getIs3D()) {
-        Tensor loss_tensor(1, 1);
-        float total_loss = 0.0f;
-        int batch_size = this->data.getBatchSize();
-        int seq_len = this->data.getRows();
-        int total_elements = batch_size * seq_len;
-        
-        for (int b = 0; b < batch_size; b++) {
-            for (int i = 0; i < seq_len; i++) {
-                int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
-
-                if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
-                    float prob = std::max(this->data.getValue(b, i, target_idx), 1e-15f);
-                    total_loss -= std::log(prob);
-                }
-            }
-        }
-        
-        total_loss /= total_elements;
-        loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
-        
-        if (output->requires_grad) {
-            auto self_ptr = shared_from_this();
-            output->addChild(self_ptr);
-            output->addChild(targets);
-            
-            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total_elements, output_weak = std::weak_ptr<Variable>(output)]() {
-                auto output = output_weak.lock();
-                if (!output) return;
-                if (self_ptr->requires_grad) {
-                    self_ptr->ensureGrad();
-                    Tensor grad_tensor(batch_size, seq_len, self_ptr->data.getCols());
-                    grad_tensor.fill(0.0f);
-                    float scale = 1.0f / total_elements;
-
-                    for (int b = 0; b < batch_size; b++) {
-                        for (int i = 0; i < seq_len; i++) {
-                            int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
-
-                            if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
-                                for (size_t j = 0; j < self_ptr->data.getCols(); j++) {
-                                    float grad_val = self_ptr->data.getValue(b, i, j) * scale;
-                                    if (j == static_cast<size_t>(target_idx)) {
-                                        grad_val -= scale;
-                                    }
-                                    grad_tensor.setValue(b, i, j, grad_val);
-                                }
-                            }
-                        }
-                    }
-                    self_ptr->grad.add_inplace(grad_tensor);
-                }
-            });
-        }
-        return output;
-    } else {
-        throw std::runtime_error("Unsupported tensor configuration for cross-entropy loss");
-    }
-}
-
 std::shared_ptr<Variable> Variable::gelu() {
     data.assertValid("Variable::gelu(x)");
 
@@ -881,13 +752,15 @@ void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, s
 }
 
 void Variable::backward() {
+    // Both are caller bugs: with no grad-requiring input there is no graph
+    // to walk, and the root's gradient is seeded with 1, which only means
+    // d(root)/d(root) for a scalar.
     if (!requires_grad) {
-        std::cerr << "Warning: backward() called on Variable that doesn't require grad" << std::endl;
-        return;
+        throw std::logic_error("Variable::backward(): root does not require grad");
     }
-    
     if (data.numel() != 1) {
-        throw std::runtime_error("Variable::backward(): output must be scalar to auto-seed dOut=1. ""For non-scalars, provide an explicit upstream gradient.");
+        throw std::logic_error("Variable::backward(): root must be a scalar, got " +
+                               std::to_string(data.numel()) + " elements");
     }
     ensureGrad();
     grad.fill(1.0f);

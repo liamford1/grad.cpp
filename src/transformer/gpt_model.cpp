@@ -8,7 +8,6 @@
 #include "transformer/blas_wrapper.h"
 #include <cstdint>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -28,20 +27,10 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
     pos_encoding(max_len, d_model),
     final_norm(d_model, /*rms=*/arch == GPTArch::Modern)
 {
-    std::cout << "  Initializing " << num_layers << " transformer layers..." << std::endl;
-    // Save/restore stream format state: leaking fixed(1) here made every
-    // later float print misleading ("Learning rate: 0.0" for 3e-4).
-    std::ios old_state(nullptr);
-    old_state.copyfmt(std::cout);
     for (int i = 0; i < num_layers; i++) {
-        float progress = 100.0f * i / num_layers;
-        std::cout << "\r    Layer [" << i << "/" << num_layers << "] "
-                  << std::fixed << std::setprecision(1) << progress << "%     " << std::flush;
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(
             d_model, num_heads, -1, dropout_rate, arch == GPTArch::Modern));
     }
-    std::cout << "\r    Layer [" << num_layers << "/" << num_layers << "] 100.0%     " << std::endl;
-    std::cout.copyfmt(old_state);
 }
 
 std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids, bool training) const {
