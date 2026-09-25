@@ -35,7 +35,7 @@ public:
     explicit BPETokenizer(int vocab_size);
     void train(const std::string& training_text);
     std::vector<int> encode(const std::string& text) const;
-    std::string decode(const std::vector<int>& tokens) const;
+    std::string decode(const std::vector<int>& token_ids) const;
 
     void save(const std::string& filepath) const;
     // Throws on a missing, truncated, or implausible cache (a corrupt

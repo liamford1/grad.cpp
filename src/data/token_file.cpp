@@ -70,7 +70,7 @@ void write(const std::string& path, const int* data, size_t count, int vocab_siz
 }
 
 bool exists(const std::string& path) {
-    struct stat st;
+    struct stat st{};
     return ::stat(path.c_str(), &st) == 0;
 }
 
@@ -94,6 +94,9 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
     // the throws below; the mapping outlives it.
     struct Fd {
         int fd;
+        explicit Fd(int descriptor) : fd(descriptor) {}
+        Fd(const Fd&) = delete;
+        Fd& operator=(const Fd&) = delete;
         ~Fd() {
             if (fd >= 0) ::close(fd);
         }
@@ -102,7 +105,7 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
         throw std::runtime_error("Cannot open token file: " + path);
     }
 
-    struct stat st;
+    struct stat st{};
     if (::fstat(file.fd, &st) != 0 || st.st_size < 0
         || static_cast<size_t>(st.st_size) < kHeaderBytes) {
         throw std::runtime_error("Token file truncated or unreadable: " + path);

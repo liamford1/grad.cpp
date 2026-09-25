@@ -32,7 +32,7 @@ float compute_grad_norm(const std::vector<std::shared_ptr<Variable>>& params) {
 
 size_t get_memory_mb() {
 #ifdef __APPLE__
-    struct task_basic_info info;
+    struct task_basic_info info{};
     mach_msg_type_number_t size = sizeof(info);
     kern_return_t kerr =
         task_info(mach_task_self(), TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&info), &size);

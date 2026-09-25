@@ -162,6 +162,7 @@ public:
     Command(std::string usage_name, std::string summary);
     Command(const Command&) = delete;
     Command& operator=(const Command&) = delete;
+    ~Command() = default;
 
     // Adds a paragraph to --help, between the summary and the argument list.
     Command& describe(std::string paragraph);
@@ -185,10 +186,10 @@ public:
     // A named switch: --flag sets out to true.
     Arg& flag(std::string flag, bool& out, std::string help);
 
-    // Binds args (the tokens after the command name). Throws UsageError on
+    // Binds tokens (the arguments after the command name). Throws UsageError on
     // a malformed command line; prints help and returns HelpShown when
     // -h/--help appears before any "--".
-    [[nodiscard]] ParseResult parse(std::span<const std::string_view> args);
+    [[nodiscard]] ParseResult parse(std::span<const std::string_view> tokens);
 
     [[nodiscard]] std::string help() const;
 

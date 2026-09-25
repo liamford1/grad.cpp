@@ -11,18 +11,18 @@
 namespace grad::training {
 
 struct TrainingConfig {
-    int vocab_size;
-    int d_model;
-    int num_layers;
-    int num_heads;
-    int max_len;
-    int seq_length;
-    int batch_size;
-    float learning_rate;
-    float dropout;
-    int warmup_steps;
-    int num_steps;
-    int checkpoint_interval;
+    int vocab_size = 0;
+    int d_model = 0;
+    int num_layers = 0;
+    int num_heads = 0;
+    int max_len = 0;
+    int seq_length = 0;
+    int batch_size = 0;
+    float learning_rate = 0.0f;
+    float dropout = 0.0f;
+    int warmup_steps = 0;
+    int num_steps = 0;
+    int checkpoint_interval = 0;
     std::string checkpoint_prefix;
     // Micro-batches accumulated per optimizer step. Effective batch size is
     // batch_size * grad_accum, but peak memory stays that of one

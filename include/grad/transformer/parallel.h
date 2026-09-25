@@ -89,6 +89,9 @@ public:
         }
     }
 
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
+
     ~ThreadPool() {
         {
             std::lock_guard<std::mutex> lk(wake_mutex_);

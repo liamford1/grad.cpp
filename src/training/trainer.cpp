@@ -45,7 +45,9 @@ public:
         struct sigaction action{};
         action.sa_handler = request_stop;
         sigemptyset(&action.sa_mask);
-        action.sa_flags = static_cast<int>(SA_RESETHAND);  // 0x80000000u on glibc; sa_flags is int
+        // glibc defines SA_RESETHAND as 0x80000000u and sa_flags is int, so
+        // the cast is needed there even though it is a no-op on macOS.
+        action.sa_flags = static_cast<int>(SA_RESETHAND);  // NOLINT(readability-redundant-casting)
         sigaction(SIGINT, &action, &prev_int_);
         sigaction(SIGTERM, &action, &prev_term_);
     }

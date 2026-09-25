@@ -58,6 +58,7 @@ public:
     MappedTokenDataset(const std::string& path, int seq_length, int stride = 1);
     MappedTokenDataset(const MappedTokenDataset&) = delete;
     MappedTokenDataset& operator=(const MappedTokenDataset&) = delete;
+    ~MappedTokenDataset() override = default;
 
     size_t size() const override;
     std::pair<std::vector<int>, std::vector<int>> get_item(size_t index) const override;

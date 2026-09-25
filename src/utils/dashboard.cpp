@@ -581,6 +581,8 @@ struct RawTerm {
         tcsetattr(STDIN_FILENO, TCSANOW, &raw);
         active = true;
     }
+    RawTerm(const RawTerm&) = delete;
+    RawTerm& operator=(const RawTerm&) = delete;
     ~RawTerm() {
         if (active) tcsetattr(STDIN_FILENO, TCSANOW, &saved);
     }

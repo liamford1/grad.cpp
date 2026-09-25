@@ -32,7 +32,7 @@ void load_tokenizer_for_inference(const std::string& corpus_path, int vocab_size
                   << ")" << std::endl;
         return;
     }
-    struct stat st;
+    struct stat st{};
     if (::stat(corpus_path.c_str(), &st) == 0
         && static_cast<size_t>(st.st_size) > kTokenizerSampleBytes) {
         throw std::runtime_error("No tokenizer cache " + cache_file + " for a "

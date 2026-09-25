@@ -124,7 +124,7 @@ std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
         return tokenizer_->decode(tokens);
     }
 
-    std::string result = "";
+    std::string result;
     result.reserve(tokens.size());
     for (int token : tokens) {
         result += static_cast<char>(token);

@@ -77,7 +77,7 @@ struct Prompt {
 
 // Decoding settings for generate and chat, as TextGen takes them.
 struct SamplingOptions {
-    int max_tokens;
+    int max_tokens = 0;
     float temperature = 0.8f;
     int top_k = 0;       // 0 = no top-k cut
     float top_p = 1.0f;  // 1 = no nucleus cut

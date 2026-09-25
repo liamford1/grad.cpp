@@ -28,7 +28,7 @@ inline bool metal_worthwhile(size_t flops) {
     static const long long threshold = [] {
         if (const char* value =
                 env::lookup("GRAD_METAL_THRESHOLD", "TRANSFORMER_METAL_THRESHOLD")) {
-            return static_cast<long long>(std::atoll(value));
+            return std::atoll(value);
         }
         return 10LL * 1000 * 1000 * 1000;
     }();
