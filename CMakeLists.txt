@@ -230,6 +230,28 @@ if(BUILD_TESTS)
     # a check (it has no pass/fail criterion), so it is not registered.
 
     message(STATUS "Tests enabled: run ctest --test-dir ${CMAKE_BINARY_DIR} --output-on-failure")
+
+    # Thread-count determinism: the 1-thread run writes the reference hash
+    # of a short seeded training run, the 4-thread run must reproduce it bit
+    # for bit. The fixture orders them and skips the comparison if the
+    # reference run failed.
+    add_executable(determinism_probe tests/integration/determinism_probe.cpp)
+    target_link_libraries(determinism_probe PRIVATE grad::core)
+    grad_enable_warnings(determinism_probe)
+    set(GRAD_DETERMINISM_REF ${CMAKE_CURRENT_BINARY_DIR}/determinism_threads1.txt)
+    add_test(NAME DeterminismThreads1
+             COMMAND determinism_probe ${GRAD_DETERMINISM_REF})
+    add_test(NAME DeterminismThreads4
+             COMMAND determinism_probe ${CMAKE_CURRENT_BINARY_DIR}/determinism_threads4.txt
+                     ${GRAD_DETERMINISM_REF})
+    set_tests_properties(DeterminismThreads1 PROPERTIES
+        ENVIRONMENT TRANSFORMER_THREADS=1
+        FIXTURES_SETUP determinism_reference
+        LABELS "integration" TIMEOUT 120)
+    set_tests_properties(DeterminismThreads4 PROPERTIES
+        ENVIRONMENT TRANSFORMER_THREADS=4
+        FIXTURES_REQUIRED determinism_reference
+        LABELS "integration" TIMEOUT 120)
 endif()
 
 include(GNUInstallDirs)
