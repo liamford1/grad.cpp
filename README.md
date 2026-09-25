@@ -4,7 +4,7 @@
 
 A from-scratch autograd engine and the GPT-style language models it trains, implemented in C++20: tensors, reverse-mode automatic differentiation with hand-derived backward passes, multi-head attention, AdamW, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
 
-The largest model trained with it so far is a **70M-parameter GPT trained from scratch on TinyStories**: 40,000 optimizer steps, 328M tokens and 37 hours on a single M2 Pro. It reaches a held-out loss of 1.693 (perplexity 5.44). Here is a sample from it, at temperature 0.8, the first draw, unedited:
+The largest model trained with it so far is a **70M-parameter GPT trained from scratch on TinyStories**: 40,000 optimizer steps, 328M tokens and 37 hours on a single M3 Pro laptop. It reaches a held-out loss of 1.693 (perplexity 5.44). Here is a sample from it, at temperature 0.8, the first draw, unedited:
 
 > **Once upon a time, there was a little dragon who** wanted to meet someone else. He flew around and saw an old lady. She smiled at the dragon, and said, "Hello! My name is Frank." The big queen thought this sounded like fun, so she asked Frank if he would join her for some fun. Then, they became best friends. They went on adventures together, learning to be as friendly with one another.
 
@@ -228,7 +228,7 @@ Set `CLANG_FORMAT` / `CLANG_TIDY` to use binaries that are not on `PATH`, and `J
 - **Explicitness over abstraction.** Every forward and backward pass is readable C++, with no expression templates and no code generation. The autograd graph is a DAG of `Variable` nodes holding closures for their backward functions; `backward()` topologically sorts and walks it.
 - **Numerics matter.** Softmax and log-softmax use the max-subtraction trick; the loss path computes log-softmax + NLL rather than softmax + log; gradient checks catch regressions.
 - **Performance where it counts.** Profiling showed matmul dominating, so it delegates to BLAS (`blas_wrapper.h`); everything else stays simple. The BPE tokenizer caches merges to make encoding runs fast.
-- **The training loop is honest.** Loss decreases because the math is right, not because a framework fixed it. The 70M run above took 37 hours on an M2 Pro, and its complete per-step record is [committed](docs/runs/2026-09-tinystories-70m/metrics.csv).
+- **The training loop is honest.** Loss decreases because the math is right, not because a framework fixed it. The 70M run above took 37 hours on an M3 Pro, and its complete per-step record is [committed](docs/runs/2026-09-tinystories-70m/metrics.csv).
 
 ## Repository layout
 
