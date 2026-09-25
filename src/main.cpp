@@ -9,8 +9,9 @@
 #include "utils/dashboard.h"
 #include "utils/metrics.h"
 #include "utils/training_utils.h"
-#include <cstdlib>
 #include <algorithm>
+#include <charconv>
+#include <cstring>
 #include <ctime>
 #include <functional>
 #include <iomanip>
@@ -19,8 +20,11 @@
 #include <sstream>
 #include <vector>
 #include <optional>
+#include <stdexcept>
+#include <system_error>
 #include <string>
 #include <chrono>
+#include <sys/stat.h>
 
 #ifndef GRAD_VERSION
 #define GRAD_VERSION "dev"
@@ -102,40 +106,76 @@ void load_data_and_tokenizer(const std::string& data_path,
     std::cout << " " << tokens.size() << " tokens (" << ms << "ms)" << std::endl;
 }
 
-void generate_samples(GPTModel& model, BPETokenizer& tokenizer) {
+// A generation prompt as both display text and token ids. Held-out prompts
+// keep the ids they were drawn with: the tokenizer drops whitespace, so
+// decode-then-encode would not give back the same tokens.
+struct Prompt {
+    std::string text;
+    std::vector<int> tokens;
+};
+
+void generate_samples(GPTModel& model, const BPETokenizer& tokenizer,
+                      const std::vector<Prompt>& prompts) {
     utils::print_section("Generating Samples");
 
     TextGen generator(model, &tokenizer);
 
-    std::vector<std::string> prompts = {
-        "ROMEO:\n",
-        "JULIET:\n",
-        "First Citizen:\n"
-    };
-
     std::cout << "\n--- Greedy Decoding ---\n" << std::endl;
-    for (const auto& prompt_str : prompts) {
-        std::cout << "Prompt: \"" << prompt_str << "\"" << std::endl;
-        auto prompt = tokenizer.encode(prompt_str);
-        std::string generated = generator.generate_greedy(prompt, 150);
+    for (const auto& prompt : prompts) {
+        std::cout << "Prompt: \"" << prompt.text << "\"" << std::endl;
+        std::string generated = generator.generate_greedy(prompt.tokens, 150);
         std::cout << generated << std::endl;
         std::cout << std::string(40, '-') << "\n" << std::endl;
     }
 
     std::cout << "\n--- Sampling (temp=0.8) ---\n" << std::endl;
-    for (const auto& prompt_str : prompts) {
-        std::cout << "Prompt: \"" << prompt_str << "\"" << std::endl;
-        auto prompt = tokenizer.encode(prompt_str);
-        std::string generated = generator.generate_sample(prompt, 0.8f, 150);
+    for (const auto& prompt : prompts) {
+        std::cout << "Prompt: \"" << prompt.text << "\"" << std::endl;
+        std::string generated = generator.generate_sample(prompt.tokens, 0.8f, 150);
         std::cout << generated << std::endl;
         std::cout << std::string(40, '-') << "\n" << std::endl;
     }
 }
 
+const char* const kDefaultCorpus = "data/shakespeare.txt";
+
+bool is_default_corpus(const std::string& corpus_path) {
+    return corpus_path == kDefaultCorpus;
+}
+
+Prompt prompt_from_text(const BPETokenizer& tokenizer, const std::string& text) {
+    return {text, tokenizer.encode(text)};
+}
+
+// Prompts for end-of-run samples and for `generate` without a prompt.
+// Shakespeare keeps its speaker tags, which the model learns to continue in
+// character. Any other corpus has no known structure, so the prompts are the
+// opening tokens of `count` held-out windows spread evenly across the val
+// split: text the model has not trained on, in the corpus's own style.
+std::vector<Prompt> sample_prompts(const std::string& corpus_path, const BPETokenizer& tokenizer,
+                                   const Dataset& val, size_t count = 3) {
+    if (is_default_corpus(corpus_path)) {
+        return {prompt_from_text(tokenizer, "ROMEO:\n"),
+                prompt_from_text(tokenizer, "JULIET:\n"),
+                prompt_from_text(tokenizer, "First Citizen:\n")};
+    }
+    constexpr size_t kPromptTokens = 6;
+    std::vector<Prompt> prompts;
+    const size_t windows = val.size();
+    for (size_t k = 0; k < count && windows > 0; k++) {
+        // Midpoints of `count` equal slices of the split.
+        const size_t index = windows * (2 * k + 1) / (2 * count);
+        std::vector<int> ids = val.get_item(index).first;
+        ids.resize(std::min(ids.size(), kPromptTokens));
+        prompts.push_back({tokenizer.decode(ids), ids});
+    }
+    return prompts;
+}
+
 // The default corpus keeps its historical cache name so existing caches
 // and checkpoints stay valid; other corpora get corpus-derived names.
 std::string tokenizer_cache_prefix(const std::string& corpus_path) {
-    if (corpus_path == "data/shakespeare.txt") return "tokenizer";
+    if (is_default_corpus(corpus_path)) return "tokenizer";
     return corpus_path + ".tokenizer";
 }
 
@@ -144,9 +184,16 @@ std::string token_bin_path(const std::string& corpus_path, int vocab_size,
     return corpus_path + "." + std::to_string(vocab_size) + "." + split + ".bin";
 }
 
+// BPE merge learning scans every unique word once per merge, so its cost
+// grows with corpus size for no statistical benefit: token frequencies
+// converge long before 32MB. `prepare` trains on a prefix sample this size.
+constexpr size_t kTokenizerSampleBytes = 32ull * 1024 * 1024;
+
 // Inference-time tokenizer loading: the cache must exist (train/prepare
 // created it), so the corpus text - possibly gigabytes - is never read.
-// Falls back to training from text only for small unprepared corpora.
+// Falls back to training from text only for small unprepared corpora; a
+// large one would take hours and, unlike `prepare`, would train on the
+// full text rather than its sample, giving a different tokenizer.
 void load_tokenizer_for_inference(const std::string& corpus_path, int vocab_size,
                                   BPETokenizer& tokenizer) {
     std::string cache_file = tokenizer_cache_prefix(corpus_path) + "_"
@@ -159,31 +206,86 @@ void load_tokenizer_for_inference(const std::string& corpus_path, int vocab_size
                   << tokenizer.getCurrentVocabSize() << ")" << std::endl;
         return;
     }
+    struct stat st;
+    if (::stat(corpus_path.c_str(), &st) == 0
+        && static_cast<size_t>(st.st_size) > kTokenizerSampleBytes) {
+        throw std::runtime_error("No tokenizer cache " + cache_file + " for a "
+                                 + std::to_string(st.st_size >> 20) + "MB corpus; run: "
+                                 "./build/grad prepare " + corpus_path + " "
+                                 + std::to_string(vocab_size));
+    }
     std::string text = read_text_file(corpus_path);
     load_tokenizer(text, tokenizer_cache_prefix(corpus_path), vocab_size, tokenizer);
 }
 
+// Vocab for an inference command: the one the user gave, else the
+// checkpoint's own. A mismatch is an error before any tokenizer is
+// loaded, since a missing cache for a wrong vocab would otherwise start
+// BPE training on the corpus.
+int resolve_vocab(std::optional<int> requested, const GPTModel& model) {
+    if (requested && *requested != model.getVocabSize()) {
+        throw std::runtime_error("vocab " + std::to_string(*requested)
+                                 + " does not match the checkpoint's vocab of "
+                                 + std::to_string(model.getVocabSize())
+                                 + " (omit it to use the checkpoint's)");
+    }
+    return model.getVocabSize();
+}
+
+void require_matching_vocab(const BPETokenizer& tokenizer, const GPTModel& model) {
+    if (tokenizer.getCurrentVocabSize() != model.getVocabSize()) {
+        throw std::runtime_error("tokenizer has " + std::to_string(tokenizer.getCurrentVocabSize())
+                                 + " tokens but the checkpoint expects "
+                                 + std::to_string(model.getVocabSize())
+                                 + "; the cache was built for a different vocab or corpus");
+    }
+}
+
+// Held-out prompts for `generate` on a corpus other than the default: the
+// val token file when the corpus was prepared, else the in-memory 95/5
+// split the trainer uses.
+std::vector<Prompt> held_out_prompts(const std::string& corpus_path, int vocab_size,
+                                     const BPETokenizer& tokenizer) {
+    constexpr int kWindow = 6;
+    const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
+    if (tokenfile::exists(val_bin)) {
+        return sample_prompts(corpus_path, tokenizer, MappedTokenDataset(val_bin, kWindow, kWindow));
+    }
+    std::vector<int> tokens = tokenizer.encode(read_text_file(corpus_path));
+    const size_t split = tokens.size() * 95 / 100;
+    return sample_prompts(corpus_path, tokenizer,
+                          TextDataset(std::vector<int>(tokens.begin() + split, tokens.end()),
+                                      kWindow, kWindow));
+}
+
+// An empty prompt means "pick one": the first speaker tag for the default
+// corpus, a held-out opening otherwise.
 int run_generation(const std::string& checkpoint_path, const std::string& prompt,
-                   const std::string& corpus_path, int vocab_size) {
-    std::cout << "\nTransformer Generation\n" << std::endl;
+                   const std::string& corpus_path, std::optional<int> requested_vocab) {
+    std::cout << "\ngrad.cpp Generation\n" << std::endl;
 
     try {
-        BPETokenizer tokenizer(vocab_size);
-        load_tokenizer_for_inference(corpus_path, vocab_size, tokenizer);
-
         utils::print_section("Loading Model");
         GPTModel model = GPTModel::load(checkpoint_path);
+        const int vocab_size = resolve_vocab(requested_vocab, model);
+
+        BPETokenizer tokenizer(vocab_size);
+        load_tokenizer_for_inference(corpus_path, vocab_size, tokenizer);
+        require_matching_vocab(tokenizer, model);
+
+        const Prompt chosen = !prompt.empty() ? prompt_from_text(tokenizer, prompt)
+            : is_default_corpus(corpus_path) ? prompt_from_text(tokenizer, "ROMEO:\n")
+            : held_out_prompts(corpus_path, vocab_size, tokenizer).at(0);
 
         TextGen generator(model, &tokenizer);
-        auto prompt_tokens = tokenizer.encode(prompt);
 
         std::cout << "\n--- Greedy Decoding ---\n" << std::endl;
-        std::cout << "Prompt: \"" << prompt << "\"" << std::endl;
-        std::cout << generator.generate_greedy(prompt_tokens, 150) << std::endl;
+        std::cout << "Prompt: \"" << chosen.text << "\"" << std::endl;
+        std::cout << generator.generate_greedy(chosen.tokens, 150) << std::endl;
 
         std::cout << "\n--- Sampling (temp=0.8) ---\n" << std::endl;
-        std::cout << "Prompt: \"" << prompt << "\"" << std::endl;
-        std::cout << generator.generate_sample(prompt_tokens, 0.8f, 150) << std::endl;
+        std::cout << "Prompt: \"" << chosen.text << "\"" << std::endl;
+        std::cout << generator.generate_sample(chosen.tokens, 0.8f, 150) << std::endl;
 
         return 0;
     } catch (const std::exception& e) {
@@ -197,15 +299,17 @@ int run_generation(const std::string& checkpoint_path, const std::string& prompt
 // assistant: it continues text in the style of its training corpus rather
 // than answering questions.
 int run_chat(const std::string& checkpoint_path,
-             const std::string& corpus_path, int vocab_size) {
-    std::cout << "\nTransformer Chat\n" << std::endl;
+             const std::string& corpus_path, std::optional<int> requested_vocab) {
+    std::cout << "\ngrad.cpp Chat\n" << std::endl;
 
     try {
-        BPETokenizer tokenizer(vocab_size);
-        load_tokenizer_for_inference(corpus_path, vocab_size, tokenizer);
-
         utils::print_section("Loading Model");
         GPTModel model = GPTModel::load(checkpoint_path);
+        const int vocab_size = resolve_vocab(requested_vocab, model);
+
+        BPETokenizer tokenizer(vocab_size);
+        load_tokenizer_for_inference(corpus_path, vocab_size, tokenizer);
+        require_matching_vocab(tokenizer, model);
         TextGen generator(model, &tokenizer);
 
         std::cout << "\nThis is a base language model: it continues text in the"
@@ -241,19 +345,20 @@ int run_chat(const std::string& checkpoint_path,
 // first few stories. The train-side figure separates generalization from
 // distribution shift between the two splits.
 int run_eval(const std::string& checkpoint_path, const std::string& corpus_path,
-             int vocab_size, int seq_length, int max_batches) {
-    std::cout << "\nTransformer Evaluation\n" << std::endl;
+             std::optional<int> requested_vocab, int seq_length, int max_batches) {
+    std::cout << "\ngrad.cpp Evaluation\n" << std::endl;
 
     try {
+        utils::print_section("Loading Model");
+        GPTModel model = GPTModel::load(checkpoint_path);
+        const int vocab_size = resolve_vocab(requested_vocab, model);
+
         const std::string train_bin = token_bin_path(corpus_path, vocab_size, "train");
         const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
         if (!tokenfile::exists(train_bin) || !tokenfile::exists(val_bin)) {
             throw std::runtime_error("eval needs pre-tokenized files; run: ./build/grad prepare "
                                      + corpus_path + " " + std::to_string(vocab_size));
         }
-
-        utils::print_section("Loading Model");
-        GPTModel model = GPTModel::load(checkpoint_path);
         if (seq_length > model.getMaxLen()) {
             throw std::runtime_error("seq length exceeds the model's context ("
                                      + std::to_string(model.getMaxLen()) + ")");
@@ -498,11 +603,8 @@ int run_prepare(const std::string& corpus_path, int vocab_size) {
         std::string text = read_text_file(corpus_path);
         BPETokenizer tokenizer(vocab_size);
 
-        // BPE merge learning scans every unique word once per merge, so its
-        // cost grows with corpus size for no statistical benefit: token
-        // frequencies converge long before 32MB. Train on a prefix sample
-        // (cut at a word boundary), then encode the full corpus with it.
-        constexpr size_t kTokenizerSampleBytes = 32ull * 1024 * 1024;
+        // Train the tokenizer on a prefix sample (cut at a word boundary;
+        // see kTokenizerSampleBytes), then encode the full corpus with it.
         if (text.size() > kTokenizerSampleBytes) {
             size_t cut = text.rfind(' ', kTokenizerSampleBytes);
             if (cut == std::string::npos) cut = kTokenizerSampleBytes;
@@ -776,14 +878,15 @@ int run_training(const Preset& preset, const std::string& corpus_path,
         }
 
         if (!trainer.train()) {
+            const bool via_train_fast = std::string(preset.name) == "fast";
             std::cout << "\nResume with: ./build/grad "
-                      << (fast_mode ? "train-fast " + corpus_path
-                                    : "train " + corpus_path + " " + preset.name)
+                      << (via_train_fast ? "train-fast " + corpus_path
+                                         : "train " + corpus_path + " " + preset.name)
                       << " resume\n" << std::endl;
             return 0;
         }
 
-        generate_samples(model, tokenizer);
+        generate_samples(model, tokenizer, sample_prompts(corpus_path, tokenizer, *val_dataset));
 
         std::cout << "\nTraining Complete!\n" << std::endl;
         return 0;
@@ -794,10 +897,31 @@ int run_training(const Preset& preset, const std::string& corpus_path,
     }
 }
 
-int main(int argc, char* argv[]) {
+// Whole-string integer parse: "16k", "", and "16000x" are errors rather
+// than atoi's silent 16 / 0 / 16000.
+int parse_int(const char* text, const char* what, int min_value) {
+    int value = 0;
+    const char* end = text + std::strlen(text);
+    const auto [ptr, ec] = std::from_chars(text, end, value);
+    if (ec != std::errc() || ptr != end || ptr == text) {
+        throw std::invalid_argument(std::string(what) + " must be an integer, got '" + text + "'");
+    }
+    if (value < min_value) {
+        throw std::invalid_argument(std::string(what) + " must be >= " + std::to_string(min_value)
+                                    + ", got " + text);
+    }
+    return value;
+}
+
+std::optional<int> optional_vocab(int argc, char* argv[], int index) {
+    if (argc <= index) return std::nullopt;
+    return parse_int(argv[index], "vocab", 1);
+}
+
+int run_cli(int argc, char* argv[]) {
     std::string mode = (argc > 1) ? argv[1] : "";
 
-    std::string default_corpus = "data/shakespeare.txt";
+    const std::string default_corpus = kDefaultCorpus;
 
     if (mode == "train") {
         std::string corpus = (argc > 2) ? argv[2] : default_corpus;
@@ -819,15 +943,14 @@ int main(int argc, char* argv[]) {
             std::cerr << "Usage: " << argv[0] << " prepare <corpus.txt> [vocab_size]" << std::endl;
             return 1;
         }
-        int vocab = (argc > 3) ? std::atoi(argv[3]) : 5000;
+        const int vocab = (argc > 3) ? parse_int(argv[3], "vocab", 1) : 5000;
         return run_prepare(argv[2], vocab);
     }
     if (mode == "generate") {
         std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
-        std::string prompt = (argc > 3) ? argv[3] : "ROMEO:\n";
+        std::string prompt = (argc > 3) ? argv[3] : "";
         std::string corpus = (argc > 4) ? argv[4] : default_corpus;
-        int vocab = (argc > 5) ? std::atoi(argv[5]) : 5000;
-        return run_generation(checkpoint, prompt, corpus, vocab);
+        return run_generation(checkpoint, prompt, corpus, optional_vocab(argc, argv, 5));
     }
     if (mode == "eval") {
         if (argc < 4) {
@@ -835,10 +958,9 @@ int main(int argc, char* argv[]) {
                       << " eval <ckpt> <corpus.txt> [vocab] [seq] [max_batches]" << std::endl;
             return 1;
         }
-        const int vocab = (argc > 4) ? std::atoi(argv[4]) : 5000;
-        const int seq = (argc > 5) ? std::atoi(argv[5]) : 256;
-        const int max_batches = (argc > 6) ? std::atoi(argv[6]) : 0;
-        return run_eval(argv[2], argv[3], vocab, seq, max_batches);
+        const int seq = (argc > 5) ? parse_int(argv[5], "seq", 1) : 256;
+        const int max_batches = (argc > 6) ? parse_int(argv[6], "max_batches", 0) : 0;
+        return run_eval(argv[2], argv[3], optional_vocab(argc, argv, 4), seq, max_batches);
     }
     if (mode == "bench") {
         BenchmarkOptions options;
@@ -893,8 +1015,7 @@ int main(int argc, char* argv[]) {
     if (mode == "chat") {
         std::string checkpoint = (argc > 2) ? argv[2] : "shakespeare_final.bin";
         std::string corpus = (argc > 3) ? argv[3] : default_corpus;
-        int vocab = (argc > 4) ? std::atoi(argv[4]) : 5000;
-        return run_chat(checkpoint, corpus, vocab);
+        return run_chat(checkpoint, corpus, optional_vocab(argc, argv, 4));
     }
 
     std::cerr << "Usage: " << argv[0] << " <mode>\n"
@@ -905,13 +1026,24 @@ int main(int argc, char* argv[]) {
               << "      warm-starts from those weights with a fresh schedule\n"
               << "  train-fast [corpus.txt] [ckpt.bin|resume]   tiny config for a quick smoke test\n"
               << "  generate [ckpt] [prompt] [corpus] [vocab]   sample from a saved checkpoint\n"
+              << "      an empty prompt (\"\") picks one from the corpus's held-out split\n"
               << "  chat [ckpt] [corpus] [vocab]                interactive prompt/continue REPL\n"
               << "  eval <ckpt> <corpus> [vocab] [seq] [max_batches]\n"
               << "      loss/perplexity on the full val split and a matched train sample\n"
+              << "  (generate/chat/eval take the vocab from the checkpoint when it is omitted)\n"
               << "  bench [steps] [--warmup N] [--trials N] [--json path]\n"
               << "                                      benchmark with repeated median trials\n"
               << "  watch [run-prefix]                   live terminal dashboard for a training\n"
               << "      run (loss curves, val track, throughput); defaults to the most recent\n"
               << "      run in this directory - open it in a second terminal while training\n";
     return 1;
+}
+
+int main(int argc, char* argv[]) {
+    try {
+        return run_cli(argc, argv);
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
 }
