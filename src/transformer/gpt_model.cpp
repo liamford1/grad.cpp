@@ -72,15 +72,10 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
                                    compute_requires_grad(normalized_output, embedding_table));
 
     if (logits->requiresGrad()) {
-        logits->addChild(normalized_output);
-        logits->addChild(embedding_table);
-
-        logits->setBackwardFn([normalized_output, embedding_table,
-                               logits_weak = std::weak_ptr<Variable>(logits),
-                               flat_rows, vocab, d_model_dim]() {
-            auto logits = logits_weak.lock();
-            if (!logits || !logits->hasGrad()) return;
-            const Tensor& grad_logits = logits->getGrad();
+        logits->setBackward({normalized_output, embedding_table},
+                            [normalized_output, embedding_table,
+                             flat_rows, vocab, d_model_dim](Variable& logits) {
+            const Tensor& grad_logits = logits.getGrad();
             const Tensor& norm_data = normalized_output->getData();
             const Tensor& emb_data = embedding_table->getData();
 

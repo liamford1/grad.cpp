@@ -10,7 +10,6 @@ PositionalEncoding::PositionalEncoding(int max_len, int d_model) :
     position_embeddings = Variable::create(pos_emb, true);
 }
 
-
 // Adds the first seq_len rows of the position table to (seq, d) or
 // (batch, seq, d) embeddings, broadcasting over the batch.
 std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> embeddings) const {
@@ -25,15 +24,10 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
     auto output = Variable::create(emb_tensor.add(pos_slice), needs_grad);
 
     if (needs_grad) {
-        output->addChild(embeddings);
-        output->addChild(position_embeddings);
-
         auto self_pos_emb = position_embeddings;
-        output->setBackwardFn([embeddings, self_pos_emb,
-                               output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
-            const Tensor& dOut = output->getGrad();
+        output->setBackward({embeddings, position_embeddings},
+                            [embeddings, self_pos_emb](Variable& output) {
+            const Tensor& dOut = output.getGrad();
 
             if (embeddings->requiresGrad()) {
                 embeddings->ensureGrad();

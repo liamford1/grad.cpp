@@ -141,13 +141,7 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
     
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        
-        output->addChild(self_ptr);
-        output->addChild(other);
-        
-        output->setBackwardFn([self_ptr, other, output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({self_ptr, other}, [self_ptr, other](Variable& output) {
             self_ptr->data.assertValid("Variable::matmul(self.data)");
             other->data.assertValid("Variable::matmul(other.data)");
 
@@ -157,7 +151,7 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
                 // sgemms accumulated in place (beta = 1); the sgemm's transA
                 // sums dW over batch*rows with no temporaries.
                 const Tensor& X = self_ptr->data;
-                const Tensor& dY = output->grad;
+                const Tensor& dY = output.grad;
                 const int K = static_cast<int>(other->data.getRows());
                 const int N = static_cast<int>(other->data.getCols());
                 const int flat = static_cast<int>(X.getFlatRows());
@@ -178,13 +172,13 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
                 if (self_ptr->requires_grad) {
                     self_ptr->ensureGrad();
                     Tensor other_transposed = other->data.transpose();
-                    Tensor self_grad = output->grad.matmul(other_transposed);
+                    Tensor self_grad = output.grad.matmul(other_transposed);
                     self_ptr->grad.add_inplace(self_grad);
                 }
                 if (other->requires_grad) {
                     other->ensureGrad();
                     Tensor self_transposed = self_ptr->data.transpose();
-                    Tensor other_grad = self_transposed.matmul(output->grad);
+                    Tensor other_grad = self_transposed.matmul(output.grad);
                     other->grad.add_inplace(other_grad);
                 }
             }
@@ -203,21 +197,14 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
 
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-
-        output->addChild(self_ptr);
-        output->addChild(other);
-
-        output->setBackwardFn([self_ptr, other, output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
-
+        output->setBackward({self_ptr, other}, [self_ptr, other](Variable& output) {
             if (self_ptr->requires_grad) self_ptr->ensureGrad();
             if (other->requires_grad) other->ensureGrad();
             if (self_ptr->requires_grad) {
-                accumulate_add_grad(output->grad, self_ptr->data, self_ptr->grad);
+                accumulate_add_grad(output.grad, self_ptr->data, self_ptr->grad);
             }
             if (other->requires_grad) {
-                accumulate_add_grad(output->grad, other->data, other->grad);
+                accumulate_add_grad(output.grad, other->data, other->grad);
             }
         });
     }
@@ -234,14 +221,10 @@ std::shared_ptr<Variable> Variable::scale(float factor) {
     
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        
-        output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, factor, output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({self_ptr}, [self_ptr, factor](Variable& output) {
             if (self_ptr->requires_grad) {
                 self_ptr->ensureGrad();
-                Tensor scaled_grad = output->grad.scale(factor);
+                Tensor scaled_grad = output.grad.scale(factor);
                 self_ptr->grad.add_inplace(scaled_grad);
             }
         });
@@ -258,15 +241,11 @@ std::shared_ptr<Variable> Variable::softmax() {
     
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        
-        output->addChild(self_ptr);
         // The softmax output needed by backward IS this node's data; the
         // retire-as-you-go backward frees it only after this fn has run,
         // so reading it here avoids capturing a full copy.
-        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
-            const Tensor& result = output->getData();
+        output->setBackward({self_ptr}, [self_ptr](Variable& output) {
+            const Tensor& result = output.getData();
             result.assertValid("Variable::softmax(y)");
 
             if (self_ptr->requires_grad) {
@@ -276,7 +255,7 @@ std::shared_ptr<Variable> Variable::softmax() {
                 const size_t rows = result.getFlatRows();
                 const size_t cols = result.getCols();
                 const float* result_data = result.raw();
-                const float* grad_out_data = output->grad.raw();
+                const float* grad_out_data = output.grad.raw();
                 float* temp_grad_data = temp_grad.raw();
 
                 for (size_t i = 0; i < rows; i++) {
@@ -328,16 +307,13 @@ std::shared_ptr<Variable> Variable::gelu() {
 
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({self_ptr}, [self_ptr](Variable& output) {
             if (!self_ptr->requires_grad) return;
             self_ptr->ensureGrad();
 
             const size_t n = self_ptr->data.numel();
             const float* x = self_ptr->data.raw();
-            const float* dY = output->grad.raw();
+            const float* dY = output.grad.raw();
             float* dX = self_ptr->grad.raw();
 
             parallel_for(n, 32768, [&](size_t begin, size_t end) {
@@ -389,10 +365,7 @@ std::shared_ptr<Variable> Variable::silu() {
 
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        output->addChild(self_ptr);
-        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({self_ptr}, [self_ptr](Variable& output) {
             if (!self_ptr->requires_grad) return;
             self_ptr->ensureGrad();
 
@@ -401,7 +374,7 @@ std::shared_ptr<Variable> Variable::silu() {
             // a full activation tensor across the step.
             const size_t n = self_ptr->data.numel();
             const float* x = self_ptr->data.raw();
-            const float* dY = output->grad.raw();
+            const float* dY = output.grad.raw();
             float* dX = self_ptr->grad.raw();
 
             parallel_for(n, 32768, [&](size_t begin, size_t end) {
@@ -432,21 +405,15 @@ std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) {
 
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        output->addChild(self_ptr);
-        output->addChild(other);
-
-        output->setBackwardFn([self_ptr, other, output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
-
+        output->setBackward({self_ptr, other}, [self_ptr, other](Variable& output) {
             if (self_ptr->requires_grad) {
                 self_ptr->ensureGrad();
-                Tensor d = output->grad.elementwise(other->data);
+                Tensor d = output.grad.elementwise(other->data);
                 self_ptr->grad.add_inplace(d);
             }
             if (other->requires_grad) {
                 other->ensureGrad();
-                Tensor d = output->grad.elementwise(self_ptr->data);
+                Tensor d = output.grad.elementwise(self_ptr->data);
                 other->grad.add_inplace(d);
             }
         });
@@ -471,14 +438,11 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
     
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        output->addChild(self_ptr);
         auto mask_ptr = std::make_shared<Tensor>(std::move(mask));
-        output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output), mask_ptr]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({self_ptr}, [self_ptr, mask_ptr](Variable& output) {
             if (self_ptr->requires_grad) {
                 self_ptr->ensureGrad();
-                Tensor grad_tensor = output->grad.elementwise(*mask_ptr);
+                Tensor grad_tensor = output.grad.elementwise(*mask_ptr);
                 self_ptr->grad.add_inplace(grad_tensor);
             }
         });
@@ -523,12 +487,7 @@ std::shared_ptr<Variable> Variable::log_softmax() {
 
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        output->addChild(self_ptr);
-
-        output->setBackwardFn([self_ptr, total_rows, cols,
-                               output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({self_ptr}, [self_ptr, total_rows, cols](Variable& output) {
             self_ptr->ensureGrad();
 
             // d/dx log_softmax: dX = dY - softmax(x) * sum(dY) per row,
@@ -536,8 +495,8 @@ std::shared_ptr<Variable> Variable::log_softmax() {
             // place rather than captured as a copy; retirement frees it
             // only after this fn runs). Accumulates into the grad tensor
             // directly.
-            const float* res = output->getData().raw();
-            const float* dY = output->grad.raw();
+            const float* res = output.getData().raw();
+            const float* dY = output.grad.raw();
             float* dX = self_ptr->grad.raw();
 
             parallel_for(total_rows, 8, [&](size_t begin, size_t end) {
@@ -592,20 +551,14 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
 
     if (needs_grad) {
         auto self_ptr = shared_from_this();
-        output->addChild(self_ptr);
-        output->addChild(targets);
-
-        output->setBackwardFn([self_ptr, targets, n, vocab,
-                               output_weak = std::weak_ptr<Variable>(output)]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({self_ptr, targets}, [self_ptr, targets, n, vocab](Variable& output) {
             self_ptr->ensureGrad();
 
             // dL/dlogp[i, t_i] = -upstream / n; every other entry is zero,
             // so only the target entries are touched. backward() seeds the
             // upstream gradient with 1, and a loss scaled before backward
             // scales these gradients with it.
-            const float scale = -output->grad.raw()[0] / static_cast<float>(n);
+            const float scale = -output.grad.raw()[0] / static_cast<float>(n);
             float* g = self_ptr->grad.raw();
             const float* tgt = targets->data.raw();
             for (size_t i = 0; i < n; i++) {

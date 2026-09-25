@@ -20,7 +20,6 @@ LayerNorm::LayerNorm(int d_model, bool rms) :
     beta = Variable::create(beta_tensor, true);
 }
 
-
 // Normalizes over the innermost dimension. Rows are contiguous at any
 // rank, so a 2D (rows, d) and a 3D (batch, seq, d) input are the same loop
 // over the flat rows.
@@ -102,17 +101,10 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         auto self_beta = beta;
         int self_d = d_model;
 
-        output->addChild(input);
-        output->addChild(gamma);
-        output->addChild(beta);
-
         const bool rms = rms_;
-        output->setBackwardFn([self_input, self_gamma, self_beta,
-                               output_weak = std::weak_ptr<Variable>(output),
-                               means, inv_stds, self_d, total_rows, rms]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
-
+        output->setBackward({input, gamma, beta},
+                            [self_input, self_gamma, self_beta,
+                             means, inv_stds, self_d, total_rows, rms](Variable& output) {
             // Each gradient is computed only if its target requires grad
             // (beta never does in RMS mode): ensureGrad leaves a frozen
             // tensor's grad unallocated, so it must not be written.
@@ -123,7 +115,7 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             if (grad_beta) self_beta->ensureGrad();
             if (grad_input) self_input->ensureGrad();
 
-            const float* output_grad_data = output->getGrad().raw();
+            const float* output_grad_data = output.getGrad().raw();
             const float* gamma_data = self_gamma->getData().raw();
             const float* input_data = self_input->getData().raw();
             float* dInput_out = grad_input ? self_input->getGrad().raw() : nullptr;

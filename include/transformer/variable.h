@@ -3,8 +3,9 @@
 #include "tensor.h"
 #include <memory>
 #include <functional>
-#include <vector>
+#include <initializer_list>
 #include <unordered_set>
+#include <vector>
 
 // Grad mode: whether ops record the autograd graph. On by default. It is
 // thread-local, so a NoGradGuard around evaluation on one thread leaves
@@ -106,6 +107,23 @@ class Variable : public std::enable_shared_from_this<Variable> {
         void zeroGrad();
         void release_graph();
 
+        // Wires this node as an op output: records inputs as its children,
+        // in order (the order fixes the backward traversal, and with it the
+        // order gradients accumulate in), and installs fn(*this) as its
+        // backward closure. fn runs only once a gradient has reached this
+        // node, and the closure holds the node weakly, because the node
+        // owns the closure. Inputs fn reads must be captured by fn itself.
+        template <typename Fn>
+        void setBackward(std::initializer_list<std::shared_ptr<Variable>> inputs, Fn fn) {
+            children.insert(children.end(), inputs.begin(), inputs.end());
+            backward_fn = [self = weak_from_this(), fn = std::move(fn)]() {
+                auto node = self.lock();
+                if (node && node->hasGrad()) fn(*node);
+            };
+        }
+
+        // Low-level wiring, for graph nodes built outside the op helpers
+        // (tests, custom losses).
         void addChild(std::shared_ptr<Variable> child) { children.push_back(std::move(child)); }
         void setBackwardFn(std::function<void()> fn) { backward_fn = std::move(fn); }
     private:

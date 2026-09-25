@@ -75,20 +75,16 @@ std::shared_ptr<Variable> relayout(const std::shared_ptr<Variable>& src, Tensor&
     const bool needs_grad = compute_requires_grad(src);
     auto out = Variable::create(std::move(shaped), needs_grad);
     if (needs_grad) {
-        out->addChild(src);
-        out->setBackwardFn([src, out_weak = std::weak_ptr<Variable>(out)]() {
-            auto out = out_weak.lock();
-            if (!out || !out->hasGrad()) return;
+        out->setBackward({src}, [src](Variable& out) {
             src->ensureGrad();
             float* dst = src->getGrad().raw();
-            blas_vadd(dst, out->getGrad().raw(), dst, out->getGrad().numel());
+            blas_vadd(dst, out.getGrad().raw(), dst, out.getGrad().numel());
         });
     }
     return out;
 }
 
 }  // namespace
-
 
 MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout_rate,
                                        bool rope) :
@@ -125,7 +121,6 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout
     b_v = Variable::create(Tensor(1, d_model), true);
     b_o = Variable::create(Tensor(1, d_model), true);
 }
-
 
 std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> input, bool training) const {
     const Tensor& input_tensor = input->getData();
@@ -321,31 +316,18 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         auto self_bq = b_q; auto self_bk = b_k;
         auto self_bv = b_v; auto self_bo = b_o;
 
-        output->addChild(input);
-        output->addChild(W_q);
-        output->addChild(W_k);
-        output->addChild(W_v);
-        output->addChild(W_o);
-        output->addChild(b_q);
-        output->addChild(b_k);
-        output->addChild(b_v);
-        output->addChild(b_o);
-
         const bool dropout_active = use_attn_dropout;
         const bool rope_active = rope_;
-        output->setBackwardFn([self_input, self_Wq, self_Wk, self_Wv, self_Wo,
-                               self_bq, self_bk, self_bv, self_bo,
-                               Q, K, V, concat, attn_cache, drop_mask,
-                               rope_cos, rope_sin, rope_active,
-                               output_weak = std::weak_ptr<Variable>(output),
-                               batch_size, S, d, H, head_size, flat,
-                               scale_factor, dropout_active]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
-
+        output->setBackward({input, W_q, W_k, W_v, W_o, b_q, b_k, b_v, b_o},
+                            [self_input, self_Wq, self_Wk, self_Wv, self_Wo,
+                             self_bq, self_bk, self_bv, self_bo,
+                             Q, K, V, concat, attn_cache, drop_mask,
+                             rope_cos, rope_sin, rope_active,
+                             batch_size, S, d, H, head_size, flat,
+                             scale_factor, dropout_active](Variable& output) {
             // Each gradient is written only if its target requires grad:
             // ensureGrad leaves a frozen tensor's grad unallocated.
-            const float* dOut = output->getGrad().raw();
+            const float* dOut = output.getGrad().raw();
 
             // Output projection gradients: single flat sgemms.
             // dWo += concat^T @ dOut ; dbo += column sums of dOut.

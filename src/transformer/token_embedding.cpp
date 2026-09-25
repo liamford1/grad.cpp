@@ -75,14 +75,10 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
         const float scale = embedding_scale;
         const int dm = d_model;
 
-        output->addChild(embedding_table);
-        output->setBackwardFn([table_var,
-                               output_weak = std::weak_ptr<Variable>(output),
-                               ids = std::move(token_ids), scale, dm]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({embedding_table},
+                            [table_var, ids = std::move(token_ids), scale, dm](Variable& output) {
             table_var->ensureGrad();
-            const float* dOut = output->getGrad().raw();
+            const float* dOut = output.getGrad().raw();
             float* dTable = table_var->getGrad().raw();
 
             for (size_t t = 0; t < ids.size(); t++) {
