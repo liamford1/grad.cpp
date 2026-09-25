@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -32,17 +33,31 @@ namespace grad::cli {
 namespace {
 
 void evaluate(const std::string& checkpoint_path, const std::string& corpus_path,
-              std::optional<int> requested_vocab, int seq_length, int max_batches) {
+              std::optional<int> requested_vocab, std::optional<TokenizerKind> requested_tokenizer,
+              int seq_length, int max_batches) {
     std::cout << "\ngrad.cpp Evaluation\n" << std::endl;
 
     GPTModel model = load_checkpoint(checkpoint_path, requested_vocab);
     const int vocab_size = model.getVocabSize();
+    const TokenizerKind kind =
+        choose_tokenizer(corpus_path, vocab_size, requested_tokenizer, &model);
 
-    const std::string train_bin = token_bin_path(corpus_path, vocab_size, "train");
-    const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
+    const std::string train_bin = token_bin_path(corpus_path, vocab_size, "train", kind);
+    const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val", kind);
     if (!tokenfile::exists(train_bin) || !tokenfile::exists(val_bin)) {
         throw std::runtime_error("eval needs pre-tokenized files; run: ./build/grad prepare "
-                                 + corpus_path + " " + std::to_string(vocab_size));
+                                 + corpus_path + " " + std::to_string(vocab_size) + " --tokenizer "
+                                 + tokenizer_kind_flag(kind));
+    }
+    // The token files were written by the tokenizer beside them; checking
+    // that one against the checkpoint checks the files.
+    if (std::ifstream(tokenizer_path(corpus_path, vocab_size, kind)).good()) {
+        const std::unique_ptr<Tokenizer> tokenizer =
+            load_existing_tokenizer(corpus_path, vocab_size, kind);
+        check_tokenizer_matches(model, *tokenizer, checkpoint_path);
+    } else {
+        std::cerr << "Warning: no tokenizer file beside " << val_bin
+                  << "; cannot check the token files against the checkpoint" << std::endl;
     }
     if (seq_length > model.getMaxLen()) {
         throw std::runtime_error("seq length exceeds the model's context ("
@@ -94,6 +109,7 @@ int run_eval(const Invocation& invocation) {
     std::optional<int> vocab;
     int seq = 256;
     int max_batches = 0;
+    std::optional<std::string> tokenizer_flag;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe(
@@ -110,9 +126,10 @@ int run_eval(const Invocation& invocation) {
                  "batches of 8 windows per split; 0 scores the whole val split")
         .at_least(0)
         .named("--batches");
+    add_tokenizer_option(cmd, tokenizer_flag, kInferenceTokenizerHelp);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
-    evaluate(checkpoint, corpus, vocab, seq, max_batches);
+    evaluate(checkpoint, corpus, vocab, parse_tokenizer_flag(tokenizer_flag), seq, max_batches);
     return 0;
 }
 
