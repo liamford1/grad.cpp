@@ -175,10 +175,15 @@ if(BUILD_TESTS)
     add_test(NAME SanityOverfit COMMAND sanity_tests overfit)
     add_test(NAME InferenceParityGPT2 COMMAND sanity_tests parity-gpt2)
     add_test(NAME InferenceParityModern COMMAND sanity_tests parity-modern)
+    add_test(NAME SanityDataLoader COMMAND sanity_tests dataloader)
+    add_test(NAME FileFormatValidation COMMAND sanity_tests file-formats)
     set_tests_properties(
         SanityOverfit InferenceParityGPT2 InferenceParityModern
+        SanityDataLoader FileFormatValidation
         PROPERTIES LABELS "integration" TIMEOUT 120
     )
+    # `sanity_tests benchmark` is a timing run on data/shakespeare.txt, not
+    # a check (it has no pass/fail criterion), so it is not registered.
 
     message(STATUS "Tests enabled: run ctest --test-dir ${CMAKE_BINARY_DIR} --output-on-failure")
 endif()

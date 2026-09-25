@@ -4,6 +4,7 @@
 #include "transformer/optimizer.h"
 #include "data/dataset.h"
 #include "data/dataloader.h"
+#include "data/token_file.h"
 #include "tokenizer/bpe_tokenizer.h"
 #include "utils/training_utils.h"
 #include "utils/metrics.h"
@@ -13,6 +14,10 @@
 #include <fstream>
 #include <sstream>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <functional>
 
 void test_overfit_tiny_sequence() {
     utils::print_header("Overfitting Test: Memorize 5 Tokens");
@@ -139,7 +144,11 @@ void test_dataloader() {
             }
         }
 
-        std::cout << "Avg Loss: " << (total_loss / batch_count) << std::endl;
+        const float avg_loss = total_loss / batch_count;
+        std::cout << "Avg Loss: " << avg_loss << std::endl;
+        if (batch_count == 0 || !std::isfinite(avg_loss)) {
+            throw std::runtime_error("DataLoader test produced a non-finite loss");
+        }
     }
 
     std::cout << "DataLoader test complete" << std::endl;
@@ -215,7 +224,7 @@ void benchmark_training_speed() {
 
     std::cout << "Warmup complete. Starting benchmark..." << std::endl;
 
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::steady_clock::now();
 
     for (int step = 0; step < 100; step++) {
         if (!loader.has_next()) loader.reset();
@@ -236,7 +245,7 @@ void benchmark_training_speed() {
         optimizer.step();
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
     std::cout << "\n=== BASELINE RESULTS ===" << std::endl;
@@ -291,6 +300,101 @@ void test_inference_parity(GPTArch arch) {
     std::cout << "SUCCESS" << std::endl;
 }
 
+// File-format robustness: corrupt token files and tokenizer caches must be
+// rejected with an exception (not a crash, a leak, or a huge allocation),
+// and a failed tokenizer load must leave the tokenizer as it was.
+void expect_throw(const std::string& what, const std::function<void()>& fn) {
+    try {
+        fn();
+    } catch (const std::exception& e) {
+        std::cout << "  rejected " << what << ": " << e.what() << std::endl;
+        return;
+    }
+    throw std::runtime_error("expected an exception for " + what);
+}
+
+void write_bytes(const std::string& path, const std::string& bytes) {
+    std::ofstream out(path, std::ios::binary);
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!out) throw std::runtime_error("could not write " + path);
+}
+
+std::string token_file_bytes(uint32_t vocab, uint64_t count, const std::vector<uint16_t>& ids,
+                             const char* magic = "TOK1") {
+    std::string bytes(magic, 4);
+    bytes.append(reinterpret_cast<const char*>(&vocab), sizeof(vocab));
+    bytes.append(reinterpret_cast<const char*>(&count), sizeof(count));
+    bytes.append(reinterpret_cast<const char*>(ids.data()), ids.size() * sizeof(uint16_t));
+    return bytes;
+}
+
+void test_file_formats() {
+    utils::print_header("File Formats: corrupt inputs are rejected");
+    const std::string tok = "sanity_io_test.bin";
+    const std::vector<uint16_t> ids = {1, 2, 3, 4, 5, 6, 7, 8};
+
+    tokenfile::write(tok, std::vector<int>(ids.begin(), ids.end()), 10);
+    {
+        MappedTokenDataset ok(tok, 4);
+        if (ok.tokenCount() != ids.size() || ok.vocabSize() != 10 || ok.size() != 4) {
+            throw std::runtime_error("valid token file read back wrong");
+        }
+        if (ok.get_item(3).second.back() != 8) {
+            throw std::runtime_error("valid token file window read back wrong");
+        }
+    }
+    write_bytes(tok, token_file_bytes(10, ids.size(), ids, "NOPE"));
+    expect_throw("bad magic", [&] { MappedTokenDataset d(tok, 4); });
+    write_bytes(tok, token_file_bytes(0, ids.size(), ids));
+    expect_throw("zero vocab", [&] { MappedTokenDataset d(tok, 4); });
+    write_bytes(tok, token_file_bytes(10, ids.size() + 1, ids));
+    expect_throw("count past end of file", [&] { MappedTokenDataset d(tok, 4); });
+    // count * sizeof(uint16_t) wraps to a small number in 64 bits.
+    write_bytes(tok, token_file_bytes(10, (uint64_t{1} << 63) + 2, ids));
+    expect_throw("count that overflows a byte size", [&] { MappedTokenDataset d(tok, 4); });
+    write_bytes(tok, token_file_bytes(10, ids.size(), ids));
+    expect_throw("window longer than the file", [&] { MappedTokenDataset d(tok, 8); });
+    std::vector<uint16_t> bad_ids = ids;
+    bad_ids[5] = 10;
+    write_bytes(tok, token_file_bytes(10, bad_ids.size(), bad_ids));
+    {
+        MappedTokenDataset d(tok, 4);
+        d.get_item(0);  // tokens 0..4 are in range
+        expect_throw("token id >= vocab", [&] { d.get_item(1); });
+    }
+    std::remove(tok.c_str());
+
+    const std::string cache = "sanity_io_test.cache";
+    BPETokenizer trained(40);
+    trained.train("the cat sat on the mat and the cat ran");
+    trained.save(cache);
+    const std::string text = "the cat sat on the mat";
+    BPETokenizer loaded(40);
+    loaded.load(cache);
+    if (loaded.encode(text) != trained.encode(text)
+        || loaded.getCurrentVocabSize() != trained.getCurrentVocabSize()) {
+        throw std::runtime_error("tokenizer cache round trip changed the tokenizer");
+    }
+
+    std::ifstream in(cache, std::ios::binary);
+    const std::string good((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    write_bytes(cache, good.substr(0, good.size() - 3));
+    expect_throw("truncated cache", [&] { loaded.load(cache); });
+    if (loaded.encode(text) != trained.encode(text)) {
+        throw std::runtime_error("failed tokenizer load modified the tokenizer");
+    }
+    std::string huge = good;
+    const uint64_t huge_len = uint64_t{1} << 40;
+    huge.replace(sizeof(size_t), sizeof(huge_len), reinterpret_cast<const char*>(&huge_len),
+                 sizeof(huge_len));
+    write_bytes(cache, huge);
+    expect_throw("1TB token length", [&] { loaded.load(cache); });
+    std::remove(cache.c_str());
+
+    std::cout << "SUCCESS" << std::endl;
+}
+
 int main(int argc, char* argv[]) {
     std::cout << "Running Sanity Tests\n" << std::endl;
 
@@ -307,10 +411,12 @@ int main(int argc, char* argv[]) {
                 test_inference_parity(GPTArch::GPT2);
             } else if (test_name == "parity-modern") {
                 test_inference_parity(GPTArch::Modern);
+            } else if (test_name == "file-formats") {
+                test_file_formats();
             } else {
                 std::cerr << "Unknown test: " << test_name << std::endl;
                 std::cerr << "Available tests: overfit, dataloader, parity-gpt2, "
-                             "parity-modern, benchmark" << std::endl;
+                             "parity-modern, file-formats, benchmark" << std::endl;
                 return 1;
             }
         } else {
@@ -318,6 +424,7 @@ int main(int argc, char* argv[]) {
             test_dataloader();
             test_inference_parity(GPTArch::GPT2);
             test_inference_parity(GPTArch::Modern);
+            test_file_formats();
             benchmark_training_speed();
         }
 
