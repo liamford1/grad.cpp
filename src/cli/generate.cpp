@@ -11,6 +11,7 @@
 
 #include <iostream>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -30,10 +31,9 @@ std::vector<Prompt> held_out_prompts(const std::string& corpus_path, int vocab_s
         return sample_prompts(corpus_path, tokenizer, MappedTokenDataset(val_bin, kWindow, kWindow));
     }
     const std::vector<int> tokens = tokenizer.encode(read_text_file(corpus_path));
-    const size_t split = tokens.size() * 95 / 100;
+    const auto val = std::span<const int>(tokens).subspan(tokens.size() * 95 / 100);
     return sample_prompts(corpus_path, tokenizer,
-                          TextDataset(std::vector<int>(tokens.begin() + split, tokens.end()),
-                                      kWindow, kWindow));
+                          TextDataset(std::vector<int>(val.begin(), val.end()), kWindow, kWindow));
 }
 
 // An empty prompt means "pick one": the first speaker tag for the default

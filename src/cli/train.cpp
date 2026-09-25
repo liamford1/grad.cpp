@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -93,9 +94,10 @@ TrainingData encode_in_memory(const std::string& corpus_path, int vocab_size, in
     // Hold out the last 5% of the corpus for validation. The split is
     // contiguous, so no training window ever overlaps validation text -
     // val perplexity measures generalization, not memorization.
-    const size_t split = tokens.size() * 95 / 100;
-    const std::vector<int> train_tokens(tokens.begin(), tokens.begin() + split);
-    const std::vector<int> val_tokens(tokens.begin() + split, tokens.end());
+    const std::span<const int> all(tokens);
+    const size_t split = all.size() * 95 / 100;
+    const std::vector<int> train_tokens(all.first(split).begin(), all.first(split).end());
+    const std::vector<int> val_tokens(all.subspan(split).begin(), all.subspan(split).end());
     // Non-overlapping val windows: evaluation covers the whole held-out
     // slice once, deterministically.
     return {std::make_shared<TextDataset>(train_tokens, seq_length),
@@ -158,7 +160,7 @@ struct RunSeeds {
 // FNV-1a, so a path hashes the same under every standard library.
 std::uint32_t fnv1a(std::string_view text) {
     std::uint32_t h = 2166136261u;
-    for (const unsigned char c : text) h = (h ^ c) * 16777619u;
+    for (const char c : text) h = (h ^ static_cast<unsigned char>(c)) * 16777619u;
     return h;
 }
 
