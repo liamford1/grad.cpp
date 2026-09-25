@@ -1,6 +1,6 @@
 # Run report: 70M GPT on TinyStories (September 2026)
 
-The largest model trained with grad.cpp so far: a 69.8M-parameter GPT-2-style decoder trained from scratch for 40,000 optimizer steps (328M tokens) on one Apple M2 Pro, with every forward and backward pass going through this repo's own autograd engine.
+The largest model trained with grad.cpp so far: a 69.8M-parameter GPT-2-style decoder trained from scratch for 40,000 optimizer steps (328M tokens) on one Apple M3 Pro (12-core CPU), with every forward and backward pass going through this repo's own autograd engine.
 
 | | |
 |---|---|

@@ -2,7 +2,7 @@
 
 One row per optimization iteration, so the performance story is readable at a glance. Newest last.
 
-**Machine:** Apple M2 Pro (arm64), macOS. Release build (`-O3 -march=native`), Apple Accelerate BLAS, single process.
+**Machine:** Apple M2 Pro (arm64, 10-core CPU), macOS, for rounds #0-11 and the PyTorch head-to-head. The 70M long-run measurement below is from an Apple M3 Pro (12-core CPU). Release build (`-O3 -march=native`), Apple Accelerate BLAS, single process.
 
 **Historical workload (#0-11):** `./build/grad bench 20`
 - *Training:* full model config: d_model 512, 6 layers, 8 heads, seq 96, batch 8, vocab 5000 (~22M params). 3 warmup steps, then one 20-step timed window.
@@ -40,7 +40,7 @@ Run benchmarks on an otherwise idle machine. The JSON includes every trial, the 
 
 ## Long-run measurement: 70M medium preset (2026-09)
 
-Not an optimization round. It is the throughput a real run sustained: the `medium` preset (69.8M parameters, d768 L8, seq 256, 8 × 4 accumulation) trained for 40,000 steps on TinyStories. The median optimizer step took 3.23s, or **2,540 tokens/s** (10th to 90th percentile 3.20 to 3.44s), over 37.1 hours in four resumed sessions. End-of-step RSS stayed between 1.8 and 2.3GB with no drift. Details and the full per-step CSV are in the [run report](docs/runs/2026-09-tinystories-70m/README.md).
+Not an optimization round, and on different hardware (M3 Pro), so not comparable row-for-row with the table above. It is the throughput a real run sustained: the `medium` preset (69.8M parameters, d768 L8, seq 256, 8 × 4 accumulation) trained for 40,000 steps on TinyStories. The median optimizer step took 3.23s, or **2,540 tokens/s** (10th to 90th percentile 3.20 to 3.44s), over 37.1 hours in four resumed sessions. End-of-step RSS stayed between 1.8 and 2.3GB with no drift. Details and the full per-step CSV are in the [run report](docs/runs/2026-09-tinystories-70m/README.md).
 
 ## Head-to-head: PyTorch (2026-07-19)
 
