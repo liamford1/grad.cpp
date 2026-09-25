@@ -6,6 +6,7 @@
 // (NDEBUG) builds.
 
 #include "transformer/activations.h"
+#include "transformer/gpt_model.h"
 #include "transformer/multihead_attention.h"
 #include "transformer/parallel.h"
 #include "transformer/tensor.h"
@@ -16,7 +17,11 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
+#include <string>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -244,6 +249,105 @@ void test_attention_2d_dropout_gradients(bool rope) {
     }
 }
 
+std::vector<char> read_bytes(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    return std::vector<char>(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+}
+
+void write_bytes(const std::string& path, const std::vector<char>& bytes) {
+    std::ofstream f(path, std::ios::binary);
+    f.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+}
+
+template <typename T>
+void poke(std::vector<char>& bytes, size_t offset, T value) {
+    std::memcpy(bytes.data() + offset, &value, sizeof(T));
+}
+
+// Expects GPTModel::load to throw std::runtime_error whose message
+// contains needle.
+bool load_fails_with(const std::string& path, const std::string& needle) {
+    try {
+        (void)GPTModel::load(path);
+    } catch (const std::runtime_error& e) {
+        const bool ok = std::string(e.what()).find(needle) != std::string::npos;
+        if (!ok) std::fprintf(stderr, "  unexpected load error: %s\n", e.what());
+        return ok;
+    } catch (...) {
+        return false;
+    }
+    return false;
+}
+
+void test_checkpoint(GPTArch arch) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+        ("grad_core_regressions_" + std::to_string(static_cast<int>(arch)));
+    fs::create_directories(dir);
+    const std::string good = (dir / "model.bin").string();
+    const std::string bad = (dir / "bad.bin").string();
+
+    const int vocab = 11, d = 8, layers = 2, heads = 2, max_len = 6;
+    GPTModel model(vocab, d, layers, heads, max_len, 0.0f, arch);
+    CHECK(model.save(good, /*quiet=*/true));
+
+    // Round trip: every parameter bitwise equal.
+    {
+        GPTModel loaded = GPTModel::load(good);
+        auto a = model.getAllParameters();
+        auto b = loaded.getAllParameters();
+        CHECK(a.size() == b.size());
+        bool same = a.size() == b.size();
+        for (size_t i = 0; same && i < a.size(); i++) {
+            const Tensor& x = a[i]->getData();
+            const Tensor& y = b[i]->getData();
+            same = x.getRows() == y.getRows() && x.getCols() == y.getCols() &&
+                   std::memcmp(x.raw(), y.raw(), x.numel() * sizeof(float)) == 0;
+        }
+        CHECK(same);
+    }
+
+    const std::vector<char> bytes = read_bytes(good);
+    // Header: magic, version, arch (uint32 each), then vocab, d_model,
+    // layers, heads, max_len (int32) and dropout (float32); the token
+    // embedding's rows field follows at byte 36.
+    CHECK(bytes.size() > 64);
+
+    std::vector<char> truncated(bytes.begin(), bytes.end() - 10);
+    write_bytes(bad, truncated);
+    CHECK(load_fails_with(bad, "file ends inside final norm beta"));
+
+    std::vector<char> header_only(bytes.begin(), bytes.begin() + 20);
+    write_bytes(bad, header_only);
+    CHECK(load_fails_with(bad, "file ends while reading num_layers"));
+
+    std::vector<char> b = bytes;
+    poke<uint32_t>(b, 8, 7u);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "unknown architecture tag 7"));
+
+    b = bytes;
+    poke<int32_t>(b, 16, -5);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "d_model = -5"));
+
+    b = bytes;
+    poke<int32_t>(b, 24, 3);  // 8 % 3 != 0
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "not divisible"));
+
+    b = bytes;
+    poke<int32_t>(b, 36, vocab + 1);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "token embedding is 12x8, model expects 11x8"));
+
+    CHECK(load_fails_with(bad, bad));  // the path is in every message
+
+    CHECK(!model.save((dir / "no_such_dir" / "x.bin").string(), true));
+
+    fs::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
@@ -252,6 +356,8 @@ int main() {
     test_parallel_for();
     test_attention_2d_dropout_gradients(/*rope=*/false);
     test_attention_2d_dropout_gradients(/*rope=*/true);
+    test_checkpoint(GPTArch::GPT2);
+    test_checkpoint(GPTArch::Modern);
 
     if (g_failures) {
         std::fprintf(stderr, "%d check(s) failed\n", g_failures);

@@ -6,9 +6,13 @@
 #include "transformer/layer_norm.h"
 #include "transformer/gpt_model.h"
 #include "transformer/blas_wrapper.h"
-#include <iostream>
+#include <cstdint>
+#include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
@@ -162,39 +166,82 @@ std::vector<std::shared_ptr<Variable>> GPTModel::getAllParameters() const {
     return params;
 }
 
-void writeTensorToBinary(std::ofstream& file, const Tensor& tensor) {
-    int rows = tensor.getRows();
-    int cols = tensor.getCols();
+namespace {
 
+constexpr uint32_t kCheckpointMagic = 0x4750544D;  // "GPTM"
+
+// Upper bounds for header fields. Far above any model this trainer can
+// fit in memory, low enough that a corrupt header fails here with a clear
+// message instead of as a multi-gigabyte allocation or an int overflow.
+constexpr int kMaxVocab = 1 << 24;
+constexpr int kMaxDModel = 1 << 16;
+constexpr int kMaxLayers = 1 << 12;
+constexpr int kMaxLen = 1 << 20;
+
+// On-disk tensor: int32 rows, int32 cols, then rows*cols float32 in
+// row-major order (the in-memory layout, so one write/read moves it).
+void write_tensor(std::ofstream& file, const Tensor& tensor) {
+    if (tensor.getIs3D()) {
+        throw std::logic_error("checkpoint tensors are 2D");
+    }
+    const int rows = static_cast<int>(tensor.getRows());
+    const int cols = static_cast<int>(tensor.getCols());
     file.write(reinterpret_cast<const char*>(&rows), sizeof(int));
     file.write(reinterpret_cast<const char*>(&cols), sizeof(int));
+    file.write(reinterpret_cast<const char*>(tensor.raw()),
+               static_cast<std::streamsize>(tensor.numel() * sizeof(float)));
+}
 
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            float value = tensor.getValue(i, j);
-            file.write(reinterpret_cast<const char*>(&value), sizeof(float));
+// Reads a checkpoint with every read checked: a truncated or corrupt file
+// fails naming the field it was reading, never with values left
+// uninitialized by a short read. load() prefixes the path.
+class CheckpointReader {
+public:
+    explicit CheckpointReader(std::ifstream& file) : file_(file) {}
+
+    template <typename T>
+    T scalar(const char* what) {
+        T value{};
+        file_.read(reinterpret_cast<char*>(&value), sizeof(T));
+        if (!file_) fail(std::string("file ends while reading ") + what);
+        return value;
+    }
+
+    // Reads the next tensor, which must have exactly the shape of the
+    // parameter it will replace.
+    Tensor tensor_like(const Tensor& target, const std::string& what) {
+        const int rows = scalar<int>(what.c_str());
+        const int cols = scalar<int>(what.c_str());
+        if (rows <= 0 || cols <= 0 ||
+            static_cast<size_t>(rows) != target.getRows() ||
+            static_cast<size_t>(cols) != target.getCols()) {
+            fail(what + " is " + std::to_string(rows) + "x" + std::to_string(cols) +
+                 ", model expects " + std::to_string(target.getRows()) + "x" +
+                 std::to_string(target.getCols()));
         }
+        Tensor t = Tensor::uninitialized(rows, cols);
+        file_.read(reinterpret_cast<char*>(t.raw()),
+                   static_cast<std::streamsize>(t.numel() * sizeof(float)));
+        if (!file_) fail("file ends inside " + what);
+        return t;
+    }
+
+    [[noreturn]] void fail(const std::string& msg) const {
+        throw std::runtime_error(msg);
+    }
+
+private:
+    std::ifstream& file_;
+};
+
+void check_range(const CheckpointReader& r, const char* name, int value, int lo, int hi) {
+    if (value < lo || value > hi) {
+        r.fail(std::string("header field ") + name + " = " + std::to_string(value) +
+               " is outside [" + std::to_string(lo) + ", " + std::to_string(hi) + "]");
     }
 }
 
-Tensor readTensorFromBinary(std::ifstream& file) {
-    int rows;
-    int cols;
-
-    file.read(reinterpret_cast<char*>(&rows), sizeof(int));
-    file.read(reinterpret_cast<char*>(&cols), sizeof(int));
-
-    Tensor tensor(rows, cols);
-
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            float value;
-            file.read(reinterpret_cast<char*>(&value), sizeof(float));
-            tensor.setValue(i, j, value);
-        }
-    }
-    return tensor;
-}
+}  // namespace
 
 bool GPTModel::save(const std::string& filepath, bool quiet) const {
     std::ofstream file(filepath, std::ios::binary);
@@ -206,7 +253,7 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
     try {
         // Version 2 adds the arch tag; everything else is unchanged, so
         // v1 files (all GPT-2-style checkpoints) stay loadable.
-        uint32_t magic = 0x4750544D;
+        uint32_t magic = kCheckpointMagic;
         uint32_t version = 2;
         uint32_t arch_tag = static_cast<uint32_t>(arch);
         file.write(reinterpret_cast<const char*>(&magic), sizeof(uint32_t));
@@ -222,48 +269,54 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
 
         const bool modern = arch == GPTArch::Modern;
 
-        writeTensorToBinary(file, token_embedding.getEmbeddingTable()->getData());
+        write_tensor(file, token_embedding.getEmbeddingTable()->getData());
         if (!modern) {
-            writeTensorToBinary(file, pos_encoding.getPositionEmbeddings()->getData());
+            write_tensor(file, pos_encoding.getPositionEmbeddings()->getData());
         }
 
         for (int i = 0; i < num_layers; i++) {
             const TransformerBlock* block = transformer_blocks[i].get();
 
             const MultiHeadAttention& attention = block->getAttention();
-            writeTensorToBinary(file, attention.getW_q()->getData());
-            writeTensorToBinary(file, attention.getW_k()->getData());
-            writeTensorToBinary(file, attention.getW_v()->getData());
-            writeTensorToBinary(file, attention.getW_o()->getData());
-            writeTensorToBinary(file, attention.getB_q()->getData());
-            writeTensorToBinary(file, attention.getB_k()->getData());
-            writeTensorToBinary(file, attention.getB_v()->getData());
-            writeTensorToBinary(file, attention.getB_o()->getData());
+            write_tensor(file, attention.getW_q()->getData());
+            write_tensor(file, attention.getW_k()->getData());
+            write_tensor(file, attention.getW_v()->getData());
+            write_tensor(file, attention.getW_o()->getData());
+            write_tensor(file, attention.getB_q()->getData());
+            write_tensor(file, attention.getB_k()->getData());
+            write_tensor(file, attention.getB_v()->getData());
+            write_tensor(file, attention.getB_o()->getData());
 
             const FeedForward& ff = block->getFFN();
             if (modern) {
-                writeTensorToBinary(file, ff.getGateWeights()->getData());
-                writeTensorToBinary(file, ff.getLayer1Weights()->getData());
-                writeTensorToBinary(file, ff.getLayer2Weights()->getData());
+                write_tensor(file, ff.getGateWeights()->getData());
+                write_tensor(file, ff.getLayer1Weights()->getData());
+                write_tensor(file, ff.getLayer2Weights()->getData());
             } else {
-                writeTensorToBinary(file, ff.getLayer1Weights()->getData());
-                writeTensorToBinary(file, ff.getLayer1Bias()->getData());
-                writeTensorToBinary(file, ff.getLayer2Weights()->getData());
-                writeTensorToBinary(file, ff.getLayer2Bias()->getData());
+                write_tensor(file, ff.getLayer1Weights()->getData());
+                write_tensor(file, ff.getLayer1Bias()->getData());
+                write_tensor(file, ff.getLayer2Weights()->getData());
+                write_tensor(file, ff.getLayer2Bias()->getData());
             }
 
             const LayerNorm& norm1 = block->getNorm1();
             const LayerNorm& norm2 = block->getNorm2();
-            writeTensorToBinary(file, norm1.getGamma()->getData());
-            writeTensorToBinary(file, norm1.getBeta()->getData());
-            writeTensorToBinary(file, norm2.getGamma()->getData());
-            writeTensorToBinary(file, norm2.getBeta()->getData());
+            write_tensor(file, norm1.getGamma()->getData());
+            write_tensor(file, norm1.getBeta()->getData());
+            write_tensor(file, norm2.getGamma()->getData());
+            write_tensor(file, norm2.getBeta()->getData());
         }
 
-        writeTensorToBinary(file, final_norm.getGamma()->getData());
-        writeTensorToBinary(file, final_norm.getBeta()->getData());
+        write_tensor(file, final_norm.getGamma()->getData());
+        write_tensor(file, final_norm.getBeta()->getData());
 
+        // ofstream reports errors (disk full, I/O error) only through its
+        // state, and close() is where buffered bytes actually hit the file.
         file.close();
+        if (!file) {
+            std::cerr << "Error: writing checkpoint failed: " << filepath << std::endl;
+            return false;
+        }
         if (!quiet) {
             std::cout << "Model saved successfully to: " << filepath << std::endl;
         }
@@ -282,104 +335,102 @@ GPTModel GPTModel::load(const std::string& filepath) {
     }
 
     try {
-        uint32_t magic;
-        uint32_t version;
-        file.read(reinterpret_cast<char*>(&magic), sizeof(uint32_t));
-        file.read(reinterpret_cast<char*>(&version), sizeof(uint32_t));
-
-        if (magic != 0x4750544D) {
-            throw std::runtime_error("Invalid file format: wrong magic number");
+        CheckpointReader in(file);
+        const uint32_t magic = in.scalar<uint32_t>("magic number");
+        if (magic != kCheckpointMagic) {
+            in.fail("not a grad.cpp checkpoint (wrong magic number)");
         }
+        const uint32_t version = in.scalar<uint32_t>("format version");
         if (version != 1 && version != 2) {
-            throw std::runtime_error("Unsupported file version: " + std::to_string(version));
+            in.fail("unsupported format version " + std::to_string(version));
         }
 
         // v1 predates the arch tag: every v1 checkpoint is GPT-2-style.
         GPTArch arch = GPTArch::GPT2;
         if (version == 2) {
-            uint32_t arch_tag;
-            file.read(reinterpret_cast<char*>(&arch_tag), sizeof(uint32_t));
-            if (arch_tag > 1) {
-                throw std::runtime_error("Unknown architecture tag: " + std::to_string(arch_tag));
+            const uint32_t arch_tag = in.scalar<uint32_t>("architecture tag");
+            if (arch_tag != static_cast<uint32_t>(GPTArch::GPT2) &&
+                arch_tag != static_cast<uint32_t>(GPTArch::Modern)) {
+                in.fail("unknown architecture tag " + std::to_string(arch_tag));
             }
             arch = static_cast<GPTArch>(arch_tag);
         }
         const bool modern = arch == GPTArch::Modern;
 
-        int vocab_size, d_model, num_layers, num_heads, max_len;
-        float dropout_rate;
-        file.read(reinterpret_cast<char*>(&vocab_size), sizeof(int));
-        file.read(reinterpret_cast<char*>(&d_model), sizeof(int));
-        file.read(reinterpret_cast<char*>(&num_layers), sizeof(int));
-        file.read(reinterpret_cast<char*>(&num_heads), sizeof(int));
-        file.read(reinterpret_cast<char*>(&max_len), sizeof(int));
-        file.read(reinterpret_cast<char*>(&dropout_rate), sizeof(float));
+        const int vocab_size = in.scalar<int>("vocab_size");
+        const int d_model = in.scalar<int>("d_model");
+        const int num_layers = in.scalar<int>("num_layers");
+        const int num_heads = in.scalar<int>("num_heads");
+        const int max_len = in.scalar<int>("max_len");
+        const float dropout_rate = in.scalar<float>("dropout_rate");
+
+        check_range(in, "vocab_size", vocab_size, 1, kMaxVocab);
+        check_range(in, "d_model", d_model, 1, kMaxDModel);
+        check_range(in, "num_layers", num_layers, 1, kMaxLayers);
+        check_range(in, "num_heads", num_heads, 1, d_model);
+        check_range(in, "max_len", max_len, 1, kMaxLen);
+        if (d_model % num_heads != 0) {
+            in.fail("d_model " + std::to_string(d_model) +
+                    " is not divisible by num_heads " + std::to_string(num_heads));
+        }
+        if (!(dropout_rate >= 0.0f && dropout_rate < 1.0f)) {
+            in.fail("dropout_rate " + std::to_string(dropout_rate) + " is outside [0, 1)");
+        }
 
         GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len, dropout_rate, arch);
 
-        Tensor embedding_table = readTensorFromBinary(file);
-        model.token_embedding.setEmbeddingTable(embedding_table);
+        model.token_embedding.setEmbeddingTable(in.tensor_like(
+            model.token_embedding.getEmbeddingTable()->getData(), "token embedding"));
 
         if (!modern) {
-            Tensor pos_embeddings = readTensorFromBinary(file);
-            model.pos_encoding.setPositionEmbeddings(pos_embeddings);
+            model.pos_encoding.setPositionEmbeddings(in.tensor_like(
+                model.pos_encoding.getPositionEmbeddings()->getData(), "position embedding"));
         }
 
         for (int i = 0; i < num_layers; i++) {
             TransformerBlock* block = model.transformer_blocks[i].get();
-            
-            MultiHeadAttention& attention = block->getAttentionRef();
-            Tensor wq = readTensorFromBinary(file);
-            Tensor wk = readTensorFromBinary(file);
-            Tensor wv = readTensorFromBinary(file);
-            Tensor wo = readTensorFromBinary(file);
-            Tensor bq = readTensorFromBinary(file);
-            Tensor bk = readTensorFromBinary(file);
-            Tensor bv = readTensorFromBinary(file);
-            Tensor bo = readTensorFromBinary(file);
+            const std::string layer = "layer " + std::to_string(i) + " ";
 
-            auto params = attention.parameters();
-            params[0]->getData() = wq;  
-            params[1]->getData() = wk;  
-            params[2]->getData() = wv; 
-            params[3]->getData() = wo; 
-            params[4]->getData() = bq;
-            params[5]->getData() = bk;
-            params[6]->getData() = bv; 
-            params[7]->getData() = bo;
-            
+            // Attention parameters load in place, in parameters() order.
+            static const char* const kAttnNames[] = {"W_q", "W_k", "W_v", "W_o",
+                                                     "b_q", "b_k", "b_v", "b_o"};
+            auto attn_params = block->getAttentionRef().parameters();
+            for (size_t p = 0; p < attn_params.size(); p++) {
+                Tensor& target = attn_params[p]->getData();
+                target = in.tensor_like(target, layer + kAttnNames[p]);
+            }
+
             FeedForward& ff = block->getFeedForwardRef();
             if (modern) {
-                Tensor gate_weights = readTensorFromBinary(file);
-                Tensor up_weights = readTensorFromBinary(file);
-                Tensor down_weights = readTensorFromBinary(file);
-                ff.setGatedWeights(Variable::create(gate_weights, true),
-                                   Variable::create(up_weights, true),
-                                   Variable::create(down_weights, true));
+                Tensor gate = in.tensor_like(ff.getGateWeights()->getData(), layer + "FFN gate");
+                Tensor up = in.tensor_like(ff.getLayer1Weights()->getData(), layer + "FFN up");
+                Tensor down = in.tensor_like(ff.getLayer2Weights()->getData(), layer + "FFN down");
+                ff.setGatedWeights(Variable::create(std::move(gate), true),
+                                   Variable::create(std::move(up), true),
+                                   Variable::create(std::move(down), true));
             } else {
-                Tensor layer1_weights = readTensorFromBinary(file);
-                Tensor layer1_bias = readTensorFromBinary(file);
-                Tensor layer2_weights = readTensorFromBinary(file);
-                Tensor layer2_bias = readTensorFromBinary(file);
-                auto layer1_weights_var = Variable::create(layer1_weights, true);
-                auto layer1_bias_var = Variable::create(layer1_bias, true);
-                auto layer2_weights_var = Variable::create(layer2_weights, true);
-                auto layer2_bias_var = Variable::create(layer2_bias, true);
-                ff.setWeights(layer1_weights_var, layer1_bias_var, layer2_weights_var, layer2_bias_var);
+                Tensor w1 = in.tensor_like(ff.getLayer1Weights()->getData(), layer + "FFN W1");
+                Tensor b1 = in.tensor_like(ff.getLayer1Bias()->getData(), layer + "FFN b1");
+                Tensor w2 = in.tensor_like(ff.getLayer2Weights()->getData(), layer + "FFN W2");
+                Tensor b2 = in.tensor_like(ff.getLayer2Bias()->getData(), layer + "FFN b2");
+                ff.setWeights(Variable::create(std::move(w1), true),
+                              Variable::create(std::move(b1), true),
+                              Variable::create(std::move(w2), true),
+                              Variable::create(std::move(b2), true));
             }
-            
+
             LayerNorm& norm1 = block->getNorm1Ref();
             LayerNorm& norm2 = block->getNorm2Ref();
-            Tensor gamma1 = readTensorFromBinary(file);
-            Tensor beta1 = readTensorFromBinary(file);
-            Tensor gamma2 = readTensorFromBinary(file);
-            Tensor beta2 = readTensorFromBinary(file);
+            Tensor gamma1 = in.tensor_like(norm1.getGamma()->getData(), layer + "norm1 gamma");
+            Tensor beta1 = in.tensor_like(norm1.getBeta()->getData(), layer + "norm1 beta");
+            Tensor gamma2 = in.tensor_like(norm2.getGamma()->getData(), layer + "norm2 gamma");
+            Tensor beta2 = in.tensor_like(norm2.getBeta()->getData(), layer + "norm2 beta");
             norm1.setParams(gamma1, beta1);
             norm2.setParams(gamma2, beta2);
         }
 
-        Tensor final_gamma = readTensorFromBinary(file);
-        Tensor final_beta = readTensorFromBinary(file);
+        Tensor final_gamma = in.tensor_like(model.final_norm.getGamma()->getData(), "final norm gamma");
+        Tensor final_beta = in.tensor_like(model.final_norm.getBeta()->getData(), "final norm beta");
         model.final_norm.setParams(final_gamma, final_beta);
 
         file.close();
@@ -388,6 +439,6 @@ GPTModel GPTModel::load(const std::string& filepath) {
 
     } catch (const std::exception& e) {
         file.close();
-        throw std::runtime_error("Error loading model: " + std::string(e.what()));
+        throw std::runtime_error("Error loading model from " + filepath + ": " + e.what());
     }
 }
