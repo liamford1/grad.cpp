@@ -11,6 +11,7 @@
 #include "data/token_file.h"
 #include "training/trainer.h"
 #include "transformer/activations.h"
+#include "transformer/tensor.h"
 #include "transformer/text_gen.h"
 #include "utils/metrics.h"
 
@@ -19,8 +20,10 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <random>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cli {
@@ -141,6 +144,45 @@ void generate_samples(GPTModel& model, const BPETokenizer& tokenizer,
     }
 }
 
+// One --seed drives every random stream of a run. Each stream's seed is
+// its historical value XOR (seed ^ kDefaultSeed), so the default seed
+// reproduces runs made before --seed existed bit for bit and any other
+// seed moves all of them.
+constexpr std::uint32_t kDefaultSeed = 42;
+
+struct RunSeeds {
+    std::uint32_t init;    // weight initialization (Tensor::set_init_seed)
+    std::uint32_t loader;  // training-window sampling and dropout masks
+};
+
+// FNV-1a, so a path hashes the same under every standard library.
+std::uint32_t fnv1a(std::string_view text) {
+    std::uint32_t h = 2166136261u;
+    for (const unsigned char c : text) h = (h ^ c) * 16777619u;
+    return h;
+}
+
+// The training loader samples windows with replacement, so any run that
+// starts from existing weights must not repeat the seed those weights were
+// trained with - it would replay the exact batch sequence the checkpoint
+// already saw. Resumes perturb the seed by their step position, warm
+// starts by the checkpoint path. Dropout masks follow the loader seed for
+// the same reason.
+RunSeeds derive_seeds(std::uint32_t seed, std::optional<int> resume_step,
+                      const std::string& warm_start_path) {
+    const std::uint32_t delta = seed ^ kDefaultSeed;
+    std::uint32_t loader = seed;
+    if (resume_step) {
+        loader = seed + static_cast<std::uint32_t>(*resume_step);
+    } else if (!warm_start_path.empty()) {
+        loader = fnv1a(warm_start_path) ^ delta;
+    }
+    // Before --seed the init stream was never reseeded, so its historical
+    // seed is std::mt19937's default.
+    const auto init = static_cast<std::uint32_t>(std::mt19937::default_seed) ^ delta;
+    return {.init = init, .loader = loader};
+}
+
 struct TrainRequest {
     const Preset& preset;
     std::string corpus_path;
@@ -149,6 +191,7 @@ struct TrainRequest {
     // schedule position included); any other value is a checkpoint path to
     // warm-start from - weights only, fresh optimizer and schedule.
     std::string init;
+    std::uint32_t seed;
     bool via_train_fast;  // which command the resume hint should name
 };
 
@@ -186,6 +229,9 @@ int train(const TrainRequest& request) {
     const training::TrainingConfig config =
         make_config(preset, tokenizer.getCurrentVocabSize(), prefix);
 
+    const RunSeeds seeds = derive_seeds(request.seed, resume_next_step, warm_start_path);
+    Tensor::set_init_seed(seeds.init);
+
     const Stopwatch timer;
     GPTModel model = [&]() -> GPTModel {
         if (resume) return GPTModel::load(prefix + "_resume_model.bin");
@@ -212,23 +258,8 @@ int train(const TrainRequest& request) {
     std::cout << "Model initialized (" << init_ms << "ms)" << std::endl;
     std::cout << "Parameters: " << (static_cast<double>(total_params) / 1e6) << "M" << std::endl;
 
-    // The training loader samples windows with replacement, so any run that
-    // starts from existing weights must not repeat the seed those weights
-    // were trained with - it would replay the exact batch sequence the
-    // checkpoint already saw. Resumes perturb the seed by their step
-    // position, warm starts by the checkpoint path (FNV-1a, so the seed is
-    // the same under every standard library). Dropout masks follow the same
-    // seed for the same reason.
-    unsigned int loader_seed = 42;
-    if (resume) {
-        loader_seed = 42u + static_cast<unsigned int>(*resume_next_step);
-    } else if (!warm_start_path.empty()) {
-        uint32_t h = 2166136261u;
-        for (unsigned char c : warm_start_path) h = (h ^ c) * 16777619u;
-        loader_seed = h;
-    }
-    set_dropout_seed(loader_seed);
-    DataLoader loader(data.train, config.batch_size, true, loader_seed);
+    set_dropout_seed(seeds.loader);
+    DataLoader loader(data.train, config.batch_size, true, seeds.loader);
     DataLoader val_loader(data.val, config.batch_size, false);
 
     std::cout << "Dataset: " << data.train->size() << " train / " << data.val->size()
@@ -247,7 +278,9 @@ int train(const TrainRequest& request) {
                   << (request.via_train_fast
                           ? "train-fast " + corpus_path
                           : "train " + corpus_path + " " + std::string(preset.name))
-                  << " resume\n" << std::endl;
+                  << " resume"
+                  << (request.seed != kDefaultSeed ? " --seed " + std::to_string(request.seed) : "")
+                  << "\n" << std::endl;
         return 0;
     }
 
@@ -268,6 +301,9 @@ std::string train_preset_names() {
     return names;
 }
 
+constexpr const char* kSeedHelp =
+    "run seed for weight init, window sampling and dropout; pass the same seed to resume";
+
 constexpr const char* kInitHelp =
     "'resume' continues an interrupted run from its resume pair; a checkpoint path "
     "warm-starts from those weights with a fresh optimizer and schedule";
@@ -278,6 +314,7 @@ int run_train(const Invocation& invocation) {
     std::string corpus = kDefaultCorpus;
     std::string preset_name = "small";
     std::string init;
+    std::uint32_t seed = kDefaultSeed;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe("Uses the corpus's prepared .bin token files when they exist (see prepare), "
@@ -287,6 +324,7 @@ int run_train(const Invocation& invocation) {
     cmd.optional("corpus", corpus, "plain-text corpus");
     cmd.optional("preset", preset_name, "one of " + train_preset_names() + "; see grad presets");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
+    cmd.option("--seed", seed, kSeedHelp);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     const Preset* preset = find_preset(preset_name);
@@ -297,23 +335,27 @@ int run_train(const Invocation& invocation) {
     return train({.preset = *preset,
                   .corpus_path = corpus,
                   .init = init,
+                  .seed = seed,
                   .via_train_fast = false});
 }
 
 int run_train_fast(const Invocation& invocation) {
     std::string corpus = kDefaultCorpus;
     std::string init;
+    std::uint32_t seed = kDefaultSeed;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
-    cmd.describe("train with the 'fast' preset: a 2-layer model for 50 steps, about a minute. "
+    cmd.describe("Runs train with the 'fast' preset: a 2-layer model for 50 steps, about a minute. "
                  "Checkpoints are prefixed <corpus>_fast so they never overwrite a real run.");
     cmd.optional("corpus", corpus, "plain-text corpus");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
+    cmd.option("--seed", seed, kSeedHelp);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     return train({.preset = *find_preset("fast"),
                   .corpus_path = corpus,
                   .init = init,
+                  .seed = seed,
                   .via_train_fast = true});
 }
 
