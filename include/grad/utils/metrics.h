@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <fstream>
 #include <string>
 
@@ -19,7 +20,7 @@ class MetricsLog {
 public:
     MetricsLog(const std::string& path, bool append,
                int total_steps, long tokens_per_step,
-               long param_count, const std::string& model_desc);
+               size_t param_count, const std::string& model_desc);
 
     void log_step(int step, float loss, float lr, float grad_norm,
                   long step_ms, long mem_mb);

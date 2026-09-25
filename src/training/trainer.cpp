@@ -42,7 +42,7 @@ public:
         struct sigaction action {};
         action.sa_handler = request_stop;
         sigemptyset(&action.sa_mask);
-        action.sa_flags = SA_RESETHAND;
+        action.sa_flags = static_cast<int>(SA_RESETHAND);  // 0x80000000u on glibc; sa_flags is int
         sigaction(SIGINT, &action, &prev_int_);
         sigaction(SIGTERM, &action, &prev_term_);
     }
@@ -219,7 +219,7 @@ bool Trainer::train() {
 
     // Per-step CSV for `grad watch`; resumes append so the
     // dashboard sees the run's whole history.
-    long param_count = 0;
+    size_t param_count = 0;
     for (const auto& p : model_.getAllParameters()) param_count += p->getData().numel();
     char desc[128];
     std::snprintf(desc, sizeof(desc), "%s d%d L%d H%d seq%d b%dx%d vocab%d",

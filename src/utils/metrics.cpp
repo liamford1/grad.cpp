@@ -16,7 +16,7 @@ std::string fixed_wall(double s) {
 
 MetricsLog::MetricsLog(const std::string& path, bool append,
                        int total_steps, long tokens_per_step,
-                       long param_count, const std::string& model_desc)
+                       size_t param_count, const std::string& model_desc)
     : out_(path, append ? std::ios::app : std::ios::trunc),
       start_(std::chrono::steady_clock::now()) {
     // The meta row repeats on resume; readers take the last one.
