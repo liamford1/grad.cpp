@@ -154,6 +154,44 @@ void test_parallel_for() {
     CHECK(once);
 }
 
+void test_tensor_shapes() {
+    // 2^66 elements wraps size_t to 0; it must be rejected, not allocated.
+    const size_t big = size_t{1} << 22;
+    CHECK(throws<std::overflow_error>([&] { Tensor t(big, big, big); (void)t; }));
+    CHECK(throws<std::overflow_error>([&] { Tensor t(size_t{1} << 31, size_t{1} << 31); (void)t; }));
+
+    // 3D + 2D: only the 2D operand may broadcast.
+    Tensor a3(2, 1, 4);
+    Tensor b2(3, 4);
+    CHECK(throws<std::invalid_argument>([&] { (void)a3.add(b2); }));
+    CHECK(throws<std::invalid_argument>([&] { (void)b2.add(a3); }));
+    Tensor c3(2, 3, 4);
+    Tensor wide(3, 1);
+    CHECK(throws<std::invalid_argument>([&] { (void)c3.add(Tensor(3, 5)); }));
+    CHECK(throws<std::invalid_argument>([&] { (void)Tensor(3, 5).add(c3); }));
+
+    for (size_t i = 0; i < c3.numel(); i++) c3.raw()[i] = static_cast<float>(i);
+    Tensor row(1, 4);
+    for (size_t j = 0; j < 4; j++) row.raw()[j] = 100.0f * static_cast<float>(j + 1);
+    for (size_t i = 0; i < 3; i++) wide.raw()[i] = 1000.0f * static_cast<float>(i + 1);
+    const Tensor r1 = c3.add(row);
+    const Tensor r2 = wide.add(c3);
+    bool ok = true;
+    for (size_t b = 0; b < 2; b++) {
+        for (size_t i = 0; i < 3; i++) {
+            for (size_t j = 0; j < 4; j++) {
+                const float x = c3.getValue(b, i, j);
+                ok = ok && r1.getValue(b, i, j) == x + row.getValue(0, j);
+                ok = ok && r2.getValue(b, i, j) == x + wide.getValue(i, 0);
+            }
+        }
+    }
+    CHECK(ok);
+
+    Tensor m1(2, 3, 4), m2(5, 3, 4);
+    CHECK(throws<std::invalid_argument>([&] { m1.multiply_inplace(m2); }));
+}
+
 // Scalar loss sum(out * R) whose backward seeds out's grad with R.
 std::shared_ptr<Variable> weighted_sum(const std::shared_ptr<Variable>& out,
                                        const std::vector<float>& R) {
@@ -354,6 +392,7 @@ int main() {
     test_dropout_masks();
     test_init_seed();
     test_parallel_for();
+    test_tensor_shapes();
     test_attention_2d_dropout_gradients(/*rope=*/false);
     test_attention_2d_dropout_gradients(/*rope=*/true);
     test_checkpoint(GPTArch::GPT2);

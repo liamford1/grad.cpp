@@ -37,10 +37,14 @@ void check_dims(size_t batch_size, size_t rows, size_t cols) {
     if (rows == 0 || cols == 0 || batch_size == 0) {
         throw std::invalid_argument("Tensor dimensions must be positive");
     }
-    const size_t total = batch_size * rows * cols;
-    if (total > MAX_TENSOR_ELEMENTS) {
-        throw std::overflow_error("Tensor too large: " + std::to_string(total) +
-                                  " elements exceeds maximum of " + std::to_string(MAX_TENSOR_ELEMENTS));
+    // Compared by division so the check cannot itself overflow: a product
+    // that wraps size_t would otherwise pass as a small tensor.
+    if (cols > MAX_TENSOR_ELEMENTS / rows ||
+        batch_size > MAX_TENSOR_ELEMENTS / (rows * cols)) {
+        throw std::overflow_error("Tensor too large: " + std::to_string(batch_size) + "x" +
+                                  std::to_string(rows) + "x" + std::to_string(cols) +
+                                  " exceeds the maximum of " +
+                                  std::to_string(MAX_TENSOR_ELEMENTS) + " elements");
     }
 }
 
@@ -305,10 +309,12 @@ Tensor Tensor::add(const Tensor& other) const {
         }
         return result;
     } else if (this->is_3d && !other.is_3d) {
-        bool rows_compatible = (rows == other.rows) || (rows == 1) || (other.rows == 1);
-        bool cols_compatible = (cols == other.cols) || (cols == 1) || (other.cols == 1);
+        // The result takes this tensor's shape, so only the 2D operand may
+        // broadcast (a size-1 row or column dimension).
+        const bool rows_compatible = (other.rows == rows) || (other.rows == 1);
+        const bool cols_compatible = (other.cols == cols) || (other.cols == 1);
         if (!rows_compatible || !cols_compatible) {
-            throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
+            throw std::invalid_argument("add: 2D operand does not broadcast to the 3D shape");
         }
 
         Tensor result = Tensor::uninitialized(batch_size, rows, cols);
@@ -335,10 +341,11 @@ Tensor Tensor::add(const Tensor& other) const {
         return result;
         
     } else if (!this->is_3d && other.is_3d) {
-        bool rows_compatible = (this->rows == other.rows) || (this->rows == 1) || (other.rows == 1);
-        bool cols_compatible = (this->cols == other.cols) || (this->cols == 1) || (other.cols == 1);
+        // Mirror of the case above: the result takes other's shape.
+        const bool rows_compatible = (this->rows == other.rows) || (this->rows == 1);
+        const bool cols_compatible = (this->cols == other.cols) || (this->cols == 1);
         if (!rows_compatible || !cols_compatible) {
-            throw std::invalid_argument("Tensor dimensions don't match for broadcasting");
+            throw std::invalid_argument("add: 2D operand does not broadcast to the 3D shape");
         }
 
         Tensor result = Tensor::uninitialized(other.batch_size, other.rows, other.cols);
@@ -691,13 +698,12 @@ void Tensor::multiply_inplace(const Tensor& other) {
     assertValid("multiply_inplace");
     other.assertValid("multiply_inplace(other)");
 
-    if (rows != other.rows || cols != other.cols || is_3d != other.is_3d) {
+    if (rows != other.rows || cols != other.cols || is_3d != other.is_3d ||
+        (is_3d && batch_size != other.batch_size)) {
         throw std::invalid_argument("Shape mismatch for in-place multiply");
     }
 
-    const size_t total = (is_3d ? batch_size : 1) * rows * cols;
-    const float* other_data = other.raw();
-    blas_vmul(data.get(), other_data, data.get(), total);
+    blas_vmul(data.get(), other.raw(), data.get(), numel());
 
 }
 
