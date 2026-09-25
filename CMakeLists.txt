@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(grad-cpp VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -58,7 +58,7 @@ endfunction()
 
 if(APPLE)
     enable_language(OBJCXX)
-    set(CMAKE_OBJCXX_STANDARD 17)
+    set(CMAKE_OBJCXX_STANDARD 20)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
     set(METAL_BACKEND_SRC src/transformer/metal_backend.mm)
     # ARC owns the Objective-C buffers and kernels allocated by every GPU GEMM.
@@ -97,6 +97,8 @@ add_library(grad_core STATIC ${GRAD_CORE_SOURCES})
 add_library(grad::core ALIAS grad_core)
 set_target_properties(grad_core PROPERTIES OUTPUT_NAME grad EXPORT_NAME core)
 grad_enable_warnings(grad_core)
+# Public, so the requirement travels with the exported target to consumers.
+target_compile_features(grad_core PUBLIC cxx_std_20)
 target_include_directories(grad_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
