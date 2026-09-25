@@ -309,7 +309,7 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
 GPTModel GPTModel::load(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open()) {
-        throw std::runtime_error("Error: Could not open file for reading: " + filepath);
+        throw std::runtime_error("Could not open checkpoint for reading: " + filepath);
     }
 
     try {
@@ -417,7 +417,7 @@ GPTModel GPTModel::load(const std::string& filepath) {
 
     } catch (const std::exception& e) {
         file.close();
-        throw std::runtime_error("Error loading model from " + filepath + ": " + e.what());
+        throw std::runtime_error("Failed to load model from " + filepath + ": " + e.what());
     }
 }
 
