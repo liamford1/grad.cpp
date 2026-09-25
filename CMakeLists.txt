@@ -230,6 +230,11 @@ if(BUILD_TESTS)
     # a check (it has no pass/fail criterion), so it is not registered.
 
     message(STATUS "Tests enabled: run ctest --test-dir ${CMAKE_BINARY_DIR} --output-on-failure")
+
+    # The argument parser belongs to the grad executable, not grad::core,
+    # so its test compiles the one source it covers.
+    add_grad_test(test_args tests/unit/test_args.cpp ArgumentParsing)
+    target_sources(test_args PRIVATE src/cli/args.cpp)
 endif()
 
 include(GNUInstallDirs)
@@ -249,7 +254,8 @@ install(TARGETS grad grad_core
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+# include/cli is the grad executable's parser, not part of grad::core's API.
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} PATTERN cli EXCLUDE)
 install(EXPORT gradTargets
     FILE gradTargets.cmake
     NAMESPACE grad::
