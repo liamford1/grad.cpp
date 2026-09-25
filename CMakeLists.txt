@@ -140,7 +140,22 @@ else()
     message(STATUS "Using system BLAS")
 endif()
 
-add_executable(grad src/main.cpp)
+# One source per subcommand; main.cpp is the dispatch table.
+add_executable(grad
+    src/main.cpp
+    src/cli/args.cpp
+    src/cli/common.cpp
+    src/cli/presets.cpp
+    src/cli/prepare.cpp
+    src/cli/train.cpp
+    src/cli/generate.cpp
+    src/cli/chat.cpp
+    src/cli/eval.cpp
+    src/cli/bench.cpp
+    src/cli/watch.cpp
+)
+# src/ for the executable's private headers (cli/commands.h and friends).
+target_include_directories(grad PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(grad PRIVATE grad::core)
 grad_enable_warnings(grad)
 
