@@ -1,4 +1,5 @@
 #include "grad/transformer/metal_backend.h"
+#include "grad/utils/env.h"
 
 #import <Metal/Metal.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
@@ -47,8 +48,8 @@ struct Context {
     bool ok = false;
 
     Context() {
-        if (const char* env = std::getenv("TRANSFORMER_METAL")) {
-            if (env[0] == '0') return;
+        if (const char* value = env::lookup("GRAD_METAL", "TRANSFORMER_METAL")) {
+            if (value[0] == '0') return;
         }
         device = MTLCreateSystemDefaultDevice();
         if (!device) return;
@@ -66,8 +67,8 @@ struct Context {
         // loses to AMX). See BENCHMARKS.md #11. The machinery stays for
         // the next model size up, where the GPU's margin grows.
         bool want_fp16 = false;
-        if (const char* env = std::getenv("TRANSFORMER_METAL_FP16")) {
-            if (env[0] == '1') want_fp16 = true;
+        if (const char* value = env::lookup("GRAD_METAL_FP16", "TRANSFORMER_METAL_FP16")) {
+            if (value[0] == '1') want_fp16 = true;
         }
         if (want_fp16) {
             NSError* error = nil;

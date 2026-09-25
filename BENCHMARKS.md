@@ -17,6 +17,8 @@ The v0.1 benchmark protocol uses repeated windows and machine-readable provenanc
   --json pytorch-cpu-benchmark.json
 ```
 
+The Metal switches the entries below mention (`TRANSFORMER_METAL`, `TRANSFORMER_METAL_THRESHOLD`, `TRANSFORMER_METAL_FP16`) have since been renamed `GRAD_METAL`, `GRAD_METAL_THRESHOLD` and `GRAD_METAL_FP16`, and `TRANSFORMER_THREADS` is now `GRAD_THREADS`. The entries keep the names in effect when they were measured, and the old names still work as a fallback.
+
 Run benchmarks on an otherwise idle machine. The JSON includes every trial, the median, exact model configuration, git/build/compiler/system metadata, backend availability, and true peak RSS.
 
 | # | Date | Change | Train steps/s | Train tok/s | Gen tok/s | Reported RSS* |

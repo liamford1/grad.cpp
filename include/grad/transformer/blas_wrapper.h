@@ -7,6 +7,7 @@
     #include <cblas.h>
 #endif
 #include "grad/transformer/metal_backend.h"
+#include "grad/utils/env.h"
 #include <cmath>
 #include <cstdlib>
 
@@ -17,13 +18,13 @@ namespace grad {
 // Accelerate on an M2 Pro across model scales (see BENCHMARKS.md): below
 // ~10 GFLOPs the AMX units win or tie (the entire 22M-param config stays
 // on CPU - measured, not assumed); above it the GPU pulls ahead, reaching
-// 1.5-1.8x at 60-120M-param shapes. Tune with TRANSFORMER_METAL_THRESHOLD;
-// disable with TRANSFORMER_METAL=0.
+// 1.5-1.8x at 60-120M-param shapes. Tune with GRAD_METAL_THRESHOLD;
+// disable with GRAD_METAL=0.
 inline bool metal_worthwhile(size_t flops)
 {
     static const long long threshold = [] {
-        if (const char* env = std::getenv("TRANSFORMER_METAL_THRESHOLD")) {
-            return static_cast<long long>(std::atoll(env));
+        if (const char* value = env::lookup("GRAD_METAL_THRESHOLD", "TRANSFORMER_METAL_THRESHOLD")) {
+            return static_cast<long long>(std::atoll(value));
         }
         return 10LL * 1000 * 1000 * 1000;
     }();

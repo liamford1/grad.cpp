@@ -10,7 +10,7 @@
 // to amortize the dispatch latency. Any call can decline before submitting
 // work, and the caller then runs the CPU BLAS path instead.
 //
-// Mixed precision (opt-in): with TRANSFORMER_METAL_FP16=1, operands are
+// Mixed precision (opt-in): with GRAD_METAL_FP16=1, operands are
 // converted to fp16 on the GPU (a compute kernel writes fp16 copies into
 // persistent private scratch in the same command buffer) and the MPS
 // matmul reads them at half the bandwidth; the result matrix stays fp32,
@@ -19,10 +19,11 @@
 // remain fp32. Off by default: measured as a wash at current model
 // scale (BENCHMARKS.md #11).
 //
-// Environment switches:
-//   TRANSFORMER_METAL=0            disable the GPU entirely
-//   TRANSFORMER_METAL_THRESHOLD=N  min FLOPs (2*M*N*K) to go to GPU
-//   TRANSFORMER_METAL_FP16=1       fp16 operands, fp32 accumulate
+// Environment switches (see grad/utils/env.h; the pre-rename
+// TRANSFORMER_* spellings are still honored):
+//   GRAD_METAL=0            disable the GPU entirely
+//   GRAD_METAL_THRESHOLD=N  min FLOPs (2*M*N*K) to go to GPU
+//   GRAD_METAL_FP16=1       fp16 operands, fp32 accumulate
 namespace grad::metal {
 
 #if defined(__APPLE__)

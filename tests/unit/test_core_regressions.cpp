@@ -1,7 +1,7 @@
 // Regression tests for core-engine invariants: dropout RNG independence
 // and determinism, nested parallel_for, tensor shape validation, loss
-// gradients, checkpoint validation, the 2D attention path, and the general
-// tensor Shape.
+// gradients, checkpoint validation, the 2D attention path, the general
+// tensor Shape, plus the GRAD_* environment variables' legacy fallback.
 //
 // Uses its own CHECK rather than assert so it stays meaningful in Release
 // (NDEBUG) builds.
@@ -12,11 +12,13 @@
 #include "grad/transformer/parallel.h"
 #include "grad/transformer/tensor.h"
 #include "grad/transformer/variable.h"
+#include "grad/utils/env.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -472,9 +474,28 @@ void test_checkpoint(GPTArch arch) {
     fs::remove_all(dir);
 }
 
+// GRAD_* switches fall back to their pre-rename TRANSFORMER_* spelling
+// only while the new name is unset.
+void test_env_lookup() {
+    const char* name = "GRAD_TEST_ENV_SWITCH";
+    const char* legacy = "TRANSFORMER_TEST_ENV_SWITCH";
+    ::unsetenv(name);
+    ::unsetenv(legacy);
+    CHECK(env::lookup(name, legacy) == nullptr);
+    ::setenv(legacy, "old", 1);
+    CHECK(env::lookup(name, legacy) != nullptr &&
+          std::strcmp(env::lookup(name, legacy), "old") == 0);
+    ::setenv(name, "new", 1);
+    CHECK(env::lookup(name, legacy) != nullptr &&
+          std::strcmp(env::lookup(name, legacy), "new") == 0);
+    ::unsetenv(name);
+    ::unsetenv(legacy);
+}
+
 }  // namespace
 
 int main() {
+    test_env_lookup();
     test_dropout_masks();
     test_init_seed();
     test_parallel_for();

@@ -261,11 +261,11 @@ if(BUILD_TESTS)
              COMMAND determinism_probe ${CMAKE_CURRENT_BINARY_DIR}/determinism_threads4.txt
                      ${GRAD_DETERMINISM_REF})
     set_tests_properties(DeterminismThreads1 PROPERTIES
-        ENVIRONMENT TRANSFORMER_THREADS=1
+        ENVIRONMENT GRAD_THREADS=1
         FIXTURES_SETUP determinism_reference
         LABELS "integration" TIMEOUT 120)
     set_tests_properties(DeterminismThreads4 PROPERTIES
-        ENVIRONMENT TRANSFORMER_THREADS=4
+        ENVIRONMENT GRAD_THREADS=4
         FIXTURES_REQUIRED determinism_reference
         LABELS "integration" TIMEOUT 120)
 

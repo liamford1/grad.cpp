@@ -8,7 +8,7 @@
 // parameter and of every loss value seen along the way. With a reference
 // file it also fails unless its output matches that file byte for byte.
 //
-// CMake runs it twice, at TRANSFORMER_THREADS=1 and 4. Every parallel loop
+// CMake runs it twice, at GRAD_THREADS=1 and 4. Every parallel loop
 // in the engine either writes disjoint outputs or reduces in a fixed order,
 // so the two runs must agree to the last bit; a reduction merged in thread
 // completion order (as LayerNorm's gamma/beta sums once were) shows up here

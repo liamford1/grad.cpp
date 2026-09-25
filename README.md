@@ -90,6 +90,17 @@ cmake --install build --prefix ./dist
 
 Downstream CMake projects can use `find_package(grad CONFIG REQUIRED)` and link `grad::core` after adding `dist` to `CMAKE_PREFIX_PATH`. Headers install under `dist/include/grad/` (`#include "grad/transformer/gpt_model.h"`) and everything is in `namespace grad` (`grad::GPTModel`, `grad::training::Trainer`); [tests/package](tests/package/main.cpp) is a minimal consumer.
 
+Runtime switches are environment variables:
+
+| Variable | Effect |
+|---|---|
+| `GRAD_THREADS=N` | Thread pool size (default: all hardware threads) |
+| `GRAD_METAL=0` | Keep every matmul on the CPU |
+| `GRAD_METAL_THRESHOLD=N` | Minimum FLOPs (2·M·N·K) for a matmul to go to the Metal GPU (default 10 GFLOPs) |
+| `GRAD_METAL_FP16=1` | fp16 GPU operands with fp32 accumulation (off by default, BENCHMARKS.md #11) |
+
+They were named `TRANSFORMER_*` before; the old names are still read when the new one is unset.
+
 Release builds are tuned for the build machine with `-march=native` (that is how every number in [BENCHMARKS.md](BENCHMARKS.md) was measured). For a binary you intend to run on another CPU, configure with `-DGRAD_NATIVE_ARCH=OFF`.
 
 ## Training on your own corpus
