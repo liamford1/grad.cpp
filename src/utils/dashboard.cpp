@@ -463,6 +463,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         size_t stride = std::max<size_t>(1, raw_pts.size() / static_cast<size_t>((left_w - 2) * 2));
         for (size_t i = 0; i < raw_pts.size(); i += stride) raw_sub.push_back(raw_pts[i]);
         std::vector<std::pair<float, float>> val_pts;
+        val_pts.reserve(d.evals.size());
         for (const auto& e : d.evals) val_pts.push_back({static_cast<float>(e.step), e.val_loss});
 
         std::vector<Series> layers;
@@ -484,6 +485,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         int h3 = main_h - h1 - h2;
         // Validation perplexity.
         std::vector<std::pair<float, float>> ppl_pts;
+        ppl_pts.reserve(d.evals.size());
         for (const auto& e : d.evals)
             ppl_pts.push_back({static_cast<float>(e.step), std::exp(e.val_loss)});
         std::string t1 = "val perplexity";
@@ -609,7 +611,8 @@ std::string newest_metrics_csv(const std::string& dir) {
             || n.compare(n.size() - suffix.size(), suffix.size(), suffix) != 0)
             continue;
         struct stat st{};
-        std::string path = dir + "/" + n;
+        std::string path = dir;
+        path.append("/").append(n);
         if (stat(path.c_str(), &st) == 0 && st.st_mtime >= best_mtime) {
             best_mtime = st.st_mtime;
             best = path;

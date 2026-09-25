@@ -44,7 +44,7 @@ public:
              float dropout_rate = 0.1f, GPTArch arch = GPTArch::GPT2);
     ~GPTModel() = default;
 
-    [[nodiscard]] std::shared_ptr<Variable> forward(std::shared_ptr<Variable> token_ids,
+    [[nodiscard]] std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& token_ids,
                                                     bool training = false) const;
 
     [[nodiscard]] std::vector<std::shared_ptr<Variable>> getAllParameters() const;

@@ -15,7 +15,7 @@ Linear::Linear(int input_dim, int output_dim, bool use_bias) : use_bias_(use_bia
     }
 }
 
-std::shared_ptr<Variable> Linear::forward(std::shared_ptr<Variable> input) const {
+std::shared_ptr<Variable> Linear::forward(const std::shared_ptr<Variable>& input) const {
     auto result = input->matmul(weights);
     if (use_bias_ && bias) {
         result = result->add(bias);

@@ -15,7 +15,8 @@ PositionalEncoding::PositionalEncoding(int max_len, int d_model)
 
 // Adds the first seq_len rows of the position table to (seq, d) or
 // (batch, seq, d) embeddings, broadcasting over the batch.
-std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> embeddings) const {
+std::shared_ptr<Variable> PositionalEncoding::forward(
+    const std::shared_ptr<Variable>& embeddings) const {
     const Tensor& emb_tensor = embeddings->getData();
     const size_t seq_len = emb_tensor.getRows();
     if (seq_len > static_cast<size_t>(max_len_)) {

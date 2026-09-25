@@ -15,7 +15,7 @@ private:
 public:
     PositionalEncoding(int max_len, int d_model);
 
-    std::shared_ptr<Variable> forward(std::shared_ptr<Variable> embeddings) const;
+    std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& embeddings) const;
 
     int getMaxLen() const { return max_len_; }
     int getDModel() const { return d_model_; }

@@ -16,7 +16,7 @@ FeedForward::FeedForward(int d_model, int hidden_dim, float dropout_rate, bool g
     }
 }
 
-std::shared_ptr<Variable> FeedForward::forward(std::shared_ptr<Variable> input,
+std::shared_ptr<Variable> FeedForward::forward(const std::shared_ptr<Variable>& input,
                                                bool training) const {
     if (gated_) {
         auto gate = gate_->forward(input)->silu();

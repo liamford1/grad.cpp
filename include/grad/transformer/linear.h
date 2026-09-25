@@ -2,6 +2,7 @@
 #include "grad/transformer/tensor.h"
 #include "grad/transformer/variable.h"
 #include <memory>
+#include <utility>
 
 namespace grad {
 
@@ -14,14 +15,14 @@ private:
 public:
     Linear(int input_dim, int output_dim, bool use_bias = true);
 
-    std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input) const;
+    std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& input) const;
 
     std::shared_ptr<Variable> getWeights() const { return weights; }
     std::shared_ptr<Variable> getBias() const { return bias; }
 
     void setWeights(std::shared_ptr<Variable> new_weights, std::shared_ptr<Variable> new_bias) {
-        weights = new_weights;
-        bias = new_bias;
+        weights = std::move(new_weights);
+        bias = std::move(new_bias);
     }
 };
 

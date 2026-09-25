@@ -35,7 +35,7 @@ GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, i
     }
 }
 
-std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
+std::shared_ptr<Variable> GPTModel::forward(const std::shared_ptr<Variable>& token_ids,
                                             bool training) const {
     auto embed_tokens = token_embedding.forward(token_ids);
     // Modern arch: position comes from RoPE inside attention, not from

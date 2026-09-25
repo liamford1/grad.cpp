@@ -102,6 +102,7 @@ void test_dataloader() {
     utils::print_header("DataLoader Test: Multi-Batch Training");
 
     std::vector<int> tokens;
+    tokens.reserve(200);
     for (int i = 0; i < 200; i++) tokens.push_back(i % 15);
 
     GPTModel model(15, 24, 2, 4, 16);

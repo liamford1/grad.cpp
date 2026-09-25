@@ -29,7 +29,8 @@ private:
 public:
     MultiHeadAttention(int d_model, int num_heads, float dropout_rate = 0.1f, bool rope = false);
     bool usesRope() const { return rope_; }
-    std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
+    std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& input,
+                                      bool training = false) const;
 
     const std::shared_ptr<Variable>& getW_q() const { return W_q; }
     const std::shared_ptr<Variable>& getW_k() const { return W_k; }

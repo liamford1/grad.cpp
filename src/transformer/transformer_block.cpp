@@ -14,7 +14,7 @@ TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_di
       norm1(d_model, /*rms=*/modern),
       norm2(d_model, /*rms=*/modern) {}
 
-std::shared_ptr<Variable> TransformerBlock::forward(std::shared_ptr<Variable> input,
+std::shared_ptr<Variable> TransformerBlock::forward(const std::shared_ptr<Variable>& input,
                                                     bool training) const {
     auto normed1 = norm1.forward(input);
     auto attention_output = attention.forward(normed1, training);

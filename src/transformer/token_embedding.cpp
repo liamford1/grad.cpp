@@ -18,7 +18,8 @@ TokenEmbedding::TokenEmbedding(int vocab_size, int d_model)
 //   (batch, seq, 1) 3D -> (batch, seq, d_model)
 //   (seq, 1)        2D -> (seq, d_model)
 //   (batch, seq)    2D -> (batch, seq, d_model)
-std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> input_ids) const {
+std::shared_ptr<Variable> TokenEmbedding::forward(
+    const std::shared_ptr<Variable>& input_ids) const {
     const Tensor& input_tensor = input_ids->getData();
 
     bool output_3d;

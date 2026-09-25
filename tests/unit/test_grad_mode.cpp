@@ -147,6 +147,7 @@ void test_model_under_guard(GPTArch arch) {
         auto loss = loss_of(/*training=*/false);
         loss->backward();
         std::vector<Tensor> grads;
+        grads.reserve(params.size());
         for (auto& p : params) grads.push_back(p->getGrad());
         return grads;
     };

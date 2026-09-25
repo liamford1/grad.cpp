@@ -2,6 +2,7 @@
 #include "grad/transformer/tensor.h"
 #include "grad/transformer/linear.h"
 #include <memory>
+#include <utility>
 
 namespace grad {
 
@@ -29,7 +30,8 @@ private:
 public:
     explicit FeedForward(int d_model, int hidden_dim = -1, float dropout_rate = 0.1f,
                          bool gated = false);
-    std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input, bool training = false) const;
+    std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& input,
+                                      bool training = false) const;
 
     bool isGated() const { return gated_; }
 
@@ -47,16 +49,16 @@ public:
     void setWeights(std::shared_ptr<Variable> layer1_weights, std::shared_ptr<Variable> layer1_bias,
                     std::shared_ptr<Variable> layer2_weights,
                     std::shared_ptr<Variable> layer2_bias) {
-        layer1.setWeights(layer1_weights, layer1_bias);
-        layer2.setWeights(layer2_weights, layer2_bias);
+        layer1.setWeights(std::move(layer1_weights), std::move(layer1_bias));
+        layer2.setWeights(std::move(layer2_weights), std::move(layer2_bias));
     }
 
     void setGatedWeights(std::shared_ptr<Variable> gate_weights,
                          std::shared_ptr<Variable> up_weights,
                          std::shared_ptr<Variable> down_weights) {
-        gate_->setWeights(gate_weights, nullptr);
-        layer1.setWeights(up_weights, nullptr);
-        layer2.setWeights(down_weights, nullptr);
+        gate_->setWeights(std::move(gate_weights), nullptr);
+        layer1.setWeights(std::move(up_weights), nullptr);
+        layer2.setWeights(std::move(down_weights), nullptr);
     }
 };
 

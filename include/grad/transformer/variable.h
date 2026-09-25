@@ -99,19 +99,19 @@ public:
     // and hands the backward closure a mutable handle to it, so the
     // graph edge is a real mutation of this node's ownership, not a
     // read.
-    [[nodiscard]] std::shared_ptr<Variable> matmul(std::shared_ptr<Variable> other);
-    [[nodiscard]] std::shared_ptr<Variable> add(std::shared_ptr<Variable> other);
+    [[nodiscard]] std::shared_ptr<Variable> matmul(const std::shared_ptr<Variable>& other);
+    [[nodiscard]] std::shared_ptr<Variable> add(const std::shared_ptr<Variable>& other);
     [[nodiscard]] std::shared_ptr<Variable> scale(float factor);
     [[nodiscard]] std::shared_ptr<Variable> softmax();
 
     [[nodiscard]] std::shared_ptr<Variable> gelu();
     [[nodiscard]] std::shared_ptr<Variable> silu();
     // Elementwise product of two same-shape tensors (the SwiGLU gate).
-    [[nodiscard]] std::shared_ptr<Variable> mul(std::shared_ptr<Variable> other);
+    [[nodiscard]] std::shared_ptr<Variable> mul(const std::shared_ptr<Variable>& other);
     [[nodiscard]] std::shared_ptr<Variable> dropout(float rate, bool training);
 
     [[nodiscard]] std::shared_ptr<Variable> log_softmax();
-    [[nodiscard]] std::shared_ptr<Variable> nll_loss(std::shared_ptr<Variable> targets);
+    [[nodiscard]] std::shared_ptr<Variable> nll_loss(const std::shared_ptr<Variable>& targets);
 
     void backward();
     void zeroGrad();

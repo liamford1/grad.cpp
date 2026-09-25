@@ -23,7 +23,7 @@ LayerNorm::LayerNorm(int d_model, bool rms) : d_model_(d_model), epsilon(1e-5f),
 // Normalizes over the innermost dimension. Rows are contiguous at any
 // rank, so a 2D (rows, d) and a 3D (batch, seq, d) input are the same loop
 // over the flat rows.
-std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) const {
+std::shared_ptr<Variable> LayerNorm::forward(const std::shared_ptr<Variable>& input) const {
     const Tensor& input_tensor = input->getData();
     if (input_tensor.getCols() != static_cast<size_t>(d_model_)) {
         throw std::invalid_argument("LayerNorm: input " + input_tensor.shape().to_string()
@@ -97,13 +97,12 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
     auto output = Variable::create(std::move(result), needs_grad);
 
     if (needs_grad) {
-        auto self_input = input;
         auto self_gamma = gamma;
         auto self_beta = beta;
 
         output->setBackward({input, gamma, beta},
-                            [self_input, self_gamma, self_beta, means, inv_stds, d, df, total_rows,
-                             rms](Variable& node) {
+                            [self_input = input, self_gamma, self_beta, means, inv_stds, d, df,
+                             total_rows, rms](Variable& node) {
             // Each gradient is computed only if its target requires grad
             // (beta never does in RMS mode): ensureGrad leaves a frozen
             // tensor's grad unallocated, so it must not be written.

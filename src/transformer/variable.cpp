@@ -133,7 +133,7 @@ std::shared_ptr<Variable> Variable::createOutput(Tensor&& result, bool needs_gra
     return std::make_shared<Variable>(Private{}, std::move(result), needs_grad);
 }
 
-std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
+std::shared_ptr<Variable> Variable::matmul(const std::shared_ptr<Variable>& other) {
     data.assertValid("Variable::matmul(lhs)");
     other->data.assertValid("Variable::matmul(rhs)");
 
@@ -190,7 +190,7 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
     return node;
 }
 
-std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
+std::shared_ptr<Variable> Variable::add(const std::shared_ptr<Variable>& other) {
     data.assertValid("Variable::add(lhs)");
     other->data.assertValid("Variable::add(rhs)");
 
@@ -395,7 +395,7 @@ std::shared_ptr<Variable> Variable::silu() {
     return node;
 }
 
-std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) {
+std::shared_ptr<Variable> Variable::mul(const std::shared_ptr<Variable>& other) {
     data.assertValid("Variable::mul(lhs)");
     other->data.assertValid("Variable::mul(rhs)");
 
@@ -522,7 +522,7 @@ std::shared_ptr<Variable> Variable::log_softmax() {
 // and 3D (batch, seq, V) inputs are the same contiguous row-major rows, so
 // one loop serves both. targets holds one class index per row (any shape
 // with that many elements); an index outside [0, V) contributes nothing.
-std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) {
+std::shared_ptr<Variable> Variable::nll_loss(const std::shared_ptr<Variable>& targets) {
     data.assertValid("Variable::nll_loss(input)");
     targets->data.assertValid("Variable::nll_loss(targets)");
 

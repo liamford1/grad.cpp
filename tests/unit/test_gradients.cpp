@@ -8,7 +8,8 @@
 
 using namespace grad;
 
-float numericalGradient(std::function<float()> forward_fn, float* param, float epsilon = 1e-5f) {
+float numericalGradient(const std::function<float()>& forward_fn, float* param,
+                        float epsilon = 1e-5f) {
     float original = *param;
 
     *param = original + epsilon;

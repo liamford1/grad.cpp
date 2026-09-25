@@ -121,7 +121,7 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads, float dropout
     b_o = Variable::create(Tensor(1, d), true);
 }
 
-std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> input,
+std::shared_ptr<Variable> MultiHeadAttention::forward(const std::shared_ptr<Variable>& input,
                                                       bool training) const {
     const Tensor& input_tensor = input->getData();
 
@@ -304,7 +304,6 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     auto output = Variable::create(std::move(out_tensor), needs_grad);
 
     if (needs_grad) {
-        auto self_input = input;
         auto self_Wq = W_q;
         auto self_Wk = W_k;
         auto self_Wv = W_v;
@@ -318,9 +317,9 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
         const bool rope_active = rope_;
         output->setBackward(
             {input, W_q, W_k, W_v, W_o, b_q, b_k, b_v, b_o},
-            [self_input, self_Wq, self_Wk, self_Wv, self_Wo, self_bq, self_bk, self_bv, self_bo, Q,
-             K, V, concat, attn_cache, drop_mask, rope_cos, rope_sin, rope_active, batch_size, S, d,
-             H, head_size, flat, scale_factor, dropout_active](Variable& node) {
+            [self_input = input, self_Wq, self_Wk, self_Wv, self_Wo, self_bq, self_bk, self_bv,
+             self_bo, Q, K, V, concat, attn_cache, drop_mask, rope_cos, rope_sin, rope_active,
+             batch_size, S, d, H, head_size, flat, scale_factor, dropout_active](Variable& node) {
             // Each gradient is written only if its target requires grad:
             // ensureGrad leaves a frozen tensor's grad unallocated.
             const float* dOut = node.getGrad().raw();

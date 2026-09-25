@@ -14,7 +14,7 @@ private:
 
 public:
     TokenEmbedding(int vocab_size, int d_model);
-    std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input_ids) const;
+    std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& input_ids) const;
 
     int getVocabSize() const { return vocab_size_; }
     int getDModel() const { return d_model_; }

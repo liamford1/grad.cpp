@@ -20,7 +20,7 @@ private:
 
 public:
     explicit LayerNorm(int d_model, bool rms = false);
-    std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input) const;
+    std::shared_ptr<Variable> forward(const std::shared_ptr<Variable>& input) const;
 
     std::shared_ptr<Variable> getGamma() const { return gamma; }
     std::shared_ptr<Variable> getBeta() const { return beta; }

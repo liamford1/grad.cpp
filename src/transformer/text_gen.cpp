@@ -137,6 +137,7 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
 
     if (top_k > 0 && top_k < static_cast<int>(scaled_logits.getCols())) {
         std::vector<std::pair<float, int>> logit_pairs;
+        logit_pairs.reserve(scaled_logits.getCols());
         for (size_t i = 0; i < scaled_logits.getCols(); i++) {
             logit_pairs.push_back({scaled_logits.getValue(0, i), static_cast<int>(i)});
         }
@@ -156,6 +157,7 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
 
     if (top_p < 1.0f) {
         std::vector<std::pair<float, int>> prob_pairs;
+        prob_pairs.reserve(probabilities.getCols());
         for (size_t i = 0; i < probabilities.getCols(); i++) {
             prob_pairs.push_back({probabilities.getValue(0, i), static_cast<int>(i)});
         }

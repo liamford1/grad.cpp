@@ -8,7 +8,7 @@
 using namespace grad;
 
 // Numerical gradient computation for 2D tensors
-float numerical_gradient_2d(MultiHeadAttention& attention, std::shared_ptr<Variable> input,
+float numerical_gradient_2d(MultiHeadAttention& attention, const std::shared_ptr<Variable>& input,
                             size_t input_idx_i, size_t input_idx_j, float epsilon = 1e-3f) {
     // Forward with input + epsilon
     float original = input->getData().getValue(input_idx_i, input_idx_j);
@@ -48,7 +48,7 @@ float numerical_gradient_2d(MultiHeadAttention& attention, std::shared_ptr<Varia
 }
 
 // Numerical gradient computation for 3D tensors
-float numerical_gradient_3d(MultiHeadAttention& attention, std::shared_ptr<Variable> input,
+float numerical_gradient_3d(MultiHeadAttention& attention, const std::shared_ptr<Variable>& input,
                             size_t input_idx_i, size_t input_idx_j, size_t input_idx_k,
                             float epsilon = 1e-3f) {
     // Forward with input + epsilon
