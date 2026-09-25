@@ -5,9 +5,9 @@
 // inference.
 
 #include "cli/args.h"
-#include "data/dataset.h"
-#include "tokenizer/bpe_tokenizer.h"
-#include "transformer/gpt_model.h"
+#include "grad/data/dataset.h"
+#include "grad/tokenizer/bpe_tokenizer.h"
+#include "grad/transformer/gpt_model.h"
 
 #include <chrono>
 #include <cstddef>

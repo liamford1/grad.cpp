@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cmath>
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include "../test_util.h"
 
 void test_dropout_training_mode() {

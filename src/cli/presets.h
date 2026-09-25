@@ -5,7 +5,7 @@
 // CI runs benchmarks/check_presets.py against `grad presets --json` so the
 // two cannot drift apart silently.
 
-#include "transformer/gpt_model.h"
+#include "grad/transformer/gpt_model.h"
 
 #include <span>
 #include <string_view>

@@ -7,15 +7,15 @@
 #include "commands.h"
 #include "common.h"
 
-#include "data/dataloader.h"
-#include "data/dataset.h"
-#include "transformer/gpt_model.h"
-#include "transformer/metal_backend.h"
-#include "transformer/optimizer.h"
-#include "transformer/text_gen.h"
-#include "transformer/variable.h"
-#include "utils/metrics.h"
-#include "utils/training_utils.h"
+#include "grad/data/dataloader.h"
+#include "grad/data/dataset.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/metal_backend.h"
+#include "grad/transformer/optimizer.h"
+#include "grad/transformer/text_gen.h"
+#include "grad/transformer/variable.h"
+#include "grad/utils/metrics.h"
+#include "grad/utils/training_utils.h"
 
 #include <algorithm>
 #include <chrono>

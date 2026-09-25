@@ -1,5 +1,5 @@
-#include "transformer/activations.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/parallel.h"
 #include <atomic>
 #include <cstdint>
 

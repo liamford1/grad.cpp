@@ -1,6 +1,6 @@
 #pragma once
-#include "dataset.h"
-#include "../transformer/tensor.h"
+#include "grad/data/dataset.h"
+#include "grad/transformer/tensor.h"
 #include <memory>
 #include <random>
 

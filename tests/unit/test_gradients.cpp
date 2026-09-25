@@ -2,8 +2,8 @@
 #include <cmath>
 #include <functional>
 #include <iomanip>
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include "../test_util.h"
 
 float numericalGradient(std::function<float()> forward_fn, float* param, float epsilon = 1e-5) {

@@ -1,5 +1,5 @@
-#include "transformer/inference.h"
-#include "transformer/blas_wrapper.h"
+#include "grad/transformer/inference.h"
+#include "grad/transformer/blas_wrapper.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>

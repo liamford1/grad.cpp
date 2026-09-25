@@ -7,8 +7,8 @@
 #include "commands.h"
 #include "common.h"
 
-#include "data/token_file.h"
-#include "utils/metrics.h"
+#include "grad/data/token_file.h"
+#include "grad/utils/metrics.h"
 
 #include <iostream>
 #include <string>

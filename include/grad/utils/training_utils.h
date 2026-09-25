@@ -1,7 +1,7 @@
 #pragma once
 
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include <vector>
 #include <memory>
 

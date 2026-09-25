@@ -1,9 +1,9 @@
 #pragma once
 
-#include "transformer/gpt_model.h"
-#include "transformer/optimizer.h"
-#include "data/dataloader.h"
-#include "utils/metrics.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/optimizer.h"
+#include "grad/data/dataloader.h"
+#include "grad/utils/metrics.h"
 #include <string>
 #include <memory>
 #include <optional>

@@ -1,6 +1,6 @@
-#include "transformer/multihead_attention.h"
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/multihead_attention.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include <iostream>
 #include <cmath>
 #include <memory>

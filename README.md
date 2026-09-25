@@ -188,7 +188,7 @@ CI builds with warnings as errors (`-Wall -Wextra -Wpedantic`) on macOS and Linu
 ## Repository layout
 
 ```
-include/, src/
+include/grad/, src/   grad::core (headers install to <prefix>/include/grad/)
   transformer/   tensor, variable (autograd), attention, layer_norm,
                  feedforward, embeddings, transformer_block, gpt_model,
                  optimizer, inference (KV cache), text_gen, Metal backend
@@ -196,6 +196,7 @@ include/, src/
   data/          datasets, memory-mapped token files, batching dataloader
   training/      trainer (loop, evaluation, checkpointing, resume)
   utils/         metrics log, terminal dashboard, training helpers
+include/cli/, src/cli/, src/main.cpp   the grad executable (not installed)
 tests/
   unit/          gradient checks and component tests
   integration/   end-to-end sanity and file-format tests

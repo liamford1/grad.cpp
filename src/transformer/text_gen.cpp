@@ -1,5 +1,5 @@
-#include "transformer/text_gen.h"
-#include "transformer/inference.h"
+#include "grad/transformer/text_gen.h"
+#include "grad/transformer/inference.h"
 #include <random>
 #include <algorithm>
 #include <cmath>

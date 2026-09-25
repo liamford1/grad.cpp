@@ -1,10 +1,10 @@
 // Links and runs one forward pass through the installed library: enough to
 // catch missing headers, unexported link dependencies, and absolute paths
 // baked into the package config.
-#include "tokenizer/bpe_tokenizer.h"
-#include "transformer/gpt_model.h"
-#include "transformer/tensor.h"
-#include "transformer/variable.h"
+#include "grad/tokenizer/bpe_tokenizer.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
 
 #include <iostream>
 

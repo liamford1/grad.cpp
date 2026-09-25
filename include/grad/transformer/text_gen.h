@@ -1,8 +1,8 @@
 #pragma once
 
-#include "tensor.h"
-#include "gpt_model.h"
-#include "tokenizer/bpe_tokenizer.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/tokenizer/bpe_tokenizer.h"
 #include <functional>
 #include <string>
 #include <vector>

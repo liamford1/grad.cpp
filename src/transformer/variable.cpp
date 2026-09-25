@@ -1,7 +1,7 @@
-#include "transformer/variable.h"
-#include "transformer/activations.h"
-#include "transformer/blas_wrapper.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/parallel.h"
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>

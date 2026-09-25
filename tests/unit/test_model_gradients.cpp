@@ -5,9 +5,9 @@
 //
 // This is the only test that exercises the weight-tying backward and the
 // batched (3D) training path through the whole network.
-#include "transformer/gpt_model.h"
-#include "transformer/variable.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include <cmath>
 #include <iostream>
 #include <memory>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gpt_model.h"
+#include "grad/transformer/gpt_model.h"
 #include <vector>
 
 // Incremental decoding with a KV cache.

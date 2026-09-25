@@ -1,6 +1,6 @@
-#include "training/trainer.h"
-#include "utils/training_utils.h"
-#include "transformer/variable.h"
+#include "grad/training/trainer.h"
+#include "grad/utils/training_utils.h"
+#include "grad/transformer/variable.h"
 #include <cerrno>
 #include <cmath>
 #include <csignal>

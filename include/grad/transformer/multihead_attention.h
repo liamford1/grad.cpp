@@ -1,7 +1,7 @@
 #pragma once
-#include "tensor.h"
-#include "variable.h"
-#include "linear.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/linear.h"
 #include <memory>
 
 class MultiHeadAttention {

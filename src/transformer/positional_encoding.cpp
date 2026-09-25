@@ -1,4 +1,4 @@
-#include "transformer/positional_encoding.h"
+#include "grad/transformer/positional_encoding.h"
 #include <stdexcept>
 
 PositionalEncoding::PositionalEncoding(int max_len, int d_model) : 

@@ -2,8 +2,8 @@
 // matrix shapes training actually uses, across all transpose combinations
 // and the beta=1 accumulate contract. Skips (passes) when no Metal device
 // is available - e.g. Linux, or macOS CI virtual machines.
-#include "transformer/metal_backend.h"
-#include "transformer/tensor.h"
+#include "grad/transformer/metal_backend.h"
+#include "grad/transformer/tensor.h"
 
 #if defined(__APPLE__)
     #include <Accelerate/Accelerate.h>

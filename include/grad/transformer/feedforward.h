@@ -1,6 +1,6 @@
 #pragma once
-#include "tensor.h"
-#include "linear.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/linear.h"
 #include <memory>
 
 // Two variants behind one class:

@@ -1,6 +1,6 @@
 #pragma once
-#include "tensor.h"
-#include "variable.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
 #include <memory>
 
 // rms = true turns the layer into an RMSNorm: y = x / rms(x) * gamma with

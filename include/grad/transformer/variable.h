@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tensor.h"
+#include "grad/transformer/tensor.h"
 #include <memory>
 #include <functional>
 #include <initializer_list>

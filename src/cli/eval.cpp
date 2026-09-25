@@ -11,10 +11,10 @@
 #include "commands.h"
 #include "common.h"
 
-#include "data/dataloader.h"
-#include "data/token_file.h"
-#include "training/trainer.h"
-#include "utils/metrics.h"
+#include "grad/data/dataloader.h"
+#include "grad/data/token_file.h"
+#include "grad/training/trainer.h"
+#include "grad/utils/metrics.h"
 
 #include <algorithm>
 #include <chrono>

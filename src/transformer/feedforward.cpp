@@ -1,7 +1,7 @@
-#include "transformer/tensor.h"
-#include "transformer/linear.h"
-#include "transformer/activations.h"
-#include "transformer/feedforward.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/linear.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/feedforward.h"
 
 FeedForward::FeedForward(int d_model, int hidden_dim, float dropout_rate, bool gated) :
     layer1(d_model, resolve_hidden(d_model, hidden_dim, gated), !gated),

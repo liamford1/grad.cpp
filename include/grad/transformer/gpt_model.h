@@ -1,10 +1,10 @@
 #pragma once
-#include "tensor.h"
-#include "token_embedding.h"
-#include "positional_encoding.h"
-#include "transformer_block.h"
-#include "linear.h"
-#include "layer_norm.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/token_embedding.h"
+#include "grad/transformer/positional_encoding.h"
+#include "grad/transformer/transformer_block.h"
+#include "grad/transformer/linear.h"
+#include "grad/transformer/layer_norm.h"
 
 #include <vector>
 #include <memory>

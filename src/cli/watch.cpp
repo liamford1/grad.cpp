@@ -3,7 +3,7 @@
 #include "cli/args.h"
 #include "commands.h"
 
-#include "utils/dashboard.h"
+#include "grad/utils/dashboard.h"
 
 #include <iostream>
 #include <string>

@@ -1,4 +1,4 @@
-#include "transformer/linear.h"
+#include "grad/transformer/linear.h"
 
 Linear::Linear(int input_dim, int output_dim, bool use_bias) :
     use_bias(use_bias)

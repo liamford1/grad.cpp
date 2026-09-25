@@ -1,6 +1,6 @@
-#include "transformer/tensor.h"
-#include "transformer/layer_norm.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/layer_norm.h"
+#include "grad/transformer/parallel.h"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>

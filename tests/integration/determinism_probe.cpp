@@ -14,12 +14,12 @@
 // completion order (as LayerNorm's gamma/beta sums once were) shows up here
 // as a hash mismatch.
 
-#include "transformer/activations.h"
-#include "transformer/gpt_model.h"
-#include "transformer/optimizer.h"
-#include "transformer/parallel.h"
-#include "transformer/tensor.h"
-#include "transformer/variable.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/optimizer.h"
+#include "grad/transformer/parallel.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
 
 #include <cstdint>
 #include <cstdio>

@@ -7,7 +7,7 @@
 #include "commands.h"
 #include "common.h"
 
-#include "transformer/text_gen.h"
+#include "grad/transformer/text_gen.h"
 
 #include <iostream>
 #include <optional>

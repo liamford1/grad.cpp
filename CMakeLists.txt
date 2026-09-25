@@ -294,8 +294,10 @@ install(TARGETS grad grad_core
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-# include/cli is the grad executable's parser, not part of grad::core's API.
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} PATTERN cli EXCLUDE)
+# grad::core's public headers install to <prefix>/include/grad/, so consumers
+# write #include "grad/transformer/tensor.h". include/cli is the grad
+# executable's parser, not part of the library's API, and is not installed.
+install(DIRECTORY include/grad DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT gradTargets
     FILE gradTargets.cmake
     NAMESPACE grad::

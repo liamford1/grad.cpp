@@ -1,6 +1,6 @@
 #pragma once
-#include "variable.h"
-#include "tensor.h"
+#include "grad/transformer/variable.h"
+#include "grad/transformer/tensor.h"
 #include <vector>
 #include <memory>
 #include <unordered_map>

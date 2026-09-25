@@ -1,9 +1,9 @@
-#include "transformer/tensor.h"
-#include "transformer/multihead_attention.h"
-#include "transformer/layer_norm.h"
-#include "transformer/feedforward.h"
-#include "transformer/activations.h"
-#include "transformer/transformer_block.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/multihead_attention.h"
+#include "grad/transformer/layer_norm.h"
+#include "grad/transformer/feedforward.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/transformer_block.h"
 
 TransformerBlock::TransformerBlock(int d_model, int num_heads, int ffn_hidden_dim,
                                    float dropout_rate, bool modern) :

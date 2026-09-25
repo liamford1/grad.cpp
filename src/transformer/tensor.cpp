@@ -1,6 +1,6 @@
-#include "transformer/tensor.h"
-#include "transformer/blas_wrapper.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/parallel.h"
 
 #include <algorithm>
 #include <cmath>

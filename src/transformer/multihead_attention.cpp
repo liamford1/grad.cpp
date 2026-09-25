@@ -1,11 +1,11 @@
-#include "transformer/tensor.h"
-#include "transformer/activations.h"
-#include "transformer/multihead_attention.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/multihead_attention.h"
 #include <cmath>
 #include <stdexcept>
 #include <cstring>
-#include "transformer/blas_wrapper.h"
-#include "transformer/parallel.h"
+#include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/parallel.h"
 #include <memory>
 #include <string>
 #include <vector>

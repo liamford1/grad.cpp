@@ -6,12 +6,12 @@
 // Uses its own CHECK rather than assert so it stays meaningful in Release
 // (NDEBUG) builds.
 
-#include "transformer/activations.h"
-#include "transformer/gpt_model.h"
-#include "transformer/multihead_attention.h"
-#include "transformer/parallel.h"
-#include "transformer/tensor.h"
-#include "transformer/variable.h"
+#include "grad/transformer/activations.h"
+#include "grad/transformer/gpt_model.h"
+#include "grad/transformer/multihead_attention.h"
+#include "grad/transformer/parallel.h"
+#include "grad/transformer/tensor.h"
+#include "grad/transformer/variable.h"
 
 #include <algorithm>
 #include <atomic>
