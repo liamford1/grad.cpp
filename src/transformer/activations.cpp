@@ -86,25 +86,3 @@ void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale,
         }
     });
 }
-
-Tensor dropout(const Tensor& input, float dropout_rate, bool training) {
-    if (dropout_rate == 0.0f || !training) {
-        return input;
-    }
-
-    Tensor result = input.getIs3D()
-        ? Tensor(input.getBatchSize(), input.getRows(), input.getCols())
-        : Tensor(input.getRows(), input.getCols());
-
-    const float scale = 1.0f / (1.0f - dropout_rate);
-    const size_t n = input.numel();
-
-    fill_dropout_mask(result.raw(), n, dropout_rate, scale);
-
-    const float* in = input.raw();
-    float* out = result.raw();
-    for (size_t i = 0; i < n; i++) {
-        out[i] *= in[i];
-    }
-    return result;
-}

@@ -1,10 +1,7 @@
 #pragma once
 
-#include "tensor.h"
 #include <cstddef>
 #include <cstdint>
-
-Tensor dropout(const Tensor& input, float dropout_rate, bool training);
 
 // Fills mask[i] with 0 (dropped) or scale (kept), keeping each element with
 // probability 1 - dropout_rate. Draws come from xorshift128+ compared in the

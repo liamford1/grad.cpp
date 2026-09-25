@@ -6,6 +6,7 @@
 // (NDEBUG) builds.
 
 #include "transformer/activations.h"
+#include "transformer/multihead_attention.h"
 #include "transformer/parallel.h"
 #include "transformer/tensor.h"
 #include "transformer/variable.h"
@@ -148,12 +149,109 @@ void test_parallel_for() {
     CHECK(once);
 }
 
+// Scalar loss sum(out * R) whose backward seeds out's grad with R.
+std::shared_ptr<Variable> weighted_sum(const std::shared_ptr<Variable>& out,
+                                       const std::vector<float>& R) {
+    const Tensor& o = out->getData();
+    double sum = 0.0;
+    for (size_t i = 0; i < o.numel(); i++) sum += static_cast<double>(o.raw()[i]) * R[i];
+    Tensor t(1, 1);
+    t.raw()[0] = static_cast<float>(sum);
+    auto loss = Variable::create(std::move(t), true);
+    loss->addChild(out);
+    loss->setBackwardFn([out, R]() {
+        out->ensureGrad();
+        float* g = out->getGrad().raw();
+        for (size_t i = 0; i < R.size(); i++) g[i] += R[i];
+    });
+    return loss;
+}
+
+// Finite-difference check of 2D attention in training mode with dropout
+// active. Reseeding before every forward pins the masks, so the function
+// being differentiated is fixed.
+void test_attention_2d_dropout_gradients(bool rope) {
+    const int S = 5, d = 8, H = 2;
+    const float rate = 0.3f;
+    const uint64_t seed = 99;
+
+    Tensor::set_init_seed(3);
+    MultiHeadAttention attn(d, H, rate, rope);
+    Tensor x(S, d);
+    x.xavier(S, d);
+    std::vector<float> R(static_cast<size_t>(S) * d);
+    for (size_t i = 0; i < R.size(); i++) R[i] = std::sin(0.7f * static_cast<float>(i) + 0.3f);
+
+    auto loss_at = [&](const Tensor& xin) {
+        set_dropout_seed(seed);
+        auto in = Variable::create(xin, false);
+        auto out = attn.forward(in, /*training=*/true);
+        double sum = 0.0;
+        for (size_t i = 0; i < R.size(); i++) sum += static_cast<double>(out->getData().raw()[i]) * R[i];
+        out->release_graph();
+        return sum;
+    };
+
+    set_dropout_seed(seed);
+    auto input = Variable::create(x, true);
+    auto out = attn.forward(input, /*training=*/true);
+    CHECK(!out->getData().getIs3D());
+    CHECK(out->getData().getRows() == static_cast<size_t>(S));
+
+    // The 2D result equals the batch-1 3D result under the same masks.
+    {
+        set_dropout_seed(seed);
+        Tensor x3(1, S, d);
+        std::memcpy(x3.raw(), x.raw(), x.numel() * sizeof(float));
+        auto out3 = attn.forward(Variable::create(x3, false), true);
+        CHECK(std::memcmp(out3->getData().raw(), out->getData().raw(),
+                          out3->getData().numel() * sizeof(float)) == 0);
+        out3->release_graph();
+    }
+
+    auto loss = weighted_sum(out, R);
+    loss->backward();
+
+    auto check_grad = [&](float analytic, double numeric) {
+        const double err = std::fabs(analytic - numeric);
+        const double rel = err / (std::fabs(analytic) + std::fabs(numeric) + 1e-8);
+        const bool ok = rel < 3e-2 || err < 2e-3;
+        if (!ok) std::fprintf(stderr, "  grad mismatch: analytic %g numeric %g\n", analytic, numeric);
+        CHECK(ok);
+    };
+
+    const float eps = 1e-2f;
+    for (size_t idx : {size_t{0}, size_t{9}, size_t{17}, size_t{S * d - 1}}) {
+        Tensor xp = x, xm = x;
+        xp.raw()[idx] += eps;
+        xm.raw()[idx] -= eps;
+        check_grad(input->getGrad().raw()[idx], (loss_at(xp) - loss_at(xm)) / (2.0 * eps));
+    }
+
+    // A weight behind the attention dropout (W_v) and one behind the output
+    // dropout (W_o).
+    for (const auto& W : {attn.getW_v(), attn.getW_o()}) {
+        for (size_t idx : {size_t{1}, size_t{27}}) {
+            float& w = W->getData().raw()[idx];
+            const float saved = w;
+            w = saved + eps;
+            const double lp = loss_at(x);
+            w = saved - eps;
+            const double lm = loss_at(x);
+            w = saved;
+            check_grad(W->getGrad().raw()[idx], (lp - lm) / (2.0 * eps));
+        }
+    }
+}
+
 }  // namespace
 
 int main() {
     test_dropout_masks();
     test_init_seed();
     test_parallel_for();
+    test_attention_2d_dropout_gradients(/*rope=*/false);
+    test_attention_2d_dropout_gradients(/*rope=*/true);
 
     if (g_failures) {
         std::fprintf(stderr, "%d check(s) failed\n", g_failures);
