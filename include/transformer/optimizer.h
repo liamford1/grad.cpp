@@ -46,9 +46,10 @@ class AdamOptimizer : public Optimizer {
 
         // Multiply every parameter gradient by s. Gradient accumulation
         // scales the summed micro-batch gradients down to their mean here,
-        // after all backward passes: the loss backwards write raw gradients
-        // (they seed dLoss = 1 and ignore upstream grad), so scaling a
-        // node stacked on top of the loss would silently not propagate.
+        // once, after all backward passes. Scaling each micro-batch loss
+        // by s before backward gives the same gradients (the loss ops
+        // propagate their upstream gradient), but costs a scale per
+        // micro-batch and leaves the loss nodes holding scaled values.
         void scale_grads(float s);
 
         // Serialize / restore Adam state (step count and per-parameter

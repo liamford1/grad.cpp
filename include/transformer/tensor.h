@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -83,12 +84,15 @@ class Tensor {
         void fill(float value);
         [[nodiscard]] Tensor scale(float scaler) const;
 
-        [[nodiscard]] Tensor reshape(size_t new_rows, size_t new_cols) const;
         [[nodiscard]] Tensor slice(size_t start_row, size_t num_rows, size_t start_col, size_t num_cols) const;
 
+        // Fills with U(-limit, limit), limit = sqrt(6 / (fan_in + fan_out)),
+        // drawn from one process-wide mt19937. The generator starts from a
+        // fixed seed, so model construction is reproducible; set_init_seed
+        // reseeds it (call before building the model).
         void xavier(size_t fan_in, size_t fan_out);
+        static void set_init_seed(uint64_t seed);
         [[nodiscard]] static Tensor create_causal_mask(size_t seq_len);
-        [[nodiscard]] static Tensor create_causal_mask_batch(size_t batch_size, size_t seq_len);
 
         [[nodiscard]] size_t getRows() const noexcept { return rows; }
         [[nodiscard]] size_t getCols() const noexcept { return cols; }

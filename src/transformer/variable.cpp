@@ -3,9 +3,9 @@
 #include "transformer/blas_wrapper.h"
 #include "transformer/parallel.h"
 #include <cmath>
-#include <iostream>
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 // Grads stay empty until ensureGrad() - see the header note on lazy
@@ -145,7 +145,6 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
                 }
 
                 Tensor out(R, C);
-                out.fill(0.0f);
                 const int GR = g.getRows();
                 const int GC = g.getCols();
                 
@@ -188,7 +187,6 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
 
             auto reduce3Dfrom2D = [](const Tensor& g3, int R, int C, bool br, bool bc) -> Tensor {
                 Tensor out(R, C);
-                out.fill(0.0f);
                 const int B  = g3.getBatchSize();
                 const int GR = g3.getRows();
                 const int GC = g3.getCols();
@@ -410,134 +408,6 @@ std::shared_ptr<Variable> Variable::softmax() {
         });
     }
     return output;
-}
-
-std::shared_ptr<Variable> Variable::cross_entropy_loss(std::shared_ptr<Variable> targets) {
-    data.assertValid("Variable::cross_entropy_loss(input)");
-    targets->data.assertValid("Variable::cross_entropy_loss(targets)");
-    
-    if (!this->data.getIs3D() && !targets->data.getIs3D()) {
-        Tensor loss_tensor(1, 1);
-        float total_loss = 0.0f;
-        
-        if (targets->data.getCols() == 1) {
-            for (size_t i = 0; i < this->data.getRows(); i++) {
-                int target_idx = static_cast<int>(targets->data.getValue(i, 0));
-                if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
-                    float prob = std::max(this->data.getValue(i, target_idx), 1e-15f);
-                    total_loss -= std::log(prob);
-                }
-            }
-        } else {
-            for (size_t i = 0; i < this->data.getRows(); i++) {
-                for (size_t j = 0; j < this->data.getCols(); j++) {
-                    if (targets->data.getValue(i, j) > 0.0f) {
-                        float prob = std::max(this->data.getValue(i, j), 1e-15f);
-                        total_loss -= targets->data.getValue(i, j) * std::log(prob);
-                    }
-                }
-            }
-        }
-        total_loss /= this->data.getRows();
-        loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
-        
-        if (output->requires_grad) {
-            auto self_ptr = shared_from_this();
-            output->addChild(self_ptr);
-            output->addChild(targets);
-            output->setBackwardFn([self_ptr, targets, output_weak = std::weak_ptr<Variable>(output)]() {
-                auto output = output_weak.lock();
-                if (!output) return;
-                if (self_ptr->requires_grad) {
-                    self_ptr->ensureGrad();
-                    if (targets->data.getCols() == 1) {
-                        Tensor grad_tensor(self_ptr->data.getRows(), self_ptr->data.getCols());
-                        grad_tensor.fill(0.0f);
-                        float scale = 1.0f / self_ptr->data.getRows();
-
-                        for (size_t i = 0; i < self_ptr->data.getRows(); i++) {
-                            int target_idx = static_cast<int>(targets->data.getValue(i, 0));
-                            if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
-                                for (size_t j = 0; j < self_ptr->data.getCols(); j++) {
-                                    float grad_val = self_ptr->data.getValue(i, j) * scale;
-                                    if (j == static_cast<size_t>(target_idx)) {
-                                        grad_val -= scale;
-                                    }
-                                    grad_tensor.setValue(i, j, grad_val);
-                                }
-                            }
-                        }
-                        self_ptr->grad.add_inplace(grad_tensor);
-                    } else {
-                        Tensor diff = self_ptr->data.subtract(targets->data);
-                        Tensor scaled_diff = diff.scale(1.0f / self_ptr->data.getRows());
-                        self_ptr->grad.add_inplace(scaled_diff);
-                    }
-                }
-            });
-        }
-        return output;
-        
-    } else if (this->data.getIs3D()) {
-        Tensor loss_tensor(1, 1);
-        float total_loss = 0.0f;
-        int batch_size = this->data.getBatchSize();
-        int seq_len = this->data.getRows();
-        int total_elements = batch_size * seq_len;
-        
-        for (int b = 0; b < batch_size; b++) {
-            for (int i = 0; i < seq_len; i++) {
-                int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
-
-                if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
-                    float prob = std::max(this->data.getValue(b, i, target_idx), 1e-15f);
-                    total_loss -= std::log(prob);
-                }
-            }
-        }
-        
-        total_loss /= total_elements;
-        loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(std::move(loss_tensor), this->requires_grad || targets->requires_grad);
-        
-        if (output->requires_grad) {
-            auto self_ptr = shared_from_this();
-            output->addChild(self_ptr);
-            output->addChild(targets);
-            
-            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total_elements, output_weak = std::weak_ptr<Variable>(output)]() {
-                auto output = output_weak.lock();
-                if (!output) return;
-                if (self_ptr->requires_grad) {
-                    self_ptr->ensureGrad();
-                    Tensor grad_tensor(batch_size, seq_len, self_ptr->data.getCols());
-                    grad_tensor.fill(0.0f);
-                    float scale = 1.0f / total_elements;
-
-                    for (int b = 0; b < batch_size; b++) {
-                        for (int i = 0; i < seq_len; i++) {
-                            int target_idx = targets->data.getIs3D() ? static_cast<int>(targets->data.getValue(b, i, 0)) : static_cast<int>(targets->data.getValue(b, i));
-
-                            if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
-                                for (size_t j = 0; j < self_ptr->data.getCols(); j++) {
-                                    float grad_val = self_ptr->data.getValue(b, i, j) * scale;
-                                    if (j == static_cast<size_t>(target_idx)) {
-                                        grad_val -= scale;
-                                    }
-                                    grad_tensor.setValue(b, i, j, grad_val);
-                                }
-                            }
-                        }
-                    }
-                    self_ptr->grad.add_inplace(grad_tensor);
-                }
-            });
-        }
-        return output;
-    } else {
-        throw std::runtime_error("Unsupported tensor configuration for cross-entropy loss");
-    }
 }
 
 std::shared_ptr<Variable> Variable::gelu() {
@@ -806,121 +676,63 @@ std::shared_ptr<Variable> Variable::log_softmax() {
     return output;
 }
 
+// Mean negative log-likelihood over rows of log-probabilities. 2D (rows, V)
+// and 3D (batch, seq, V) inputs are the same contiguous row-major rows, so
+// one loop serves both. targets holds one class index per row (any shape
+// with that many elements); an index outside [0, V) contributes nothing.
 std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) {
-    if (!this->data.getIs3D()) {
-        float total_loss = 0.0f;
-        int n = this->data.getRows();
+    data.assertValid("Variable::nll_loss(input)");
+    targets->data.assertValid("Variable::nll_loss(targets)");
 
-        const float* data_ptr = this->data.raw();
-        const float* targets_ptr = targets->data.raw();
-        
-        for (int i = 0; i < n; i++) {
-            int target_idx = static_cast<int>(targets_ptr[i]);
-            if (target_idx >= 0 && static_cast<size_t>(target_idx) < this->data.getCols()) {
-                total_loss -= data_ptr[i * this->data.getCols() + target_idx];
-            }
-        }
-        total_loss /= n;
-        
-        Tensor loss_tensor(1, 1);
-        loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(std::move(loss_tensor), this->requires_grad);
-        
-        if (this->requires_grad) {
-            auto self_ptr = shared_from_this();
-            output->addChild(self_ptr);
-            output->addChild(targets);
-            
-            output->setBackwardFn([self_ptr, targets, n, output_weak = std::weak_ptr<Variable>(output)]() {
-                auto output = output_weak.lock();
-                if (!output) return;
-                self_ptr->ensureGrad();
-                Tensor grad(self_ptr->data.getRows(), self_ptr->data.getCols());
-                grad.fill(0.0f);
-                float scale = -1.0f / n;
-
-                float* grad_ptr = grad.raw();
-                const float* targets_ptr = targets->data.raw();
-                
-                for (int i = 0; i < n; i++) {
-                    int target_idx = static_cast<int>(targets_ptr[i]);
-                    if (target_idx >= 0 && static_cast<size_t>(target_idx) < self_ptr->data.getCols()) {
-                        grad_ptr[i * self_ptr->data.getCols() + target_idx] = scale;
-                    }
-                }
-                self_ptr->grad.add_inplace(grad);
-            });
-        }
-        return output;
-    } else {
-        int batch_size = this->data.getBatchSize();
-        int seq_len = this->data.getRows();
-        int vocab_size = this->data.getCols();
-        int total = batch_size * seq_len;
-        float total_loss = 0.0f;
-        
-        const float* data_ptr = this->data.raw();
-        const float* targets_ptr = targets->data.raw();
-        
-        for (int b = 0; b < batch_size; b++) {
-            for (int i = 0; i < seq_len; i++) {
-                int flat_idx = b * seq_len + i;
-                int target_idx = static_cast<int>(targets_ptr[flat_idx * (targets->data.getIs3D() ? 1 : 1) + 
-                                                             (targets->data.getIs3D() ? 0 : 0)]);
-                
-                if (targets->data.getIs3D()) {
-                    target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
-                } else {
-                    target_idx = static_cast<int>(targets_ptr[flat_idx]);
-                }
-                
-                if (target_idx >= 0 && target_idx < vocab_size) {
-                    total_loss -= data_ptr[b * seq_len * vocab_size + i * vocab_size + target_idx];
-                }
-            }
-        }
-        total_loss /= total;
-        
-        Tensor loss_tensor(1, 1);
-        loss_tensor.setValue(0, 0, total_loss);
-        auto output = createOutput(std::move(loss_tensor), this->requires_grad);
-        
-        if (this->requires_grad) {
-            auto self_ptr = shared_from_this();
-            output->addChild(self_ptr);
-            output->addChild(targets);
-            
-            output->setBackwardFn([self_ptr, targets, batch_size, seq_len, total, output_weak = std::weak_ptr<Variable>(output)]() {
-                auto output = output_weak.lock();
-                if (!output) return;
-                self_ptr->ensureGrad();
-                int vocab_size = self_ptr->data.getCols();
-                Tensor grad(batch_size, seq_len, vocab_size);
-                grad.fill(0.0f);
-                float scale = -1.0f / total;
-                
-                float* grad_ptr = grad.raw();
-                const float* targets_ptr = targets->data.raw();
-                
-                for (int b = 0; b < batch_size; b++) {
-                    for (int i = 0; i < seq_len; i++) {
-                        int target_idx;
-                        if (targets->data.getIs3D()) {
-                            target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
-                        } else {
-                            target_idx = static_cast<int>(targets_ptr[b * seq_len + i]);
-                        }
-                        
-                        if (target_idx >= 0 && target_idx < vocab_size) {
-                            grad_ptr[b * seq_len * vocab_size + i * vocab_size + target_idx] = scale;
-                        }
-                    }
-                }
-                self_ptr->grad.add_inplace(grad);
-            });
-        }
-        return output;
+    const size_t vocab = data.getCols();
+    const size_t n = data.numel() / vocab;
+    if (targets->data.numel() != n) {
+        throw std::invalid_argument("nll_loss: " + std::to_string(targets->data.numel()) +
+                                    " targets for " + std::to_string(n) + " rows");
     }
+
+    const float* logp = data.raw();
+    const float* tgt = targets->data.raw();
+    float total_loss = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        const int t = static_cast<int>(tgt[i]);
+        if (t >= 0 && static_cast<size_t>(t) < vocab) {
+            total_loss -= logp[i * vocab + t];
+        }
+    }
+    total_loss /= static_cast<float>(n);
+
+    Tensor loss_tensor(1, 1);
+    loss_tensor.raw()[0] = total_loss;
+    auto output = createOutput(std::move(loss_tensor), this->requires_grad);
+
+    if (this->requires_grad) {
+        auto self_ptr = shared_from_this();
+        output->addChild(self_ptr);
+        output->addChild(targets);
+
+        output->setBackwardFn([self_ptr, targets, n, vocab,
+                               output_weak = std::weak_ptr<Variable>(output)]() {
+            auto output = output_weak.lock();
+            if (!output || !output->hasGrad()) return;
+            self_ptr->ensureGrad();
+
+            // dL/dlogp[i, t_i] = -upstream / n; every other entry is zero,
+            // so only the target entries are touched. backward() seeds the
+            // upstream gradient with 1, and a loss scaled before backward
+            // scales these gradients with it.
+            const float scale = -output->grad.raw()[0] / static_cast<float>(n);
+            float* g = self_ptr->grad.raw();
+            const float* tgt = targets->data.raw();
+            for (size_t i = 0; i < n; i++) {
+                const int t = static_cast<int>(tgt[i]);
+                if (t >= 0 && static_cast<size_t>(t) < vocab) {
+                    g[i * vocab + t] += scale;
+                }
+            }
+        });
+    }
+    return output;
 }
 
 void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited) {
@@ -938,13 +750,15 @@ void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, s
 }
 
 void Variable::backward() {
+    // Both are caller bugs: with no grad-requiring input there is no graph
+    // to walk, and the root's gradient is seeded with 1, which only means
+    // d(root)/d(root) for a scalar.
     if (!requires_grad) {
-        std::cerr << "Warning: backward() called on Variable that doesn't require grad" << std::endl;
-        return;
+        throw std::logic_error("Variable::backward(): root does not require grad");
     }
-    
     if (data.numel() != 1) {
-        throw std::runtime_error("Variable::backward(): output must be scalar to auto-seed dOut=1. ""For non-scalars, provide an explicit upstream gradient.");
+        throw std::logic_error("Variable::backward(): root must be a scalar, got " +
+                               std::to_string(data.numel()) + " elements");
     }
     ensureGrad();
     grad.fill(1.0f);

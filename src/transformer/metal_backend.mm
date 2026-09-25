@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <mutex>
+#include <stdexcept>
+#include <string>
 
 namespace metalgpu {
 namespace {
@@ -141,6 +143,13 @@ bool sgemm(const float* A, const float* B, float* C,
     const size_t nA = static_cast<size_t>(a_rows) * a_cols;
     const size_t nB = static_cast<size_t>(b_rows) * b_cols;
 
+    // Every early return below happens before commit, when nothing has
+    // been submitted and C is untouched, so the caller's CPU fallback is
+    // safe. Once committed, the GPU may have written part of C (and with
+    // beta != 0 consumed its old contents), so a failure there cannot be
+    // retried and is thrown instead - outside the autorelease pool, which
+    // is not drained by C++ unwinding.
+    std::string failure;
     @autoreleasepool {
         std::lock_guard<std::mutex> lk(gpu_mutex);
 
@@ -176,6 +185,7 @@ bool sgemm(const float* A, const float* B, float* C,
             // an fp32 result matrix: MPS accumulates (and applies
             // alpha/beta) in full precision.
             id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+            if (!enc) return false;  // messages to nil would skip the conversion
             [enc setComputePipelineState:c.convert];
             const NSUInteger tg = c.convert.maxTotalThreadsPerThreadgroup;
             [enc setBuffer:bufA offset:0 atIndex:0];
@@ -201,8 +211,17 @@ bool sgemm(const float* A, const float* B, float* C,
         [cb commit];
         [cb waitUntilCompleted];
 
-        return cb.status == MTLCommandBufferStatusCompleted;
+        if (cb.status != MTLCommandBufferStatusCompleted) {
+            NSError* err = cb.error;
+            failure = err ? std::string([[err localizedDescription] UTF8String])
+                          : std::string("status ") + std::to_string(static_cast<long>(cb.status));
+        }
     }
+    if (!failure.empty()) {
+        throw std::runtime_error("Metal sgemm failed after submission (C may be partially "
+                                 "written, so it cannot fall back to the CPU): " + failure);
+    }
+    return true;
 }
 
 }  // namespace metalgpu
