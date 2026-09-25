@@ -101,6 +101,8 @@ set(GRAD_CORE_SOURCES
     src/transformer/optimizer.cpp
     src/tokenizer/bpe_tokenizer.cpp
     src/tokenizer/pretokenize.cpp
+    src/tokenizer/byte_bpe.cpp
+    src/tokenizer/tokenizer.cpp
     src/data/dataset.cpp
     src/data/token_file.cpp
     src/data/dataloader.cpp
@@ -238,6 +240,15 @@ if(BUILD_TESTS)
     add_grad_test(test_attention_gradients tests/unit/test_attention_gradients.cpp AttentionGradientChecking)
     add_grad_test(test_subtract tests/unit/test_subtract.cpp TensorSubtraction)
     add_grad_test(test_core_regressions tests/unit/test_core_regressions.cpp CoreRegressions)
+    add_grad_test(test_tokenizer tests/unit/test_tokenizer.cpp Tokenizer)
+    # v1 against ids recorded from the pre-v2 binary, using the TinyStories
+    # 16000 cache that the 70M checkpoint was trained with; skipped (77)
+    # when that cache is not there.
+    set(GRAD_V1_TOKENIZER_CACHE
+        "${CMAKE_CURRENT_SOURCE_DIR}/data/tinystories.txt.tokenizer_16000.cache"
+        CACHE FILEPATH "v1 tokenizer cache for the TokenizerV1Cache test")
+    add_test(NAME TokenizerV1Cache COMMAND test_tokenizer v1-cache ${GRAD_V1_TOKENIZER_CACHE})
+    set_tests_properties(TokenizerV1Cache PROPERTIES SKIP_RETURN_CODE 77 LABELS "unit" TIMEOUT 120)
 
     if(MSVC)
         target_compile_options(test_subtract PRIVATE /UNDEBUG)
