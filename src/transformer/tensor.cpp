@@ -277,14 +277,17 @@ Tensor Tensor::matmul(const Tensor& other) const {
     const size_t N = other.getCols();
     Tensor result = uninitialized(shape_.with_last_dim(N));
 
+    // One sgemm per matrix, through the blas_sgemm_ex seam so the GPU
+    // decision lives in one place. At current scale none reaches Metal:
+    // the largest per-sequence product in the medium preset
+    // (256x768 @ 768x3072) is 1.2 GFLOP against a 10 GFLOP threshold, so
+    // each call runs the same cblas_sgemm it always did.
     for (size_t b = 0; b < getBatchSize(); b++) {
-        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                    M, N, K,
-                    1.0f,
-                    data.get() + b * M * K, K,
-                    other.data.get() + (batched_rhs ? b * K * N : 0), N,
-                    0.0f,
-                    result.data.get() + b * M * N, N);
+        blas_sgemm_ex(data.get() + b * M * K,
+                      other.data.get() + (batched_rhs ? b * K * N : 0),
+                      result.data.get() + b * M * N,
+                      static_cast<int>(M), static_cast<int>(N), static_cast<int>(K),
+                      false, false, 1.0f, 0.0f);
     }
     return result;
 }
