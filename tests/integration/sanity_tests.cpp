@@ -303,7 +303,7 @@ void test_inference_parity(GPTArch arch) {
     const size_t vocab = vocab_size;
 
     GPTModel model(vocab_size, d_model, num_layers, num_heads, max_len,
-                   /*dropout=*/0.0f, arch);
+                   /*dropout_rate=*/0.0f, arch);
 
     // Batched training-path forward over the whole sequence.
     Tensor ids(1, S, 1);

@@ -231,6 +231,8 @@ void test_shape() {
     Tensor q(Shape{2, 3, 4, 5});
     CHECK(q.getBatchSize() == 6 && q.getRows() == 4 && q.getFlatRows() == 24 && q.getIs3D());
     Tensor moved = std::move(q);
+    // The moved-from state is what this checks: empty shape, no storage.
+    // NOLINTNEXTLINE(bugprone-use-after-move)
     CHECK(q.numel() == 0 && q.rank() == 0 && q.getBatchSize() == 0 && q.getRows() == 0);
     CHECK(moved.shape() == (Shape{2, 3, 4, 5}));
 

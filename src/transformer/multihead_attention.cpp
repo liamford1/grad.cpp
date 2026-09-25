@@ -225,7 +225,7 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     // parallel loop so each unit's mask is fixed by its index rather
     // than by which thread reached the RNG first.
     const uint64_t stream_base =
-        use_attn_dropout ? reserve_dropout_streams(static_cast<uint64_t>(batch_size * H)) : 0;
+        use_attn_dropout ? reserve_dropout_streams(static_cast<uint64_t>(batch_size) * H) : 0;
 
     // Heads are column slices of the (rows, d_model) projections; BLAS
     // takes them as strided views (lda = d_model), so no per-head

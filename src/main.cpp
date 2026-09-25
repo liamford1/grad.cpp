@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <exception>
 #include <iostream>
 #include <span>
@@ -54,9 +55,7 @@ void print_usage(std::ostream& out, std::string_view program) {
     out << "\nRun '" << program << " <command> --help' for a command's arguments and options.\n";
 }
 
-}  // namespace
-
-int main(int argc, char* argv[]) {
+int dispatch(int argc, char* argv[]) {
     const std::vector<std::string_view> args(argv, argv + argc);
     const std::string_view program = args.empty() ? "grad" : args[0];
 
@@ -96,4 +95,22 @@ int main(int argc, char* argv[]) {
         std::cerr << "\nError: " << e.what() << std::endl;
         return 1;
     }
+}
+
+}  // namespace
+
+// Anything dispatch() lets escape (an allocation failure while parsing the
+// command line or reporting a usage error) still exits with status 1 and a
+// message instead of std::terminate.
+int main(int argc, char* argv[]) {
+    try {
+        return dispatch(argc, argv);
+    } catch (const std::exception& e) {
+        std::fputs("Error: ", stderr);
+        std::fputs(e.what(), stderr);
+        std::fputs("\n", stderr);
+    } catch (...) {
+        std::fputs("Error: unknown exception\n", stderr);
+    }
+    return 1;
 }

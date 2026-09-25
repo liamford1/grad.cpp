@@ -31,7 +31,7 @@ namespace {
 // when applied to every scratch tensor. Small tensors use plain new[];
 // the Metal backend's alignment check routes them to the CPU automatically.
 constexpr size_t kPageBytes = 16384;
-constexpr size_t kAlignThresholdBytes = 256 * 1024;
+constexpr size_t kAlignThresholdBytes = size_t{256} * 1024;
 
 void check_dims(const Shape& shape) {
     if (shape.rank() == 0) {

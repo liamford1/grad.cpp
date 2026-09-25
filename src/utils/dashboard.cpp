@@ -90,7 +90,7 @@ RunData parse_csv(const std::string& path) {
             } else if (line[0] == 'e' && n >= 2) {
                 d.evals.push_back({std::stoi(f[0]), std::stof(f[1])});
             }
-        } catch (...) {
+        } catch (...) {  // NOLINT(bugprone-empty-catch): skipping the line is the handling
             // Partial last line while the trainer is mid-write; skip.
         }
     }
@@ -167,13 +167,12 @@ void draw_series(Canvas& cv, const Series& s, const Range& r) {
     const int PW = cv.W * 2, PH = cv.H * 4;
     int ppx = -1, ppy = -1;
     for (const auto& p : s.pts) {
-        int px = std::clamp(
-            static_cast<int>((p.first - r.x0) / (r.x1 - r.x0) * static_cast<float>(PW - 1) + 0.5f),
-            0, PW - 1);
-        int py = std::clamp(
-            static_cast<int>((1.0f - (p.second - r.y0) / (r.y1 - r.y0)) * static_cast<float>(PH - 1)
-                             + 0.5f),
-            0, PH - 1);
+        int px = std::clamp(static_cast<int>(std::lround((p.first - r.x0) / (r.x1 - r.x0)
+                                                         * static_cast<float>(PW - 1))),
+                            0, PW - 1);
+        int py = std::clamp(static_cast<int>(std::lround((1.0f - (p.second - r.y0) / (r.y1 - r.y0))
+                                                         * static_cast<float>(PH - 1))),
+                            0, PH - 1);
         if (s.scatter || ppx < 0) {
             cv.set(px, py);
         } else if (px == ppx) {
@@ -181,8 +180,8 @@ void draw_series(Canvas& cv, const Series& s, const Range& r) {
         } else {
             for (int x = ppx; x <= px; x++) {
                 float t = static_cast<float>(x - ppx) / static_cast<float>(px - ppx);
-                cv.set(x, static_cast<int>(static_cast<float>(ppy)
-                                           + t * static_cast<float>(py - ppy) + 0.5f));
+                cv.set(x, static_cast<int>(std::lround(static_cast<float>(ppy)
+                                                       + t * static_cast<float>(py - ppy))));
             }
         }
         ppx = px;
@@ -201,7 +200,7 @@ std::vector<std::string> chart_rows(int w, int h, const std::vector<Series>& lay
     Canvas hcv(w, h);
     if (hline > r.y0 && hline < r.y1) {
         int py = static_cast<int>(
-            (1.0f - (hline - r.y0) / (r.y1 - r.y0)) * static_cast<float>(h * 4 - 1) + 0.5f);
+            std::lround((1.0f - (hline - r.y0) / (r.y1 - r.y0)) * static_cast<float>(h * 4 - 1)));
         for (int px = 0; px < w * 2; px += 3) hcv.set(px, py);  // dashed
     }
 
@@ -413,7 +412,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
                             + "  " + kv("eta", fmt_dur(eta_s)) + "  "
                             + kv("elapsed", fmt_dur(d.elapsed_s), LBL) + "  ";
         int barw = std::max(10, tw - static_cast<int>(visible_width(right)) - 10);
-        int fillw = static_cast<int>(barw * done / 100.0 + 0.5);
+        int fillw = static_cast<int>(std::lround(barw * done / 100.0));
         std::string bar;
         for (int i = 0; i < barw; i++) bar += (i < fillw) ? "█" : "░";
         out += right + GRN + bar + RST + " " + WHT + fmt(static_cast<float>(done), 1) + "%" + RST

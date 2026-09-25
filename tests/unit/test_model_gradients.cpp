@@ -73,7 +73,7 @@ struct Probe {
 // given parameter entries. Probes index into getAllParameters(), whose
 // layout differs by arch (see the tables in main).
 void run_arch(GPTArch arch, const std::vector<Probe>& probes, int& passed, int& total) {
-    GPTModel model(kVocab, kDModel, kLayers, kHeads, kMaxLen, /*dropout=*/0.0f, arch);
+    GPTModel model(kVocab, kDModel, kLayers, kHeads, kMaxLen, /*dropout_rate=*/0.0f, arch);
 
     Tensor ids(kBatch, kSeq, 1);
     Tensor tgt(kBatch, kSeq, 1);
