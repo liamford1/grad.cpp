@@ -187,7 +187,41 @@ The test suite checks the parts that are easiest to get silently wrong. Every ch
 - **Packaging**: CI builds a small consumer project against the installed `grad::core` CMake package
 - **Hardware-aware results**: Metal parity is reported as skipped, not passed, when no Metal device is exposed
 
-CI builds with warnings as errors (`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast`, and Clang's stricter `-Wshadow-all`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer.
+CI builds with warnings as errors (`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast`, and Clang's stricter `-Wshadow-all`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer. A `lint` job checks formatting and runs clang-tidy (see Development).
+
+## Development
+
+**Build types.** The default is `Release` (`-O3`, tuned with `-march=native`; pass `-DGRAD_NATIVE_ARCH=OFF` for a binary you intend to copy to another machine). `-DCMAKE_BUILD_TYPE=Debug` builds `-O0 -g`, and `RelWithDebInfo` is what the sanitizer build uses.
+
+**Warnings.** Every target builds with `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast` (`-Wshadow-all` under Clang). `-DGRAD_WARNINGS_AS_ERRORS=ON` adds `-Werror`, as CI does; use it locally before sending a change.
+
+**Tests.** `ctest --test-dir build --output-on-failure` runs everything; `-L unit` or `-L integration` selects one group.
+
+**Sanitizers.** The CI sanitizer job, reproduced locally (Linux or macOS):
+
+```bash
+cmake -S . -B build-sanitize -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+cmake --build build-sanitize -j
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+      ctest --test-dir build-sanitize --output-on-failure
+```
+
+(Apple clang does not support LeakSanitizer; drop `detect_leaks=1` on macOS.)
+
+**Formatting and static analysis.** `.clang-format` and `.clang-tidy` hold the configuration, and `tools/lint.sh` runs them the way CI's `lint` job does. The versions are pinned because other releases format and diagnose differently:
+
+```bash
+pip install clang-format==19.1.7 clang-tidy==19.1.0   # into a venv is fine
+
+tools/lint.sh format          # check; `format --fix` rewrites in place
+cmake -S . -B build -DBUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+tools/lint.sh tidy build      # clang-tidy over every C++ translation unit the build compiles
+```
+
+On Linux, configure that build with `CC=clang CXX=clang++`: the GCC flags (`-flto=auto`, `-ffat-lto-objects`) are not Clang's, and clang-tidy reads them from the compilation database.
+
+Set `CLANG_FORMAT` / `CLANG_TIDY` to use binaries that are not on `PATH`, and `JOBS` to change the parallelism (default 4). On macOS, `TIDY_OBJCXX=1` also analyzes the Metal backend. `.clang-tidy` lists each disabled check with its reason; a deliberate exception in code carries a `NOLINT` naming the one check, with the reason beside it. The tree was reformatted in one commit, listed in `.git-blame-ignore-revs`; run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame` skips it.
 
 ## Design notes
 
@@ -214,7 +248,7 @@ tests/
   package/       consumer project for the installed CMake package
 benchmarks/      PyTorch baseline for head-to-head comparisons
 docs/runs/       run reports with their full metrics
-tools/           plot_run.py (metrics CSV to SVG)
+tools/           plot_run.py (metrics CSV to SVG), lint.sh (clang-format, clang-tidy)
 train_supervised.sh, training_health.sh   self-resuming run supervisor + health monitor
 data/            Tiny Shakespeare corpus (~1.1MB)
 ```

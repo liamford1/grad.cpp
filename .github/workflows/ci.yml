@@ -46,6 +46,40 @@ jobs:
       - name: Training smoke test
         run: ./build/grad train-fast
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # A managed Python, so pip installs without touching the runner's
+      # system Python (Ubuntu 24.04 refuses that under PEP 668).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # clang for the compilation database: configuring with GCC would put
+      # GCC-only flags (-flto=auto, -ffat-lto-objects) in front of
+      # clang-tidy. The tool versions are pinned; other versions format
+      # and diagnose differently.
+      - name: Install BLAS, clang, clang-format and clang-tidy
+        run: |
+          sudo apt-get update && sudo apt-get install -y libopenblas-dev clang
+          pip install clang-format==19.1.7 clang-tidy==19.1.0
+
+      - name: clang-format
+        run: tools/lint.sh format
+
+      - name: Configure (compilation database only)
+        env:
+          CC: clang
+          CXX: clang++
+        run: cmake -S . -B build -DBUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      # Every C++ translation unit the build compiles; the Objective-C++
+      # Metal backend is macOS-only and not part of this build.
+      - name: clang-tidy
+        run: JOBS=$(nproc) tools/lint.sh tidy build
+
   sanitizers:
     runs-on: ubuntu-latest
     steps:
