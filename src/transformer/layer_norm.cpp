@@ -2,7 +2,7 @@
 #include "transformer/layer_norm.h"
 #include "transformer/parallel.h"
 #include <cmath>
-#include <mutex>
+#include <algorithm>
 #include <vector>
 
 LayerNorm::LayerNorm(int d_model, bool rms) :
@@ -121,84 +121,95 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             float* dInput_out = self_input->getGrad().raw();
 
             // dInput rows are disjoint across the parallel chunks, but
-            // dGamma/dBeta sum over every row: each chunk accumulates
-            // private partials and merges them under a lock once.
-            std::mutex merge_mutex;
+            // dGamma/dBeta sum over every row. Each fixed block of
+            // kRowsPerBlock rows accumulates its own partial sums, and the
+            // partials are added in block order afterwards: float addition
+            // is not associative, so merging in completion order (as a
+            // lock would) makes the gradient depend on thread timing. This
+            // way it is bit-identical for any thread count or schedule.
+            constexpr size_t kRowsPerBlock = 16;
+            const size_t d = static_cast<size_t>(self_d);
+            const size_t num_blocks = (total_rows + kRowsPerBlock - 1) / kRowsPerBlock;
+            std::vector<float> g_parts(num_blocks * d, 0.0f);
+            std::vector<float> b_parts(rms ? 0 : num_blocks * d, 0.0f);
 
-            parallel_for(total_rows, 16, [&](size_t begin, size_t end) {
-                std::vector<float> g_part(self_d, 0.0f);
-                std::vector<float> b_part(self_d, 0.0f);
+            parallel_for(num_blocks, 1, [&](size_t block_begin, size_t block_end) {
+                for (size_t blk = block_begin; blk < block_end; blk++) {
+                    float* g_part = g_parts.data() + blk * d;
+                    float* b_part = rms ? nullptr : b_parts.data() + blk * d;
+                    const size_t begin = blk * kRowsPerBlock;
+                    const size_t end = std::min(begin + kRowsPerBlock, static_cast<size_t>(total_rows));
 
-                if (rms) {
-                    // y_j = g_j * x_j * r with r = 1/sqrt(mean(x^2)+eps):
-                    //   dg_j += dy_j * x_j * r
-                    //   dx_j += g_j*dy_j*r - x_j * r^3/d * sum_k(dy_k*g_k*x_k)
+                    if (rms) {
+                        // y_j = g_j * x_j * r with r = 1/sqrt(mean(x^2)+eps):
+                        //   dg_j += dy_j * x_j * r
+                        //   dx_j += g_j*dy_j*r - x_j * r^3/d * sum_k(dy_k*g_k*x_k)
+                        for (size_t i = begin; i < end; i++) {
+                            const float r = inv_stds[i];
+                            const float* dout_row = output_grad_data + i * self_d;
+                            const float* input_row = input_data + i * self_d;
+                            float* dInput_row = dInput_out + i * self_d;
+
+                            float dot = 0.0f;
+                            for (int j = 0; j < self_d; j++) {
+                                g_part[j] += dout_row[j] * input_row[j] * r;
+                                dot += dout_row[j] * gamma_data[j] * input_row[j];
+                            }
+                            const float k = dot * r * r * r / self_d;
+                            for (int j = 0; j < self_d; j++) {
+                                dInput_row[j] += gamma_data[j] * dout_row[j] * r
+                                               - input_row[j] * k;
+                            }
+                        }
+                        continue;
+                    }
+
                     for (size_t i = begin; i < end; i++) {
-                        const float r = inv_stds[i];
+                        const float std_inv = inv_stds[i];
+                        // d(var)^(-1/2)/d(var) = -0.5 * (var + eps)^(-3/2) = -0.5 * std_inv^3,
+                        // one multiply per row instead of a pow per element.
+                        const float dvar_scale = -0.5f * std_inv * std_inv * std_inv;
+                        const float mean = means[i];
                         const float* dout_row = output_grad_data + i * self_d;
                         const float* input_row = input_data + i * self_d;
+
+                        float dvar = 0.0f;
+                        for (int j = 0; j < self_d; j++) {
+                            const float x_minus_mean = input_row[j] - mean;
+                            const float normalized_ij = x_minus_mean * std_inv;
+
+                            g_part[j] += dout_row[j] * normalized_ij;
+                            b_part[j] += dout_row[j];
+
+                            const float dnorm = dout_row[j] * gamma_data[j];
+                            dvar += dnorm * x_minus_mean * dvar_scale;
+                        }
+
+                        float dmean = 0.0f;
+                        for (int j = 0; j < self_d; j++) {
+                            const float dnorm = dout_row[j] * gamma_data[j];
+                            const float x_minus_mean = input_row[j] - mean;
+                            dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d;
+                        }
+
                         float* dInput_row = dInput_out + i * self_d;
-
-                        float dot = 0.0f;
                         for (int j = 0; j < self_d; j++) {
-                            g_part[j] += dout_row[j] * input_row[j] * r;
-                            dot += dout_row[j] * gamma_data[j] * input_row[j];
-                        }
-                        const float k = dot * r * r * r / self_d;
-                        for (int j = 0; j < self_d; j++) {
-                            dInput_row[j] += gamma_data[j] * dout_row[j] * r
-                                           - input_row[j] * k;
+                            const float dnorm = dout_row[j] * gamma_data[j];
+                            const float x_minus_mean = input_row[j] - mean;
+                            dInput_row[j] += dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d + dmean / self_d;
                         }
                     }
-                    std::lock_guard<std::mutex> lk(merge_mutex);
-                    for (int j = 0; j < self_d; j++) {
-                        dGamma_out[j] += g_part[j];
-                    }
-                    return;
-                }
-
-                for (size_t i = begin; i < end; i++) {
-                    const float std_inv = inv_stds[i];
-                    // d(var)^(-1/2)/d(var) = -0.5 * (var + eps)^(-3/2) = -0.5 * std_inv^3,
-                    // one multiply per row instead of a pow per element.
-                    const float dvar_scale = -0.5f * std_inv * std_inv * std_inv;
-                    const float mean = means[i];
-                    const float* dout_row = output_grad_data + i * self_d;
-                    const float* input_row = input_data + i * self_d;
-
-                    float dvar = 0.0f;
-                    for (int j = 0; j < self_d; j++) {
-                        const float x_minus_mean = input_row[j] - mean;
-                        const float normalized_ij = x_minus_mean * std_inv;
-
-                        g_part[j] += dout_row[j] * normalized_ij;
-                        b_part[j] += dout_row[j];
-
-                        const float dnorm = dout_row[j] * gamma_data[j];
-                        dvar += dnorm * x_minus_mean * dvar_scale;
-                    }
-
-                    float dmean = 0.0f;
-                    for (int j = 0; j < self_d; j++) {
-                        const float dnorm = dout_row[j] * gamma_data[j];
-                        const float x_minus_mean = input_row[j] - mean;
-                        dmean += dnorm * -std_inv + dvar * -2.0f * x_minus_mean / self_d;
-                    }
-
-                    float* dInput_row = dInput_out + i * self_d;
-                    for (int j = 0; j < self_d; j++) {
-                        const float dnorm = dout_row[j] * gamma_data[j];
-                        const float x_minus_mean = input_row[j] - mean;
-                        dInput_row[j] += dnorm * std_inv + dvar * 2.0f * x_minus_mean / self_d + dmean / self_d;
-                    }
-                }
-
-                std::lock_guard<std::mutex> lk(merge_mutex);
-                for (int j = 0; j < self_d; j++) {
-                    dGamma_out[j] += g_part[j];
-                    dBeta_out[j] += b_part[j];
                 }
             });
+
+            for (size_t blk = 0; blk < num_blocks; blk++) {
+                const float* g_part = g_parts.data() + blk * d;
+                for (size_t j = 0; j < d; j++) dGamma_out[j] += g_part[j];
+                if (!rms) {
+                    const float* b_part = b_parts.data() + blk * d;
+                    for (size_t j = 0; j < d; j++) dBeta_out[j] += b_part[j];
+                }
+            }
         });
     }
 
