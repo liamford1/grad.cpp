@@ -50,7 +50,10 @@ public:
     // Returns false when the run was interrupted (SIGINT/SIGTERM): resume
     // state has been saved and the caller should skip end-of-run work.
     [[nodiscard]] bool train();
-    void save_checkpoint(const std::string& path);
+    // Writes the model to path via a temp file and rename, so an existing
+    // checkpoint is only ever replaced by a complete one. False on failure
+    // (after a warning); the previous file, if any, is left untouched.
+    [[nodiscard]] bool save_checkpoint(const std::string& path);
 
     // Mean loss over the validation set, capped at max_eval_batches from
     // its start (forward-only, no dropout). Perplexity is exp of this.
@@ -79,7 +82,8 @@ private:
     void training_step(int step);
     std::string resume_model_path() const;
     std::string resume_state_path() const;
-    void save_resume_state(int next_step, float best_val_loss);
+    // False (after a warning) if either file of the pair failed to write.
+    [[nodiscard]] bool save_resume_state(int next_step, float best_val_loss);
     void log_performance_breakdown();
 };
 
