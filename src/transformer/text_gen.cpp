@@ -7,20 +7,21 @@
 
 namespace grad {
 
-TextGen::TextGen(const GPTModel& model, const BPETokenizer* tok) : model(model), tokenizer(tok) {}
+TextGen::TextGen(const GPTModel& model, const BPETokenizer* tok) : model_(model), tokenizer_(tok) {}
 
 namespace {
 
 Tensor logits_with_penalty(const float* logits, int vocab,
                            const std::vector<int>& tokens,
                            float repetition_penalty) {
-    Tensor out(1, vocab);
-    std::memcpy(out.raw(), logits, vocab * sizeof(float));
+    const size_t n = static_cast<size_t>(vocab);  // a model's vocab, so > 0
+    Tensor out(1, n);
+    std::memcpy(out.raw(), logits, n * sizeof(float));
 
     if (repetition_penalty != 1.0f) {
         float* data = out.raw();
-        int window_size = std::min(50, static_cast<int>(tokens.size()));
-        for (int k = tokens.size() - window_size; k < static_cast<int>(tokens.size()); k++) {
+        const size_t window_size = std::min<size_t>(50, tokens.size());
+        for (size_t k = tokens.size() - window_size; k < tokens.size(); k++) {
             int token_id = tokens[k];
             if (data[token_id] > 0) {
                 data[token_id] /= repetition_penalty;
@@ -38,7 +39,7 @@ std::string TextGen::generate_greedy(const std::vector<int>& prompt_tokens, int 
     std::vector<int> tokens = prompt_tokens;
     if (tokens.empty()) return "";
 
-    InferenceSession session(model);
+    InferenceSession session(model_);
     const float* logits = nullptr;
     for (int t : tokens) {
         logits = session.step(t);
@@ -68,7 +69,7 @@ std::string TextGen::generate_sample(const std::vector<int>& prompt_tokens, floa
     std::vector<int> tokens = prompt_tokens;
     if (tokens.empty()) return "";
 
-    InferenceSession session(model);
+    InferenceSession session(model_);
     const float* logits = nullptr;
     for (int t : tokens) {
         logits = session.step(t);
@@ -94,7 +95,7 @@ int TextGen::generate_stream(const std::vector<int>& prompt_tokens,
     std::vector<int> tokens = prompt_tokens;
     if (tokens.empty()) return 0;
 
-    InferenceSession session(model);
+    InferenceSession session(model_);
     const float* logits = nullptr;
     for (int t : tokens) {
         logits = session.step(t);
@@ -117,8 +118,8 @@ int TextGen::generate_stream(const std::vector<int>& prompt_tokens,
 }
 
 std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
-    if (tokenizer != nullptr) {
-        return tokenizer->decode(tokens);
+    if (tokenizer_ != nullptr) {
+        return tokenizer_->decode(tokens);
     }
     
     std::string result = "";
@@ -135,13 +136,13 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
     if (top_k > 0 && top_k < static_cast<int>(scaled_logits.getCols())) {
         std::vector<std::pair<float, int>> logit_pairs;
         for (size_t i = 0; i < scaled_logits.getCols(); i++) {
-            logit_pairs.push_back({scaled_logits.getValue(0, i), i});
+            logit_pairs.push_back({scaled_logits.getValue(0, i), static_cast<int>(i)});
         }
 
         std::sort(logit_pairs.begin(), logit_pairs.end(),
                   [](const auto& a, const auto& b) { return a.first > b.first; });
 
-        float min_logit = logit_pairs[top_k - 1].first;
+        float min_logit = logit_pairs[static_cast<size_t>(top_k - 1)].first;
         for (size_t i = 0; i < scaled_logits.getCols(); i++) {
             if (scaled_logits.getValue(0, i) < min_logit) {
                 scaled_logits.setValue(0, i, -1e10f);
@@ -154,7 +155,7 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
     if (top_p < 1.0f) {
         std::vector<std::pair<float, int>> prob_pairs;
         for (size_t i = 0; i < probabilities.getCols(); i++) {
-            prob_pairs.push_back({probabilities.getValue(0, i), i});
+            prob_pairs.push_back({probabilities.getValue(0, i), static_cast<int>(i)});
         }
         std::sort(prob_pairs.begin(), prob_pairs.end(),
                   [](const auto& a, const auto& b) { return a.first > b.first; });
@@ -197,10 +198,10 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
     for (size_t i = 0; i < probabilities.getCols(); i++) {
         cumulative += probabilities.getValue(0, i);
         if (random_val <= cumulative) {
-            return i;
+            return static_cast<int>(i);
         }
     }
-    return probabilities.getCols() - 1;
+    return static_cast<int>(probabilities.getCols() - 1);
 }
 
 }  // namespace grad

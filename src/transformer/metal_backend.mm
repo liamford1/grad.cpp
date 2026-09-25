@@ -100,7 +100,7 @@ id<MTLBuffer> wrap(id<MTLDevice> device, const void* p, size_t bytes) {
                                 deallocator:nil];
 }
 
-MPSMatrix* make_matrix(id<MTLBuffer> buf, int rows, int cols, MPSDataType dtype) {
+MPSMatrix* make_matrix(id<MTLBuffer> buf, size_t rows, size_t cols, MPSDataType dtype) {
     const size_t elem = (dtype == MPSDataTypeFloat16) ? 2 : sizeof(float);
     MPSMatrixDescriptor* desc =
         [MPSMatrixDescriptor matrixDescriptorWithRows:rows
@@ -131,18 +131,18 @@ bool fp16_active() {
 }
 
 bool sgemm(const float* A, const float* B, float* C,
-           int M, int N, int K, bool transA, bool transB,
+           size_t M, size_t N, size_t K, bool transA, bool transB,
            float alpha, float beta) {
     Context& c = ctx();
     if (!c.ok) return false;
     if (!page_aligned(A) || !page_aligned(B) || !page_aligned(C)) return false;
 
-    const int a_rows = transA ? K : M;
-    const int a_cols = transA ? M : K;
-    const int b_rows = transB ? N : K;
-    const int b_cols = transB ? K : N;
-    const size_t nA = static_cast<size_t>(a_rows) * a_cols;
-    const size_t nB = static_cast<size_t>(b_rows) * b_cols;
+    const size_t a_rows = transA ? K : M;
+    const size_t a_cols = transA ? M : K;
+    const size_t b_rows = transB ? N : K;
+    const size_t b_cols = transB ? K : N;
+    const size_t nA = a_rows * a_cols;
+    const size_t nB = b_rows * b_cols;
 
     // Every early return below happens before commit, when nothing has
     // been submitted and C is untouched, so the caller's CPU fallback is
@@ -156,7 +156,7 @@ bool sgemm(const float* A, const float* B, float* C,
 
         id<MTLBuffer> bufA = wrap(c.device, A, nA * sizeof(float));
         id<MTLBuffer> bufB = wrap(c.device, B, nB * sizeof(float));
-        id<MTLBuffer> bufC = wrap(c.device, C, static_cast<size_t>(M) * N * sizeof(float));
+        id<MTLBuffer> bufC = wrap(c.device, C, M * N * sizeof(float));
         if (!bufA || !bufB || !bufC) return false;
 
         id<MTLBuffer> halfA = nil;

@@ -39,7 +39,7 @@ class AdamOptimizer : public Optimizer {
 
         float scheduled_lr() const;
     public:
-        explicit AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr = 3e-4, float beta1 = 0.9, float beta2 = 0.999, float epsilon = 1e-8, float weight_decay = 0.01);
+        explicit AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& parameters, float lr = 3e-4f, float beta1 = 0.9f, float beta2 = 0.999f, float epsilon = 1e-8f, float weight_decay = 0.01f);
 
         void step() override;
         void zero_grad() override;

@@ -12,7 +12,7 @@ namespace grad {
 // so the lazily-allocating optimizer skips it entirely.
 class LayerNorm {
     private:
-        int d_model;
+        int d_model_;
         std::shared_ptr<Variable> gamma;
         std::shared_ptr<Variable> beta;
         float epsilon;

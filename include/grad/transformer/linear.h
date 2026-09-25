@@ -9,7 +9,7 @@ class Linear {
     private:
         std::shared_ptr<Variable> weights;
         std::shared_ptr<Variable> bias;
-        bool use_bias;
+        bool use_bias_;
     public:
         Linear(int input_dim, int output_dim, bool use_bias = true);
 

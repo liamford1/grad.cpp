@@ -78,9 +78,9 @@ void TrainingMetrics::record_step(int step, float loss, float grad_norm) {
 void TrainingMetrics::print_progress(int step, float loss) {
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
-    float progress = 100.0f * (step + 1) / total_steps_;
-    float steps_per_sec = (step + 1 - start_step_) / static_cast<float>(elapsed + 1);
-    int eta_sec = static_cast<int>((total_steps_ - step - 1) / (steps_per_sec + 0.0001f));
+    float progress = 100.0f * static_cast<float>(step + 1) / static_cast<float>(total_steps_);
+    float steps_per_sec = static_cast<float>(step + 1 - start_step_) / static_cast<float>(elapsed + 1);
+    int eta_sec = static_cast<int>(static_cast<float>(total_steps_ - step - 1) / (steps_per_sec + 0.0001f));
 
     std::cout << "\r[" << (step + 1) << "/" << total_steps_ << "] "
               << std::fixed << std::setprecision(1) << progress << "% "

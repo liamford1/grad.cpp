@@ -2,14 +2,9 @@
 // matrix shapes training actually uses, across all transpose combinations
 // and the beta=1 accumulate contract. Skips (passes) when no Metal device
 // is available - e.g. Linux, or macOS CI virtual machines.
+#include "grad/transformer/blas_wrapper.h"
 #include "grad/transformer/metal_backend.h"
 #include "grad/transformer/tensor.h"
-
-#if defined(__APPLE__)
-    #include <Accelerate/Accelerate.h>
-#else
-    #include <cblas.h>
-#endif
 
 #include <cmath>
 #include <cstdio>
@@ -27,19 +22,18 @@ void fill_random(Tensor& t, std::mt19937& gen) {
     }
 }
 
+// The CPU BLAS path alone (blas_sgemm_ex would route these sizes to the
+// GPU under test).
 void cpu_reference(const float* A, const float* B, float* C,
-                   int M, int N, int K, bool tA, bool tB,
+                   size_t M, size_t N, size_t K, bool tA, bool tB,
                    float alpha, float beta) {
-    cblas_sgemm(CblasRowMajor,
-                tA ? CblasTrans : CblasNoTrans,
-                tB ? CblasTrans : CblasNoTrans,
-                M, N, K, alpha,
-                A, tA ? M : K,
-                B, tB ? K : N,
-                beta, C, N);
+    blas_sgemm_strided(tA, tB, M, N, K, alpha,
+                       A, tA ? M : K,
+                       B, tB ? K : N,
+                       beta, C, N);
 }
 
-bool run_case(int M, int N, int K, bool tA, bool tB,
+bool run_case(size_t M, size_t N, size_t K, bool tA, bool tB,
               float alpha, float beta, std::mt19937& gen) {
     Tensor A(tA ? K : M, tA ? M : K);
     Tensor B(tB ? N : K, tB ? K : N);
@@ -53,7 +47,7 @@ bool run_case(int M, int N, int K, bool tA, bool tB,
 
     cpu_reference(A.raw(), B.raw(), C_cpu.raw(), M, N, K, tA, tB, alpha, beta);
     if (!metal::sgemm(A.raw(), B.raw(), C_gpu.raw(), M, N, K, tA, tB, alpha, beta)) {
-        std::printf("  FAIL M=%d N=%d K=%d tA=%d tB=%d: metal sgemm refused the call\n",
+        std::printf("  FAIL M=%zu N=%zu K=%zu tA=%d tB=%d: metal sgemm refused the call\n",
                     M, N, K, tA, tB);
         return false;
     }
@@ -73,7 +67,7 @@ bool run_case(int M, int N, int K, bool tA, bool tB,
     // still orders of magnitude outside these bounds.
     const bool half_inputs = metal::fp16_active();
     const float atol = half_inputs ? 5e-4f * std::sqrt(static_cast<float>(K)) + 1e-3f
-                                   : 1e-6f * K + 1e-4f;
+                                   : 1e-6f * static_cast<float>(K) + 1e-4f;
     const float rtol = half_inputs ? 1e-2f : 2e-3f;
 
     float worst = 0.0f;
@@ -85,7 +79,7 @@ bool run_case(int M, int N, int K, bool tA, bool tB,
     }
 
     bool ok = worst < 1.0f;
-    std::printf("  %s M=%d N=%d K=%d tA=%d tB=%d alpha=%.1f beta=%.1f worst=%.3f of tolerance\n",
+    std::printf("  %s M=%zu N=%zu K=%zu tA=%d tB=%d alpha=%.1f beta=%.1f worst=%.3f of tolerance\n",
                 ok ? "PASS" : "FAIL", M, N, K, tA, tB, alpha, beta, worst);
     return ok;
 }
@@ -104,7 +98,7 @@ int main() {
     std::mt19937 gen(1234);
     int passed = 0, total = 0;
 
-    struct Case { int M, N, K; bool tA, tB; float alpha, beta; };
+    struct Case { size_t M, N, K; bool tA, tB; float alpha, beta; };
     const Case cases[] = {
         // logits projection and its two backward forms
         {768, 5000, 512, false, true, 1.0f, 0.0f},

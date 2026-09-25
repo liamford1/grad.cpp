@@ -8,7 +8,7 @@
 
 using namespace grad;
 
-float numericalGradient(std::function<float()> forward_fn, float* param, float epsilon = 1e-5) {
+float numericalGradient(std::function<float()> forward_fn, float* param, float epsilon = 1e-5f) {
     float original = *param;
 
     *param = original + epsilon;
@@ -22,7 +22,7 @@ float numericalGradient(std::function<float()> forward_fn, float* param, float e
     return (loss_plus - loss_minus) / (2.0f * epsilon);
 }
 
-bool checkGradient(float analytical, float numerical, float tolerance = 1e-3) {
+bool checkGradient(float analytical, float numerical, float tolerance = 1e-3f) {
     float abs_error = std::abs(analytical - numerical);
     float denom = std::max(std::abs(analytical), std::abs(numerical));
     float rel_error;
@@ -70,7 +70,7 @@ void test_simple_addition() {
     
     float numerical = numericalGradient(forward_fn, &a->getData().raw()[0]);
     
-    bool passed = CHECK(checkGradient(analytical, numerical, 2e-3));
+    bool passed = CHECK(checkGradient(analytical, numerical, 2e-3f));
     std::cout << (passed ? "✓ Addition gradient correct" : "✗ Addition gradient FAILED") << std::endl;
 }
 
@@ -93,7 +93,7 @@ void test_scale() {
     
     float numerical = numericalGradient(forward_fn, &a->getData().raw()[0]);
     
-    bool passed = CHECK(checkGradient(analytical, numerical, 1e-2));
+    bool passed = CHECK(checkGradient(analytical, numerical, 1e-2f));
     std::cout << (passed ? "✓ Scale gradient correct" : "✗ Scale gradient FAILED") << std::endl;
 }
 
@@ -148,7 +148,7 @@ void test_matmul() {
     std::cout << "Numerical: " << numerical << std::endl;
     std::cout << "Analytical: " << analytical << std::endl;
     
-    bool passed = CHECK(checkGradient(analytical, numerical, 5e-2));
+    bool passed = CHECK(checkGradient(analytical, numerical, 5e-2f));
     std::cout << (passed ? "✓ Matmul gradient correct" : "✗ Matmul gradient FAILED") << std::endl;
 }
   
@@ -171,7 +171,7 @@ void test_gelu() {
     
     float numerical = numericalGradient(forward_fn, &x->getData().raw()[0]);
     
-    bool passed = CHECK(checkGradient(analytical, numerical, 1e-2));
+    bool passed = CHECK(checkGradient(analytical, numerical, 1e-2f));
     std::cout << (passed ? "✓ GELU gradient correct" : "✗ GELU gradient FAILED") << std::endl;
 }
 
@@ -200,10 +200,10 @@ void test_softmax() {
     };
 
     bool passed = true;
-    for (int i = 0; i < 3; i++) {
+    for (size_t i = 0; i < 3; i++) {
         float analytical = x->getGrad().getValue(0, i);
         float numerical = numericalGradient(forward_fn, &x->getData().raw()[i], 1e-3f);
-        passed = CHECK(checkGradient(analytical, numerical, 1e-2)) && passed;
+        passed = CHECK(checkGradient(analytical, numerical, 1e-2f)) && passed;
     }
     std::cout << (passed ? "✓ Softmax gradient correct" : "✗ Softmax gradient FAILED") << std::endl;
 }

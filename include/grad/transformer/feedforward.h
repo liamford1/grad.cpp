@@ -18,7 +18,7 @@ class FeedForward {
         Linear layer2;
         std::unique_ptr<Linear> gate_;
         bool gated_;
-        float dropout_rate;
+        float dropout_rate_;
 
         static int resolve_hidden(int d_model, int hidden_dim, bool gated) {
             if (hidden_dim != -1) return hidden_dim;

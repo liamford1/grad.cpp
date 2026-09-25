@@ -49,8 +49,8 @@ class MappedTokenDataset : public Dataset {
         const uint16_t* tokens_ = nullptr;
         size_t count_ = 0;
         int vocab_size_ = 0;
-        int seq_length_;
-        int stride_;
+        size_t seq_length_;
+        size_t stride_;
     public:
         // stride = 1 for training windows, seq_length for non-overlapping
         // evaluation windows (same convention as TextDataset).

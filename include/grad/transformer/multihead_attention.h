@@ -8,9 +8,9 @@ namespace grad {
 
 class MultiHeadAttention {
     private:
-        int d_model;
-        int num_heads;
-        float dropout_rate;
+        int d_model_;
+        int num_heads_;
+        float dropout_rate_;
         // Rotary position embeddings: Q and K are rotated by position-
         // dependent angles before the score matmul, encoding relative
         // position directly in the attention instead of via learned

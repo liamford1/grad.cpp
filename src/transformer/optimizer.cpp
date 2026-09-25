@@ -15,12 +15,12 @@ AdamOptimizer::AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& param
 
 float AdamOptimizer::scheduled_lr() const {
     if (warmup_steps_ > 0 && step_count_ <= warmup_steps_) {
-        return base_lr_ * (static_cast<float>(step_count_) / warmup_steps_);
+        return base_lr_ * (static_cast<float>(step_count_) / static_cast<float>(warmup_steps_));
     }
     if (total_steps_ > warmup_steps_ && step_count_ < total_steps_) {
         // Cosine decay from base_lr to min_lr over the post-warmup steps.
         float progress = static_cast<float>(step_count_ - warmup_steps_)
-                       / (total_steps_ - warmup_steps_);
+                       / static_cast<float>(total_steps_ - warmup_steps_);
         float cosine = 0.5f * (1.0f + std::cos(3.14159265f * progress));
         return min_lr_ + (base_lr_ - min_lr_) * cosine;
     }
@@ -31,8 +31,10 @@ void AdamOptimizer::step() {
     step_count_++;
     lr_ = scheduled_lr();
 
-    const float bc1 = 1.0f - std::pow(beta1_, step_count_);
-    const float bc2 = 1.0f - std::pow(beta2_, step_count_);
+    // pow(float, int) returns double, so the subtraction runs in double
+    // and narrows once, here.
+    const float bc1 = static_cast<float>(1.0f - std::pow(beta1_, step_count_));
+    const float bc2 = static_cast<float>(1.0f - std::pow(beta2_, step_count_));
     const float inv_bc1 = 1.0f / bc1;
     const float inv_bc2 = 1.0f / bc2;
 
@@ -63,7 +65,7 @@ void AdamOptimizer::step() {
         const bool decay_param = data.getIs3D() || data.getRows() > 1;
         const float wd = decay_param ? weight_decay_ : 0.0f;
 
-        int n = data.numel();
+        const size_t n = data.numel();
         float* dptr = data.raw();
         float* gptr = grad.raw();
         float* mptr = m.raw();
@@ -113,18 +115,18 @@ bool AdamOptimizer::save_state(std::ostream& out) const {
     for (const auto& param : parameters_) {
         uint64_t numel = param->getData().numel();
         out.write(reinterpret_cast<const char*>(&numel), sizeof(numel));
+        const auto bytes = static_cast<std::streamsize>(numel * sizeof(float));
 
         auto m_it = m_.find(param.get());
         if (m_it != m_.end()) {
             const Tensor& v = v_.at(param.get());
-            out.write(reinterpret_cast<const char*>(m_it->second.raw()),
-                      numel * sizeof(float));
-            out.write(reinterpret_cast<const char*>(v.raw()), numel * sizeof(float));
+            out.write(reinterpret_cast<const char*>(m_it->second.raw()), bytes);
+            out.write(reinterpret_cast<const char*>(v.raw()), bytes);
         } else {
             // Saving before the first step: moments are implicitly zero.
             std::vector<float> zeros(numel, 0.0f);
-            out.write(reinterpret_cast<const char*>(zeros.data()), numel * sizeof(float));
-            out.write(reinterpret_cast<const char*>(zeros.data()), numel * sizeof(float));
+            out.write(reinterpret_cast<const char*>(zeros.data()), bytes);
+            out.write(reinterpret_cast<const char*>(zeros.data()), bytes);
         }
     }
     return out.good();
@@ -148,8 +150,9 @@ bool AdamOptimizer::load_state(std::istream& in) {
             m_[key] = Tensor::zeros_like(data);
             v_[key] = Tensor::zeros_like(data);
         }
-        in.read(reinterpret_cast<char*>(m_[key].raw()), numel * sizeof(float));
-        in.read(reinterpret_cast<char*>(v_[key].raw()), numel * sizeof(float));
+        const auto bytes = static_cast<std::streamsize>(numel * sizeof(float));
+        in.read(reinterpret_cast<char*>(m_[key].raw()), bytes);
+        in.read(reinterpret_cast<char*>(v_[key].raw()), bytes);
         if (!in.good()) return false;
     }
     step_count_ = step_count;

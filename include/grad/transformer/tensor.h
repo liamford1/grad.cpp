@@ -4,15 +4,29 @@
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
 
 namespace grad {
 
+// Size convention, for all of grad::core: extents, element counts, offsets
+// and indices into memory are size_t, which is all Shape and Tensor use.
+// Model and training hyperparameters (vocab_size, d_model, num_heads,
+// max_len, seq_length, batch_size, step counts) are int: they come from
+// CLI flags, presets and the checkpoint's int32 header. Each module checks
+// its hyperparameters positive where they enter and converts them to
+// size_t once; kernels take their extents from tensor shapes. Token ids
+// are int. Narrowing back to int happens only where an interface demands
+// it: the BLAS calls in blas_wrapper.h and the on-disk formats, through
+// grad::narrow (grad/utils/narrow.h), which throws instead of wrapping.
+
 // Largest element count a Tensor allocates (4 GiB of floats); a larger
 // shape throws std::overflow_error at construction.
 inline constexpr size_t kMaxTensorElements = size_t{1} << 30;
+// The BLAS wrapper relies on this to pass any tensor length as an int.
+static_assert(kMaxTensorElements <= static_cast<size_t>(std::numeric_limits<int>::max()));
 
 // The extent of a dense, contiguous, row-major tensor: up to kMaxRank
 // dimensions, outermost first. Strides are implicit. Rank 0 is the empty

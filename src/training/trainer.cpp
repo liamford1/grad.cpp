@@ -374,10 +374,10 @@ void Trainer::training_step(int step) {
         loss->release_graph();
     }
     if (config_.grad_accum > 1) {
-        optimizer_->scale_grads(1.0f / config_.grad_accum);
+        optimizer_->scale_grads(1.0f / static_cast<float>(config_.grad_accum));
     }
 
-    float loss_val = loss_sum / config_.grad_accum;
+    float loss_val = loss_sum / static_cast<float>(config_.grad_accum);
 
     // Pre-clip gradient norm, every step: one linear pass over the
     // parameters (<1% of step time) buys the dashboard its gradient-norm

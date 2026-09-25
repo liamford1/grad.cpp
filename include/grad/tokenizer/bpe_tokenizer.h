@@ -21,7 +21,7 @@ class BPETokenizer {
         std::unordered_map<std::string, int> vocab;
         std::unordered_map<int, std::string> id_to_token;
         std::vector<std::pair<std::string, std::string>> merges;
-        int vocab_size;
+        int vocab_size_;
 
         int pad_token_id = 0;
         int eos_token_id = 1;

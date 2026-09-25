@@ -8,8 +8,12 @@
 #endif
 #include "grad/transformer/metal_backend.h"
 #include "grad/utils/env.h"
+#include "grad/utils/narrow.h"
+#include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
+#include <limits>
 
 namespace grad {
 
@@ -31,6 +35,26 @@ inline bool metal_worthwhile(size_t flops)
     return flops >= static_cast<size_t>(threshold);
 }
 
+// The integer type the linked CBLAS takes for sizes and strides, read off
+// cblas_sdot's signature: int for OpenBLAS and reference CBLAS (LP64),
+// long for Accelerate built with ACCELERATE_LAPACK_ILP64.
+namespace blas_detail {
+template <typename R, typename N, typename... Rest>
+N first_param(R (*)(N, Rest...));
+}  // namespace blas_detail
+using blas_int = decltype(blas_detail::first_param(&cblas_sdot));
+
+// Size convention: extents are size_t everywhere in grad::core and are
+// narrowed to the BLAS's integer type only here. The GEMM entry points
+// check the narrowing (grad::narrow throws std::overflow_error), once per
+// call. The vector helpers are called per row inside kernels, so they
+// only assert: every length they see is bounded by some tensor's numel,
+// and Tensor caps numel at kMaxTensorElements, below INT_MAX.
+inline blas_int vec_length(size_t n) noexcept {
+    assert(n <= static_cast<size_t>(std::numeric_limits<int>::max()));
+    return static_cast<blas_int>(n);
+}
+
 // C = alpha * op(A) @ op(B) + beta * C
 // A, B, C are row-major. op(A) is (M,K), op(B) is (K,N), C is (M,N).
 // beta = 1 accumulates into C in place - used by backward passes to add
@@ -41,7 +65,7 @@ inline bool metal_worthwhile(size_t flops)
 // rerunning on the CPU with the same beta correct; a GPU failure after
 // submission throws instead of coming back here.
 inline void blas_sgemm_ex(const float* A, const float* B, float* C,
-                          int M, int N, int K,
+                          size_t M, size_t N, size_t K,
                           bool transA, bool transB,
                           float alpha, float beta)
 {
@@ -51,14 +75,17 @@ inline void blas_sgemm_ex(const float* A, const float* B, float* C,
         return;
     }
 
-    int lda = transA ? M : K;
-    int ldb = transB ? K : N;
-    int ldc = N;
+    const blas_int m = narrow<blas_int>(M);
+    const blas_int n = narrow<blas_int>(N);
+    const blas_int k = narrow<blas_int>(K);
+    const blas_int lda = transA ? m : k;
+    const blas_int ldb = transB ? k : n;
+    const blas_int ldc = n;
 
     cblas_sgemm(CblasRowMajor,
                 transA ? CblasTrans : CblasNoTrans,
                 transB ? CblasTrans : CblasNoTrans,
-                M, N, K,
+                m, n, k,
                 alpha,
                 A, lda,
                 B, ldb,
@@ -67,40 +94,75 @@ inline void blas_sgemm_ex(const float* A, const float* B, float* C,
 }
 
 inline void blas_sgemm(const float* A, const float* B, float* C,
-                       int M, int N, int K,
+                       size_t M, size_t N, size_t K,
                        bool transA = false, bool transB = false)
 {
     blas_sgemm_ex(A, B, C, M, N, K, transA, transB, 1.0f, 0.0f);
 }
 
+// The CPU sgemm over strided row-major views: lda, ldb and ldc are the
+// row pitches of A, B and C, so each can be a column slice of a wider
+// matrix (one attention head of a (rows, d_model) projection). Never sent
+// to the GPU, whose path needs whole page-aligned buffers.
+inline void blas_sgemm_strided(bool transA, bool transB,
+                               size_t M, size_t N, size_t K, float alpha,
+                               const float* A, size_t lda,
+                               const float* B, size_t ldb,
+                               float beta, float* C, size_t ldc)
+{
+    cblas_sgemm(CblasRowMajor,
+                transA ? CblasTrans : CblasNoTrans,
+                transB ? CblasTrans : CblasNoTrans,
+                narrow<blas_int>(M), narrow<blas_int>(N), narrow<blas_int>(K),
+                alpha,
+                A, narrow<blas_int>(lda),
+                B, narrow<blas_int>(ldb),
+                beta,
+                C, narrow<blas_int>(ldc));
+}
+
 // Element-wise transcendentals. Scalar libm calls dominate profiles for
 // GELU and softmax; Accelerate's vForce computes them SIMD-wide.
 // In-place (x == y) is allowed.
-inline void vec_tanh(const float* x, float* y, int n)
+inline void vec_tanh(const float* x, float* y, size_t n)
 {
 #if defined(__APPLE__)
-    vvtanhf(y, x, &n);
+    const int count = static_cast<int>(vec_length(n));
+    vvtanhf(y, x, &count);
 #else
-    for (int i = 0; i < n; ++i) y[i] = std::tanh(x[i]);
+    for (size_t i = 0; i < n; ++i) y[i] = std::tanh(x[i]);
 #endif
 }
 
-inline void vec_exp(const float* x, float* y, int n)
+inline void vec_exp(const float* x, float* y, size_t n)
 {
 #if defined(__APPLE__)
-    vvexpf(y, x, &n);
+    const int count = static_cast<int>(vec_length(n));
+    vvexpf(y, x, &count);
 #else
-    for (int i = 0; i < n; ++i) y[i] = std::exp(x[i]);
+    for (size_t i = 0; i < n; ++i) y[i] = std::exp(x[i]);
 #endif
 }
 
 // Sum of squares over a buffer (SIMD dot product with itself).
-inline float vec_sum_squares(const float* x, int n)
+inline float vec_sum_squares(const float* x, size_t n)
 {
-    return cblas_sdot(n, x, 1, x, 1);
+    return cblas_sdot(vec_length(n), x, 1, x, 1);
 }
 
-inline float vec_sum(const float* x, int n)
+// Dot product of two contiguous buffers.
+inline float vec_dot(const float* x, const float* y, size_t n)
+{
+    return cblas_sdot(vec_length(n), x, 1, y, 1);
+}
+
+// y += alpha * x
+inline void vec_axpy(float alpha, const float* x, float* y, size_t n)
+{
+    cblas_saxpy(vec_length(n), alpha, x, 1, y, 1);
+}
+
+inline float vec_sum(const float* x, size_t n)
 {
 #if defined(__APPLE__)
     float s;
@@ -108,15 +170,15 @@ inline float vec_sum(const float* x, int n)
     return s;
 #else
     float s = 0.0f;
-    for (int i = 0; i < n; ++i) s += x[i];
+    for (size_t i = 0; i < n; ++i) s += x[i];
     return s;
 #endif
 }
 
 // x *= alpha
-inline void vec_scale_inplace(float* x, float alpha, int n)
+inline void vec_scale_inplace(float* x, float alpha, size_t n)
 {
-    cblas_sscal(n, alpha, x, 1);
+    cblas_sscal(vec_length(n), alpha, x, 1);
 }
 
 // vDSP-style Vector Operations

@@ -48,8 +48,24 @@ function(grad_enable_warnings target)
         endif()
     else()
         # COMPILE_LANGUAGE covers the Objective-C++ Metal backend as well.
+        #
+        # -Wconversion and -Wsign-conversion hold the size convention in
+        # place: extents are size_t, hyperparameters int, and the only
+        # narrowing to a BLAS integer is in blas_wrapper.h. GCC's -Wshadow
+        # also flags parameters and locals that shadow a data member;
+        # Clang's -Wshadow does not, so Clang gets -Wshadow-all, which
+        # adds that check for constructors and lambdas and keeps a clean
+        # AppleClang build clean under GCC as well. -Wold-style-cast is
+        # nearly free here (the code had one C-style cast); the one system
+        # macro that expands to one, MAP_FAILED, is fenced in token_file.cpp.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(grad_shadow_flag -Wshadow-all)
+        else()
+            set(grad_shadow_flag -Wshadow)
+        endif()
         target_compile_options(${target} PRIVATE
-            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall -Wextra -Wpedantic>)
+            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall -Wextra -Wpedantic
+                -Wconversion -Wsign-conversion ${grad_shadow_flag} -Wold-style-cast>)
         if(GRAD_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Werror>)
         endif()

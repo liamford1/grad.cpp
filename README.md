@@ -187,7 +187,7 @@ The test suite checks the parts that are easiest to get silently wrong. Every ch
 - **Packaging**: CI builds a small consumer project against the installed `grad::core` CMake package
 - **Hardware-aware results**: Metal parity is reported as skipped, not passed, when no Metal device is exposed
 
-CI builds with warnings as errors (`-Wall -Wextra -Wpedantic`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer.
+CI builds with warnings as errors (`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast`, and Clang's stricter `-Wshadow-all`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer.
 
 ## Design notes
 

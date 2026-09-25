@@ -288,8 +288,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
         blas_sgemm_ex(data.get() + b * M * K,
                       other.data.get() + (batched_rhs ? b * K * N : 0),
                       result.data.get() + b * M * N,
-                      static_cast<int>(M), static_cast<int>(N), static_cast<int>(K),
-                      false, false, 1.0f, 0.0f);
+                      M, N, K, false, false, 1.0f, 0.0f);
     }
     return result;
 }
@@ -396,9 +395,9 @@ Tensor Tensor::softmax() const {
             for (size_t j = 0; j < cols; j++) {
                 row_out[j] = row_in[j] - max_val;
             }
-            vec_exp(row_out, row_out, static_cast<int>(cols));
+            vec_exp(row_out, row_out, cols);
 
-            const float inv_sum = 1.0f / vec_sum(row_out, static_cast<int>(cols));
+            const float inv_sum = 1.0f / vec_sum(row_out, cols);
             for (size_t j = 0; j < cols; j++) {
                 row_out[j] *= inv_sum;
             }
@@ -443,7 +442,7 @@ Tensor Tensor::slice(size_t start_row, size_t num_rows, size_t start_col, size_t
 void Tensor::xavier(size_t fan_in, size_t fan_out) {
     assertValid("xavier(target)");
 
-    float limit = std::sqrt(6.0f / (fan_in + fan_out));
+    float limit = std::sqrt(6.0f / static_cast<float>(fan_in + fan_out));
     std::uniform_real_distribution<float> dis(-limit, limit);
 
     InitStream& stream = init_stream();

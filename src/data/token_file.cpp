@@ -16,6 +16,16 @@ namespace {
 constexpr char kMagic[4] = {'T', 'O', 'K', '1'};
 constexpr size_t kHeaderBytes = 4 + sizeof(uint32_t) + sizeof(uint64_t);
 
+// MAP_FAILED is ((void *) -1) in the system headers. Some GCC versions
+// report -Wold-style-cast through the macro's expansion, so the one
+// comparison against it is fenced off here.
+bool map_failed(const void* addr) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+    return addr == MAP_FAILED;
+#pragma GCC diagnostic pop
+}
+
 }  // namespace
 
 namespace tokenfile {
@@ -50,7 +60,8 @@ void write(const std::string& path, const int* data, size_t count, int vocab_siz
             }
             buffer[i] = static_cast<uint16_t>(t);
         }
-        file.write(reinterpret_cast<const char*>(buffer.data()), n * sizeof(uint16_t));
+        file.write(reinterpret_cast<const char*>(buffer.data()),
+                   static_cast<std::streamsize>(n * sizeof(uint16_t)));
         written += n;
     }
     if (!file.good()) {
@@ -70,13 +81,15 @@ void tokenfile::Unmap::operator()(void* addr) const noexcept {
 }
 
 MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, int stride)
-    : seq_length_(seq_length), stride_(stride) {
+    : seq_length_(0), stride_(0) {
     if (stride < 1) {
         throw std::invalid_argument("stride must be >= 1");
     }
     if (seq_length < 1) {
         throw std::invalid_argument("seq_length must be >= 1");
     }
+    seq_length_ = static_cast<size_t>(seq_length);
+    stride_ = static_cast<size_t>(stride);
 
     // Closes the descriptor on every exit from the constructor, including
     // the throws below; the mapping outlives it.
@@ -96,7 +109,7 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
     const size_t map_bytes = static_cast<size_t>(st.st_size);
 
     void* addr = ::mmap(nullptr, map_bytes, PROT_READ, MAP_PRIVATE, file.fd, 0);
-    if (addr == MAP_FAILED) {
+    if (map_failed(addr)) {
         throw std::runtime_error("mmap failed for token file: " + path);
     }
     // Owned from here on: any later throw unmaps through the member's
@@ -123,7 +136,7 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
     vocab_size_ = static_cast<int>(vocab);
     count_ = static_cast<size_t>(count);
 
-    if (count_ < static_cast<size_t>(seq_length_) + 1) {
+    if (count_ < seq_length_ + 1) {
         throw std::runtime_error("Not enough tokens for even one sequence: " + path);
     }
     tokens_ = reinterpret_cast<const uint16_t*>(base + kHeaderBytes);
@@ -144,7 +157,7 @@ std::pair<std::vector<int>, std::vector<int>> MappedTokenDataset::get_item(size_
     // The window spans tokens [start, start + seq_length] inclusive (the
     // target is the input shifted by one).
     const uint16_t* window = tokens_ + start;
-    for (int i = 0; i <= seq_length_; i++) {
+    for (size_t i = 0; i <= seq_length_; i++) {
         if (window[i] >= vocab_size_) {
             throw std::runtime_error("token id " + std::to_string(window[i])
                                      + " at offset " + std::to_string(start + i)
@@ -152,7 +165,7 @@ std::pair<std::vector<int>, std::vector<int>> MappedTokenDataset::get_item(size_
                                      + std::to_string(vocab_size_));
         }
     }
-    for (int i = 0; i < seq_length_; i++) {
+    for (size_t i = 0; i < seq_length_; i++) {
         input[i] = window[i];
         target[i] = window[i + 1];
     }

@@ -40,8 +40,8 @@ constexpr int kVocab = 97;
 constexpr int kDModel = 64;
 constexpr int kLayers = 2;
 constexpr int kHeads = 4;
-constexpr int kSeq = 16;
-constexpr int kBatch = 4;
+constexpr size_t kSeq = 16;
+constexpr size_t kBatch = 4;
 constexpr float kDropout = 0.1f;
 constexpr int kSteps = 5;
 constexpr int kGradAccum = 2;
@@ -75,9 +75,9 @@ struct TokenBatch {
 TokenBatch make_batch(std::mt19937& gen) {
     std::uniform_int_distribution<int> token(0, kVocab - 1);
     TokenBatch batch;
-    for (int b = 0; b < kBatch; b++) {
+    for (size_t b = 0; b < kBatch; b++) {
         int prev = token(gen);
-        for (int s = 0; s < kSeq; s++) {
+        for (size_t s = 0; s < kSeq; s++) {
             const int next = token(gen);
             batch.input.setValue(b, s, 0, static_cast<float>(prev));
             batch.target.setValue(b, s, 0, static_cast<float>(next));

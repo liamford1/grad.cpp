@@ -22,20 +22,22 @@ public:
     // Throws if the context would exceed the model's max_len.
     [[nodiscard]] const float* step(int token_id);
 
-    int position() const { return pos_; }
-    int capacity() const { return max_len_; }
-    int vocabSize() const { return vocab_; }
+    // In the model's int hyperparameter terms; pos_ < max_len_, so all
+    // three fit.
+    int position() const { return static_cast<int>(pos_); }
+    int capacity() const { return static_cast<int>(max_len_); }
+    int vocabSize() const { return static_cast<int>(vocab_); }
 
 private:
     const GPTModel& model_;
-    int d_model_;
-    int num_layers_;
-    int num_heads_;
-    int head_size_;
-    int d_ff_;
-    int max_len_;
-    int vocab_;
-    int pos_ = 0;
+    size_t d_model_;
+    size_t num_layers_;
+    size_t num_heads_;
+    size_t head_size_;
+    size_t d_ff_;
+    size_t max_len_;
+    size_t vocab_;
+    size_t pos_ = 0;
 
     // Per layer: (max_len, d_model) rows of projected K and V.
     std::vector<std::vector<float>> k_cache_;

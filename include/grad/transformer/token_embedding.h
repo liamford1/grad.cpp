@@ -7,16 +7,16 @@ namespace grad {
 
 class TokenEmbedding {
     private:
-        int vocab_size;
-        int d_model;
+        int vocab_size_;
+        int d_model_;
         float embedding_scale;
         std::shared_ptr<Variable> embedding_table;
     public:
         TokenEmbedding(int vocab_size, int d_model);
         std::shared_ptr<Variable> forward(std::shared_ptr<Variable> input_ids) const;
 
-        int getVocabSize() const { return vocab_size; }
-        int getDModel() const { return d_model; }
+        int getVocabSize() const { return vocab_size_; }
+        int getDModel() const { return d_model_; }
 
         std::shared_ptr<Variable> getEmbeddingTable() const { return embedding_table; }
         float getScale() const { return embedding_scale; }

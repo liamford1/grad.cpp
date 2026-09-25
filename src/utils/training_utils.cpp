@@ -32,18 +32,19 @@ size_t get_memory_mb() {
     mach_msg_type_number_t size = sizeof(info);
     kern_return_t kerr = task_info(mach_task_self(),
                                     TASK_BASIC_INFO,
-                                    (task_info_t)&info,
+                                    reinterpret_cast<task_info_t>(&info),
                                     &size);
     return (kerr == KERN_SUCCESS) ? info.resident_size / (1024 * 1024) : 0;
 #elif defined(__linux__)
     long rss = 0L;
     std::ifstream statm("/proc/self/statm");
-    if (statm >> rss >> rss) {
-        return (rss * sysconf(_SC_PAGESIZE)) / (1024 * 1024);
+    const long page_bytes = sysconf(_SC_PAGESIZE);
+    if (statm >> rss >> rss && rss > 0 && page_bytes > 0) {
+        return static_cast<size_t>(rss) * static_cast<size_t>(page_bytes) / (1024 * 1024);
     }
-    return 0L;
+    return 0;
 #else
-    return 0L;
+    return 0;
 #endif
 }
 
@@ -63,11 +64,11 @@ size_t get_peak_memory_mb() {
 
 void reshape_batch_to_2d(const Tensor& batch_input, const Tensor& batch_target,
                          Tensor& input_2d, Tensor& target_2d) {
-    int batch_size = batch_input.getBatchSize();
-    int seq_len = batch_input.getRows();
+    const size_t batch_size = batch_input.getBatchSize();
+    const size_t seq_len = batch_input.getRows();
 
-    for (int b = 0; b < batch_size; b++) {
-        for (int s = 0; s < seq_len; s++) {
+    for (size_t b = 0; b < batch_size; b++) {
+        for (size_t s = 0; s < seq_len; s++) {
             input_2d.setValue(b * seq_len + s, 0, batch_input.getValue(b, s, 0));
             target_2d.setValue(b * seq_len + s, 0, batch_target.getValue(b, s, 0));
         }

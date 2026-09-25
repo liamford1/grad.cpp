@@ -57,18 +57,18 @@ class Variable : public std::enable_shared_from_this<Variable> {
         std::function<void()> backward_fn;
 
     public:
-        Variable(Private, const Tensor& data, bool requires_grad = false);
+        Variable(Private, const Tensor& value, bool needs_grad = false);
         // Move overloads: op results transfer into their Variable instead
         // of being deep-copied - a full activation-sized memcpy per op
         // otherwise (measured under _platform_memmove, BENCHMARKS.md #10).
-        Variable(Private, Tensor&& data, bool requires_grad = false);
-        Variable(Private, int rows, int cols, bool requires_grad = false);
-        Variable(Private, int batch_size, int rows, int cols, bool requires_grad = false);
+        Variable(Private, Tensor&& value, bool needs_grad = false);
+        Variable(Private, size_t rows, size_t cols, bool needs_grad = false);
+        Variable(Private, size_t batch_size, size_t rows, size_t cols, bool needs_grad = false);
 
         [[nodiscard]] static std::shared_ptr<Variable> create(const Tensor& data, bool requires_grad = false);
         [[nodiscard]] static std::shared_ptr<Variable> create(Tensor&& data, bool requires_grad = false);
-        [[nodiscard]] static std::shared_ptr<Variable> create(int rows, int cols, bool requires_grad = false);
-        [[nodiscard]] static std::shared_ptr<Variable> create(int batch_size, int rows, int cols, bool requires_grad = false);
+        [[nodiscard]] static std::shared_ptr<Variable> create(size_t rows, size_t cols, bool requires_grad = false);
+        [[nodiscard]] static std::shared_ptr<Variable> create(size_t batch_size, size_t rows, size_t cols, bool requires_grad = false);
 
         [[nodiscard]] const Tensor& getData() const noexcept { return data; }
         [[nodiscard]] Tensor& getData() noexcept { return data; }
@@ -118,9 +118,9 @@ class Variable : public std::enable_shared_from_this<Variable> {
         template <typename Fn>
         void setBackward(std::initializer_list<std::shared_ptr<Variable>> inputs, Fn fn) {
             children.insert(children.end(), inputs.begin(), inputs.end());
-            backward_fn = [self = weak_from_this(), fn = std::move(fn)]() {
+            backward_fn = [self = weak_from_this(), body = std::move(fn)]() {
                 auto node = self.lock();
-                if (node && node->hasGrad()) fn(*node);
+                if (node && node->hasGrad()) body(*node);
             };
         }
 

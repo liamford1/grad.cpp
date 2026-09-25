@@ -11,8 +11,8 @@ namespace grad {
 
 class TextGen {
     private:
-        const GPTModel& model;
-        const BPETokenizer* tokenizer;
+        const GPTModel& model_;
+        const BPETokenizer* tokenizer_;
 
         int sample_from_logits(const Tensor& logits, float temperature = 1.0f, int top_k = 0, float top_p = 1.0f);
         std::string tokens_to_string(const std::vector<int>& tokens);
