@@ -192,6 +192,40 @@ void test_tensor_shapes() {
     CHECK(throws<std::invalid_argument>([&] { m1.multiply_inplace(m2); }));
 }
 
+void test_nll_upstream_gradient() {
+    const size_t rows = 3, vocab = 5;
+    Tensor logits(rows, vocab);
+    for (size_t i = 0; i < logits.numel(); i++) logits.raw()[i] = std::cos(1.3f * static_cast<float>(i));
+    Tensor targets(rows, 1);
+    targets.raw()[0] = 4.0f;
+    targets.raw()[1] = 0.0f;
+    targets.raw()[2] = 2.0f;
+
+    auto grad_with_scale = [&](float s) {
+        auto x = Variable::create(logits, true);
+        auto loss = x->log_softmax()->nll_loss(Variable::create(targets, false));
+        auto root = s == 1.0f ? loss : loss->scale(s);
+        root->backward();
+        return std::vector<float>(x->getGrad().raw(), x->getGrad().raw() + x->getGrad().numel());
+    };
+    const std::vector<float> g1 = grad_with_scale(1.0f);
+    const std::vector<float> g3 = grad_with_scale(3.0f);
+    bool scaled = true;
+    for (size_t i = 0; i < g1.size(); i++) {
+        scaled = scaled && std::fabs(g3[i] - 3.0f * g1[i]) <= 1e-6f * (1.0f + std::fabs(g3[i]));
+    }
+    CHECK(scaled);
+
+    // One target per row, or it throws.
+    auto x = Variable::create(logits, true);
+    CHECK(throws<std::invalid_argument>([&] {
+        (void)x->log_softmax()->nll_loss(Variable::create(Tensor(rows + 1, 1), false));
+    }));
+    CHECK(throws<std::invalid_argument>([&] {
+        (void)x->log_softmax()->nll_loss(Variable::create(Tensor(rows - 1, 1), false));
+    }));
+}
+
 // Scalar loss sum(out * R) whose backward seeds out's grad with R.
 std::shared_ptr<Variable> weighted_sum(const std::shared_ptr<Variable>& out,
                                        const std::vector<float>& R) {
@@ -393,6 +427,7 @@ int main() {
     test_init_seed();
     test_parallel_for();
     test_tensor_shapes();
+    test_nll_upstream_gradient();
     test_attention_2d_dropout_gradients(/*rope=*/false);
     test_attention_2d_dropout_gradients(/*rope=*/true);
     test_checkpoint(GPTArch::GPT2);
