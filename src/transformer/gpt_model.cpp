@@ -7,12 +7,14 @@
 #include "grad/transformer/gpt_model.h"
 #include "grad/transformer/blas_wrapper.h"
 #include "grad/utils/narrow.h"
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace grad {
@@ -146,6 +148,24 @@ namespace {
 
 constexpr uint32_t kCheckpointMagic = 0x4750544D;  // "GPTM"
 
+// Trailer sections after the last tensor: 4-byte tag, uint32 payload
+// length, payload; all little-endian.
+constexpr std::string_view kTokenizerTag = "TKFP";
+constexpr uint32_t kTokenizerPayload = 12;  // uint32 kind + uint64 hash
+constexpr uint32_t kMaxTrailerPayload = 1u << 20;
+
+void put_le(std::string& out, uint64_t value, int bytes) {
+    for (int i = 0; i < bytes; i++) out.push_back(static_cast<char>((value >> (8 * i)) & 0xFFu));
+}
+
+uint64_t get_le(const char* data, int bytes) {
+    uint64_t value = 0;
+    for (int i = 0; i < bytes; i++) {
+        value |= static_cast<uint64_t>(static_cast<unsigned char>(data[i])) << (8 * i);
+    }
+    return value;
+}
+
 // Upper bounds for header fields. Far above any model this trainer can
 // fit in memory, low enough that a corrupt header fails here with a clear
 // message instead of as a multi-gigabyte allocation or an int overflow.
@@ -199,6 +219,21 @@ public:
                    static_cast<std::streamsize>(t.numel() * sizeof(float)));
         if (!file_) fail("file ends inside " + what);
         return t;
+    }
+
+    // Reads n raw bytes into out.
+    void bytes(char* out, size_t n, const char* what) {
+        file_.read(out, static_cast<std::streamsize>(n));
+        if (!file_) fail(std::string("file ends while reading ") + what);
+    }
+
+    // True at a clean end of file, where the tensors (or the last trailer
+    // section) end.
+    bool at_end() { return file_.peek() == std::ifstream::traits_type::eof(); }
+
+    void skip(size_t n, const char* what) {
+        file_.ignore(static_cast<std::streamsize>(n));
+        if (static_cast<size_t>(file_.gcount()) != n) fail(std::string("file ends inside ") + what);
     }
 
     [[noreturn]] void fail(const std::string& msg) const { throw std::runtime_error(msg); }
@@ -280,6 +315,14 @@ bool GPTModel::save(const std::string& filepath, bool quiet) const {
 
         write_tensor(file, final_norm.getGamma()->getData());
         write_tensor(file, final_norm.getBeta()->getData());
+
+        if (tokenizer_) {
+            std::string trailer(kTokenizerTag);
+            put_le(trailer, kTokenizerPayload, 4);
+            put_le(trailer, static_cast<uint32_t>(tokenizer_->kind), 4);
+            put_le(trailer, tokenizer_->hash, 8);
+            file.write(trailer.data(), static_cast<std::streamsize>(trailer.size()));
+        }
 
         // ofstream reports errors (disk full, I/O error) only through its
         // state, and close() is where buffered bytes actually hit the file.
@@ -404,6 +447,34 @@ GPTModel GPTModel::load(const std::string& filepath) {
         Tensor final_beta =
             in.tensor_like(model.final_norm.getBeta()->getData(), "final norm beta");
         model.final_norm.setParams(final_gamma, final_beta);
+
+        while (!in.at_end()) {
+            std::array<char, 8> header{};
+            in.bytes(header.data(), header.size(), "trailer section header");
+            const std::string_view tag(header.data(), 4);
+            const auto length = static_cast<uint32_t>(get_le(header.data() + 4, 4));
+            if (length > kMaxTrailerPayload) {
+                in.fail("trailer section has an implausible length (" + std::to_string(length)
+                        + " bytes)");
+            }
+            if (tag != kTokenizerTag) {
+                in.skip(length, "trailer section");
+                continue;
+            }
+            if (length != kTokenizerPayload) {
+                in.fail("tokenizer trailer has length " + std::to_string(length) + ", expected "
+                        + std::to_string(kTokenizerPayload));
+            }
+            std::array<char, kTokenizerPayload> payload{};
+            in.bytes(payload.data(), payload.size(), "tokenizer trailer");
+            const auto kind = static_cast<uint32_t>(get_le(payload.data(), 4));
+            if (kind != static_cast<uint32_t>(TokenizerKind::BpeV1)
+                && kind != static_cast<uint32_t>(TokenizerKind::ByteBpe)) {
+                in.fail("unknown tokenizer kind " + std::to_string(kind));
+            }
+            model.tokenizer_ = TokenizerFingerprint{static_cast<TokenizerKind>(kind),
+                                                    get_le(payload.data() + 4, 8)};
+        }
 
         file.close();
         std::cout << "Model loaded successfully from: " << filepath << std::endl;

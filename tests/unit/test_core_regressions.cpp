@@ -489,6 +489,54 @@ void test_checkpoint(GPTArch arch) {
 
     CHECK(!model.save((dir / "no_such_dir" / "x.bin").string(), true));
 
+    // Tokenizer trailer: absent in files saved without a fingerprint;
+    // otherwise 20 bytes after an unchanged prefix, so loaders that stop
+    // at the last tensor read the same model.
+    CHECK(!GPTModel::load(good).getTokenizerFingerprint().has_value());
+    const grad::TokenizerFingerprint fingerprint{grad::TokenizerKind::ByteBpe,
+                                                 0x0123456789abcdefULL};
+    model.setTokenizerFingerprint(fingerprint);
+    const std::string tagged = (dir / "tagged.bin").string();
+    CHECK(model.save(tagged, /*quiet=*/true));
+    const std::vector<char> tagged_bytes = read_bytes(tagged);
+    CHECK(tagged_bytes.size() == bytes.size() + 20);
+    CHECK(std::equal(bytes.begin(), bytes.end(), tagged_bytes.begin()));
+    CHECK(GPTModel::load(tagged).getTokenizerFingerprint() == fingerprint);
+
+    // Unknown sections are skipped.
+    std::vector<char> extended(bytes);
+    const std::string unknown(
+        "ZZZZ\x03\x00\x00\x00"
+        "abc",
+        11);
+    extended.insert(extended.end(), unknown.begin(), unknown.end());
+    extended.insert(extended.end(),
+                    tagged_bytes.begin() + static_cast<std::ptrdiff_t>(bytes.size()),
+                    tagged_bytes.end());
+    write_bytes(bad, extended);
+    CHECK(GPTModel::load(bad).getTokenizerFingerprint() == fingerprint);
+
+    b = tagged_bytes;
+    b.resize(b.size() - 3);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "file ends while reading tokenizer trailer"));
+    b = tagged_bytes;
+    b.resize(bytes.size() + 3);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "file ends while reading trailer section header"));
+    b = tagged_bytes;
+    poke<uint32_t>(b, bytes.size() + 8, 9u);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "unknown tokenizer kind 9"));
+    b = tagged_bytes;
+    poke<uint32_t>(b, bytes.size() + 4, 11u);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "tokenizer trailer has length 11"));
+    b = tagged_bytes;
+    poke<uint32_t>(b, bytes.size() + 4, 0x7FFFFFFFu);
+    write_bytes(bad, b);
+    CHECK(load_fails_with(bad, "implausible length"));
+
     fs::remove_all(dir);
 }
 
