@@ -167,7 +167,10 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
     const int S = seq_len;
 
     const bool use_attn_dropout = training && dropout_rate > 0.0f;
-    const bool needs_grad = compute_requires_grad(input);
+    // The weights get gradients even when the input is frozen, so the
+    // graph is recorded if anything feeding this op requires grad.
+    const bool needs_grad = compute_requires_grad(input, W_q, W_k, W_v, W_o,
+                                                  b_q, b_k, b_v, b_o);
     const float keep_scale = 1.0f / (1.0f - dropout_rate);
 
     Tensor causal_mask = Tensor::create_causal_mask(S);
@@ -339,19 +342,31 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
                                scale_factor, dropout_active]() {
             auto output = output_weak.lock();
             if (!output || !output->hasGrad()) return;
-            self_Wq->ensureGrad(); self_Wk->ensureGrad();
-            self_Wv->ensureGrad(); self_Wo->ensureGrad();
-            self_bq->ensureGrad(); self_bk->ensureGrad();
-            self_bv->ensureGrad(); self_bo->ensureGrad();
-            if (self_input->requiresGrad()) self_input->ensureGrad();
 
+            // Each gradient is written only if its target requires grad:
+            // ensureGrad leaves a frozen tensor's grad unallocated.
             const float* dOut = output->getGrad().raw();
 
             // Output projection gradients: single flat sgemms.
             // dWo += concat^T @ dOut ; dbo += column sums of dOut.
-            blas_sgemm_ex(concat->raw(), dOut, self_Wo->getGrad().raw(),
-                          d, d, flat, true, false, 1.0f, 1.0f);
-            add_column_sums(dOut, flat, d, self_bo->getGrad().raw());
+            if (self_Wo->requiresGrad()) {
+                self_Wo->ensureGrad();
+                blas_sgemm_ex(concat->raw(), dOut, self_Wo->getGrad().raw(),
+                              d, d, flat, true, false, 1.0f, 1.0f);
+            }
+            if (self_bo->requiresGrad()) {
+                self_bo->ensureGrad();
+                add_column_sums(dOut, flat, d, self_bo->getGrad().raw());
+            }
+
+            // Everything below serves the Q/K/V projection weights and the
+            // input; skip it when none of them wants a gradient.
+            const bool grad_input = self_input->requiresGrad();
+            if (!grad_input && !self_Wq->requiresGrad() && !self_Wk->requiresGrad() &&
+                !self_Wv->requiresGrad() && !self_bq->requiresGrad() &&
+                !self_bk->requiresGrad() && !self_bv->requiresGrad()) {
+                return;
+            }
 
             // dConcat = dOut @ Wo^T
             Tensor dConcat = Tensor::uninitialized(flat, d);
@@ -468,18 +483,26 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(std::shared_ptr<Variable> 
             // Projection gradients, all flat single sgemms with beta=1
             // accumulation. dInput sums the three projection paths.
             const float* in_data = self_input->getData().raw();
-            blas_sgemm_ex(in_data, dQ_data, self_Wq->getGrad().raw(),
-                          d, d, flat, true, false, 1.0f, 1.0f);
-            blas_sgemm_ex(in_data, dK_data, self_Wk->getGrad().raw(),
-                          d, d, flat, true, false, 1.0f, 1.0f);
-            blas_sgemm_ex(in_data, dV_data, self_Wv->getGrad().raw(),
-                          d, d, flat, true, false, 1.0f, 1.0f);
+            auto weight_grad = [&](const std::shared_ptr<Variable>& W, const float* dProj) {
+                if (!W->requiresGrad()) return;
+                W->ensureGrad();
+                blas_sgemm_ex(in_data, dProj, W->getGrad().raw(),
+                              d, d, flat, true, false, 1.0f, 1.0f);
+            };
+            auto bias_grad = [&](const std::shared_ptr<Variable>& b, const float* dProj) {
+                if (!b->requiresGrad()) return;
+                b->ensureGrad();
+                add_column_sums(dProj, flat, d, b->getGrad().raw());
+            };
+            weight_grad(self_Wq, dQ_data);
+            weight_grad(self_Wk, dK_data);
+            weight_grad(self_Wv, dV_data);
+            bias_grad(self_bq, dQ_data);
+            bias_grad(self_bk, dK_data);
+            bias_grad(self_bv, dV_data);
 
-            add_column_sums(dQ_data, flat, d, self_bq->getGrad().raw());
-            add_column_sums(dK_data, flat, d, self_bk->getGrad().raw());
-            add_column_sums(dV_data, flat, d, self_bv->getGrad().raw());
-
-            if (self_input->requiresGrad()) {
+            if (grad_input) {
+                self_input->ensureGrad();
                 float* dIn = self_input->getGrad().raw();
                 blas_sgemm_ex(dQ_data, self_Wq->getData().raw(), dIn,
                               flat, d, d, false, true, 1.0f, 1.0f);

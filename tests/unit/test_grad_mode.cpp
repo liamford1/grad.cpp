@@ -1,10 +1,14 @@
-// Grad mode: NoGradGuard records no graph and leaves training gradients
-// untouched.
+// Grad mode and per-gradient guards: NoGradGuard records no graph and
+// leaves training gradients untouched, and the fused attention and
+// LayerNorm ops still produce parameter gradients when their input is
+// frozen.
 //
 // Uses its own CHECK rather than assert so it stays meaningful in Release
 // (NDEBUG) builds.
 
 #include "transformer/gpt_model.h"
+#include "transformer/layer_norm.h"
+#include "transformer/multihead_attention.h"
 #include "transformer/tensor.h"
 #include "transformer/variable.h"
 
@@ -46,11 +50,35 @@ bool same_bits(const Tensor& a, const Tensor& b) {
     return a.numel() == 0 || std::memcmp(a.raw(), b.raw(), a.numel() * sizeof(float)) == 0;
 }
 
+bool any_nonzero(const Tensor& t) {
+    for (size_t i = 0; i < t.numel(); i++) {
+        if (t.raw()[i] != 0.0f) return true;
+    }
+    return false;
+}
+
 Tensor filled(Tensor t, float phase) {
     for (size_t i = 0; i < t.numel(); i++) {
         t.raw()[i] = std::sin(0.37f * static_cast<float>(i) + phase);
     }
     return t;
+}
+
+// Scalar loss sum(out * R) whose backward seeds out's grad with R.
+std::shared_ptr<Variable> weighted_sum(const std::shared_ptr<Variable>& out) {
+    const Tensor& o = out->getData();
+    const Tensor R = filled(o, 0.3f);
+    double sum = 0.0;
+    for (size_t i = 0; i < o.numel(); i++) sum += static_cast<double>(o.raw()[i]) * R.raw()[i];
+    Tensor t(1, 1);
+    t.raw()[0] = static_cast<float>(sum);
+    auto loss = Variable::create(std::move(t), true);
+    loss->addChild(out);
+    loss->setBackwardFn([out, R]() {
+        out->ensureGrad();
+        out->getGrad().add_inplace(R);
+    });
+    return loss;
 }
 
 void test_guard_scope() {
@@ -150,6 +178,56 @@ void test_model_under_guard(GPTArch arch) {
     CHECK(unchanged);
 }
 
+// Parameter gradients with a frozen input must equal those with a
+// trainable one: the input gradient is a separate output of the backward
+// pass, and freezing it must neither drop nor perturb the others.
+void test_frozen_input_attention(bool rope, bool batched) {
+    Tensor::set_init_seed(8);
+    MultiHeadAttention attn(8, 2, 0.0f, rope);
+    const Tensor x = batched ? filled(Tensor(2, 5, 8), 0.5f) : filled(Tensor(5, 8), 0.5f);
+
+    auto weight_grads = [&](bool input_requires_grad) {
+        for (auto& p : attn.parameters()) p->zeroGrad();
+        auto input = Variable::create(x, input_requires_grad);
+        auto out = attn.forward(input, false);
+        CHECK(out->requiresGrad());
+        weighted_sum(out)->backward();
+        CHECK(input->hasGrad() == input_requires_grad);
+        std::vector<Tensor> grads;
+        for (auto& p : attn.parameters()) grads.push_back(p->getGrad());
+        return grads;
+    };
+
+    const std::vector<Tensor> trainable = weight_grads(true);
+    const std::vector<Tensor> frozen = weight_grads(false);
+    for (size_t i = 0; i < frozen.size(); i++) {
+        CHECK(frozen[i].numel() > 0 && any_nonzero(frozen[i]));
+        CHECK(same_bits(frozen[i], trainable[i]));
+    }
+}
+
+void test_frozen_input_layer_norm(bool rms) {
+    LayerNorm norm(8, rms);
+    norm.setParams(filled(Tensor(1, 8), 1.1f), filled(Tensor(1, 8), 2.2f));
+    const Tensor x = filled(Tensor(3, 4, 8), 0.9f);
+
+    auto param_grads = [&](bool input_requires_grad) {
+        norm.getGamma()->zeroGrad();
+        norm.getBeta()->zeroGrad();
+        auto input = Variable::create(x, input_requires_grad);
+        weighted_sum(norm.forward(input))->backward();
+        CHECK(input->hasGrad() == input_requires_grad);
+        return std::vector<Tensor>{norm.getGamma()->getGrad(), norm.getBeta()->getGrad()};
+    };
+
+    const std::vector<Tensor> trainable = param_grads(true);
+    const std::vector<Tensor> frozen = param_grads(false);
+    CHECK(any_nonzero(frozen[0]) && same_bits(frozen[0], trainable[0]));
+    // RMSNorm has no shift, so beta receives no gradient at all.
+    CHECK(rms ? frozen[1].numel() == 0 : any_nonzero(frozen[1]));
+    CHECK(same_bits(frozen[1], trainable[1]));
+}
+
 }  // namespace
 
 int main() {
@@ -157,6 +235,12 @@ int main() {
     test_ops_under_guard();
     test_model_under_guard(GPTArch::GPT2);
     test_model_under_guard(GPTArch::Modern);
+    for (bool rope : {false, true}) {
+        test_frozen_input_attention(rope, /*batched=*/true);
+        test_frozen_input_attention(rope, /*batched=*/false);
+    }
+    test_frozen_input_layer_norm(/*rms=*/false);
+    test_frozen_input_layer_norm(/*rms=*/true);
 
     if (g_failures) {
         std::fprintf(stderr, "%d check(s) failed\n", g_failures);

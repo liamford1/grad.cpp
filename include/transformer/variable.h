@@ -115,7 +115,8 @@ class Variable : public std::enable_shared_from_this<Variable> {
 
 // Whether an op over these inputs must record a graph node: grad mode is
 // on and at least one input requires grad. Every op, including the fused
-// module ops (attention, LayerNorm, embeddings), decides through this.
+// module ops (attention, LayerNorm, embeddings), decides through this, and
+// each backward then writes only the gradients whose target requires grad.
 template <typename... Inputs>
 [[nodiscard]] bool compute_requires_grad(const Inputs&... inputs) {
     return GradMode::is_enabled() && (... || inputs->requiresGrad());
