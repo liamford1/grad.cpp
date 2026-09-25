@@ -38,7 +38,7 @@ public:
 class SpreadSubset : public Dataset {
 private:
     std::shared_ptr<const Dataset> source_;
-    size_t count_;
+    size_t count_ = 0;
 
 public:
     // count is capped at source->size().

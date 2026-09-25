@@ -30,9 +30,9 @@ private:
     float beta2_;
     float epsilon_;
     float weight_decay_;
-    int step_count_;
-    int warmup_steps_;
-    int total_steps_;
+    int step_count_ = 0;
+    int warmup_steps_ = 0;
+    int total_steps_ = 0;
 
     std::unordered_map<Variable*, Tensor> m_;
     std::unordered_map<Variable*, Tensor> v_;

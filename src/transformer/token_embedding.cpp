@@ -6,7 +6,7 @@
 namespace grad {
 
 TokenEmbedding::TokenEmbedding(int vocab_size, int d_model)
-    : vocab_size_(vocab_size), d_model_(d_model), embedding_scale(1.0f) {
+    : vocab_size_(vocab_size), d_model_(d_model) {
     const size_t rows = narrow<size_t>(vocab_size);
     const size_t cols = narrow<size_t>(d_model);
     Tensor table(rows, cols);

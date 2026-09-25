@@ -48,10 +48,10 @@ public:
 
 private:
     int total_steps_;
-    int start_step_;
+    int start_step_ = 0;
     std::chrono::steady_clock::time_point start_time_;
-    double running_loss_;
-    int step_count_;
+    double running_loss_ = 0.0;
+    int step_count_ = 0;
 };
 
 void print_header(const std::string& title);

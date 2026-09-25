@@ -22,7 +22,6 @@ DataLoader::DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool sh
     : dataset_(std::move(dataset)),
       batch_size_(checked_batch_size(batch_size)),
       shuffle_(shuffle),
-      current_index_(0),
       rng_(seed) {}
 
 bool DataLoader::has_next() const {

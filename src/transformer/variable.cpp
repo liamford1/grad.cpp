@@ -4,6 +4,7 @@
 #include "grad/transformer/parallel.h"
 #include <cmath>
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -605,8 +606,8 @@ void Variable::backward() {
     std::unordered_set<Variable*> visited;
     topologicalSort(sorted, visited);
 
-    for (auto it = sorted.rbegin(); it != sorted.rend(); ++it) {
-        Variable* node = it->get();
+    for (const auto& entry : std::views::reverse(sorted)) {
+        Variable* node = entry.get();
         if (!node->backward_fn) continue;
         node->backward_fn();
 

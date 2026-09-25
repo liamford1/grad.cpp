@@ -49,8 +49,7 @@ void MetricsLog::maybe_flush(bool force) {
     }
 }
 
-TrainingMetrics::TrainingMetrics(int total_steps)
-    : total_steps_(total_steps), start_step_(0), running_loss_(0.0), step_count_(0) {}
+TrainingMetrics::TrainingMetrics(int total_steps) : total_steps_(total_steps) {}
 
 void TrainingMetrics::start_training(int start_step) {
     start_step_ = start_step;

@@ -10,7 +10,7 @@
 
 namespace grad {
 
-LayerNorm::LayerNorm(int d_model, bool rms) : d_model_(d_model), epsilon(1e-5f), rms_(rms) {
+LayerNorm::LayerNorm(int d_model, bool rms) : d_model_(d_model), rms_(rms) {
     const size_t d = narrow<size_t>(d_model);
     Tensor gamma_tensor(1, d);
     Tensor beta_tensor(1, d);

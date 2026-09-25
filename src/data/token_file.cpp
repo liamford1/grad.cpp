@@ -80,8 +80,7 @@ void tokenfile::Unmap::operator()(void* addr) const noexcept {
     ::munmap(addr, bytes);
 }
 
-MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, int stride)
-    : seq_length_(0), stride_(0) {
+MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, int stride) {
     if (stride < 1) {
         throw std::invalid_argument("stride must be >= 1");
     }

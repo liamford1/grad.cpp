@@ -49,7 +49,7 @@ std::pair<std::vector<int>, std::vector<int>> TextDataset::get_item(size_t index
 }
 
 SpreadSubset::SpreadSubset(std::shared_ptr<const Dataset> source, size_t count)
-    : source_(std::move(source)), count_(0) {
+    : source_(std::move(source)) {
     if (!source_) {
         throw std::invalid_argument("SpreadSubset needs a source dataset");
     }

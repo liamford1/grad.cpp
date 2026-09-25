@@ -25,7 +25,7 @@ private:
     std::shared_ptr<Dataset> dataset_;
     size_t batch_size_;
     bool shuffle_;
-    size_t current_index_;
+    size_t current_index_ = 0;
     std::mt19937 rng_;
 
 public:

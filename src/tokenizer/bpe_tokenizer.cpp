@@ -56,7 +56,7 @@ void BPETokenizer::train(const std::string& training_text) {
         std::vector<std::string> chars;
         chars.reserve(entry.first.size());
         for (char c : entry.first) {
-            chars.push_back(std::string(1, c));
+            chars.emplace_back(1, c);
         }
         word_tokens[entry.first] = chars;
     }
@@ -216,7 +216,7 @@ std::vector<int> BPETokenizer::encode(const std::string& text) const {
         std::vector<std::string> word_tokens;
         word_tokens.reserve(word.size());
         for (char c : word) {
-            word_tokens.push_back(std::string(1, c));
+            word_tokens.emplace_back(1, c);
         }
 
         for (const auto& merge_pair : merges) {
@@ -272,8 +272,8 @@ std::vector<int> BPETokenizer::encode(const std::string& text) const {
 std::string BPETokenizer::decode(const std::vector<int>& token_ids) const {
     std::string result;
 
-    for (size_t i = 0; i < token_ids.size(); i++) {
-        auto it = id_to_token.find(token_ids[i]);
+    for (int token_id : token_ids) {
+        auto it = id_to_token.find(token_id);
         if (it != id_to_token.end()) {
             result += it->second;
         }

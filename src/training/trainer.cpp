@@ -12,7 +12,10 @@
 #include <iomanip>
 #include <limits>
 #include <stdexcept>
-#include <signal.h>
+#include <utility>
+// sigaction and sigemptyset are POSIX, declared by <signal.h>; <csignal>
+// promises only the ISO C subset.
+#include <signal.h>  // NOLINT(modernize-deprecated-headers)
 
 namespace grad::training {
 
@@ -84,9 +87,8 @@ std::optional<int> peek_resume_step(const std::string& state_path) {
     return next_step;
 }
 
-Trainer::Trainer(const TrainingConfig& config, GPTModel& model, DataLoader& loader,
-                 DataLoader* val_loader)
-    : config_(config), model_(model), loader_(loader), val_loader_(val_loader) {
+Trainer::Trainer(TrainingConfig config, GPTModel& model, DataLoader& loader, DataLoader* val_loader)
+    : config_(std::move(config)), model_(model), loader_(loader), val_loader_(val_loader) {
     auto params = model_.getAllParameters();
     optimizer_ = std::make_unique<AdamOptimizer>(params, config_.learning_rate, 0.9f, 0.999f, 1e-8f,
                                                  config_.weight_decay);

@@ -82,7 +82,7 @@ Arg& Arg::named(std::string flag) {
     if (kind_ != Kind::Optional) {
         throw std::logic_error("cli: only an optional positional takes an alias flag");
     }
-    if (flag.size() < 3 || flag.compare(0, 2, "--") != 0) {
+    if (flag.size() < 3 || !flag.starts_with("--")) {
         throw std::logic_error("cli: alias '" + flag + "' must be spelled --name");
     }
     flag_ = std::move(flag);
@@ -140,7 +140,7 @@ Arg& Command::add(Arg::Kind kind, std::string name, std::string help) {
             throw std::logic_error("cli: required positional '" + name
                                    + "' declared after an optional one");
         }
-    } else if (name.size() < 3 || name.compare(0, 2, "--") != 0) {
+    } else if (name.size() < 3 || !name.starts_with("--")) {
         throw std::logic_error("cli: option '" + name + "' must be spelled --name");
     }
 
@@ -177,7 +177,7 @@ bool is_help(std::string_view token) {
 // Only "--name" tokens are options. A single dash stays positional, so a
 // prompt such as "- a list" or a negative number is never mistaken for one.
 bool looks_like_option(std::string_view token) {
-    return token.size() > 2 && token.compare(0, 2, "--") == 0;
+    return token.size() > 2 && token.starts_with("--");
 }
 
 }  // namespace

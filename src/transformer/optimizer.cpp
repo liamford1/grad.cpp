@@ -6,6 +6,7 @@
 #include <cstring>
 #include <algorithm>
 #include <istream>
+#include <numbers>
 #include <ostream>
 #include <vector>
 
@@ -20,10 +21,7 @@ AdamOptimizer::AdamOptimizer(const std::vector<std::shared_ptr<Variable>>& param
       beta1_(beta1),
       beta2_(beta2),
       epsilon_(epsilon),
-      weight_decay_(weight_decay),
-      step_count_(0),
-      warmup_steps_(0),
-      total_steps_(0) {}
+      weight_decay_(weight_decay) {}
 
 float AdamOptimizer::scheduled_lr() const {
     if (warmup_steps_ > 0 && step_count_ <= warmup_steps_) {
@@ -33,7 +31,7 @@ float AdamOptimizer::scheduled_lr() const {
         // Cosine decay from base_lr to min_lr over the post-warmup steps.
         float progress = static_cast<float>(step_count_ - warmup_steps_)
                          / static_cast<float>(total_steps_ - warmup_steps_);
-        float cosine = 0.5f * (1.0f + std::cos(3.14159265f * progress));
+        float cosine = 0.5f * (1.0f + std::cos(std::numbers::pi_v<float> * progress));
         return min_lr_ + (base_lr_ - min_lr_) * cosine;
     }
     return total_steps_ > 0 ? min_lr_ : base_lr_;

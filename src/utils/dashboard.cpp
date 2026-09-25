@@ -366,15 +366,15 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
     for (const auto& r : d.train) {
         ema = 0.98f * ema + 0.02f * r.loss;
         float x = static_cast<float>(r.step);
-        ema_pts.push_back({x, ema});
-        raw_pts.push_back({x, r.loss});
-        lr_pts.push_back({x, r.lr});
-        if (r.grad_norm > 0) gn_pts.push_back({x, r.grad_norm});
+        ema_pts.emplace_back(x, ema);
+        raw_pts.emplace_back(x, r.loss);
+        lr_pts.emplace_back(x, r.lr);
+        if (r.grad_norm > 0) gn_pts.emplace_back(x, r.grad_norm);
         if (r.grad_norm > kClipNorm) clipped++;
         if (r.step_ms > 0) {
             float ts = static_cast<float>(d.tokens_per_step) / (r.step_ms / 1000.0f);
             tok_ema = tok_ema == 0 ? ts : 0.95f * tok_ema + 0.05f * ts;
-            tok_pts.push_back({x, tok_ema});
+            tok_pts.emplace_back(x, tok_ema);
         }
     }
     float clip_pct = gn_pts.empty()
@@ -464,7 +464,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         for (size_t i = 0; i < raw_pts.size(); i += stride) raw_sub.push_back(raw_pts[i]);
         std::vector<std::pair<float, float>> val_pts;
         val_pts.reserve(d.evals.size());
-        for (const auto& e : d.evals) val_pts.push_back({static_cast<float>(e.step), e.val_loss});
+        for (const auto& e : d.evals) val_pts.emplace_back(static_cast<float>(e.step), e.val_loss);
 
         std::vector<Series> layers;
         layers.push_back({val_pts, MAG, false});
@@ -487,7 +487,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         std::vector<std::pair<float, float>> ppl_pts;
         ppl_pts.reserve(d.evals.size());
         for (const auto& e : d.evals)
-            ppl_pts.push_back({static_cast<float>(e.step), std::exp(e.val_loss)});
+            ppl_pts.emplace_back(static_cast<float>(e.step), std::exp(e.val_loss));
         std::string t1 = "val perplexity";
         if (!ppl_pts.empty()) {
             t1 += "  last " + fmt(ppl_pts.back().second, 1);
@@ -526,7 +526,7 @@ std::string render(const RunData& d, const std::string& name, int tw, int th) {
         size_t start = N > nrecent ? N - nrecent : 0;
         std::vector<std::pair<float, float>> rpts;
         for (size_t i = start; i < N; i++)
-            rpts.push_back({static_cast<float>(d.train[i].step), d.train[i].loss});
+            rpts.emplace_back(static_cast<float>(d.train[i].step), d.train[i].loss);
         std::vector<Series> lz{{rpts, YEL, rpts.size() < 2}};
         Range rz = fit_range(lz, 0.08f);
         std::string pz = panel("recent loss  last " + std::to_string(rpts.size()) + " steps  ["

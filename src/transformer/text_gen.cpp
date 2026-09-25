@@ -126,8 +126,8 @@ std::string TextGen::tokens_to_string(const std::vector<int>& tokens) {
 
     std::string result = "";
     result.reserve(tokens.size());
-    for (size_t i = 0; i < tokens.size(); i++) {
-        result += static_cast<char>(tokens[i]);
+    for (int token : tokens) {
+        result += static_cast<char>(token);
     }
     return result;
 }
@@ -139,7 +139,7 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
         std::vector<std::pair<float, int>> logit_pairs;
         logit_pairs.reserve(scaled_logits.getCols());
         for (size_t i = 0; i < scaled_logits.getCols(); i++) {
-            logit_pairs.push_back({scaled_logits.getValue(0, i), static_cast<int>(i)});
+            logit_pairs.emplace_back(scaled_logits.getValue(0, i), static_cast<int>(i));
         }
 
         std::sort(logit_pairs.begin(), logit_pairs.end(),
@@ -159,7 +159,7 @@ int TextGen::sample_from_logits(const Tensor& logits, float temperature, int top
         std::vector<std::pair<float, int>> prob_pairs;
         prob_pairs.reserve(probabilities.getCols());
         for (size_t i = 0; i < probabilities.getCols(); i++) {
-            prob_pairs.push_back({probabilities.getValue(0, i), static_cast<int>(i)});
+            prob_pairs.emplace_back(probabilities.getValue(0, i), static_cast<int>(i));
         }
         std::sort(prob_pairs.begin(), prob_pairs.end(),
                   [](const auto& a, const auto& b) { return a.first > b.first; });

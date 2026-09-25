@@ -15,7 +15,7 @@ private:
     int d_model_;
     std::shared_ptr<Variable> gamma;
     std::shared_ptr<Variable> beta;
-    float epsilon;
+    float epsilon = 1e-5f;
     bool rms_;
 
 public:
