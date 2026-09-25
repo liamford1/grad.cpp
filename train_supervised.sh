@@ -16,8 +16,8 @@ MAX_RESTARTS="${3:-500}"
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$REPO/build/grad"
-# Checkpoint prefix, derived exactly as main.cpp does: the corpus filename
-# minus its last extension, then "_modern" for the modern-architecture
+# Checkpoint prefix, derived exactly as src/cli/train.cpp does: the corpus
+# filename minus its last extension, then "_modern" for the modern-architecture
 # presets and "_fast" for the fast ones, so lineages coexist on one corpus.
 BASE="$(basename "$CORPUS")"; BASE="${BASE%.*}"
 PREFIX="$BASE"

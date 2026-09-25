@@ -140,7 +140,23 @@ else()
     message(STATUS "Using system BLAS")
 endif()
 
-add_executable(grad src/main.cpp)
+# One source per subcommand; main.cpp is the dispatch table.
+add_executable(grad
+    src/main.cpp
+    src/cli/args.cpp
+    src/cli/common.cpp
+    src/cli/presets.cpp
+    src/cli/presets_command.cpp
+    src/cli/prepare.cpp
+    src/cli/train.cpp
+    src/cli/generate.cpp
+    src/cli/chat.cpp
+    src/cli/eval.cpp
+    src/cli/bench.cpp
+    src/cli/watch.cpp
+)
+# src/ for the executable's private headers (cli/commands.h and friends).
+target_include_directories(grad PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(grad PRIVATE grad::core)
 grad_enable_warnings(grad)
 
@@ -254,6 +270,11 @@ if(BUILD_TESTS)
         LABELS "integration" TIMEOUT 120)
 
     add_grad_test(test_grad_mode tests/unit/test_grad_mode.cpp GradMode)
+
+    # The argument parser belongs to the grad executable, not grad::core,
+    # so its test compiles the one source it covers.
+    add_grad_test(test_args tests/unit/test_args.cpp ArgumentParsing)
+    target_sources(test_args PRIVATE src/cli/args.cpp)
 endif()
 
 include(GNUInstallDirs)
@@ -273,7 +294,8 @@ install(TARGETS grad grad_core
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+# include/cli is the grad executable's parser, not part of grad::core's API.
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} PATTERN cli EXCLUDE)
 install(EXPORT gradTargets
     FILE gradTargets.cmake
     NAMESPACE grad::
