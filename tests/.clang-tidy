@@ -1,0 +1,6 @@
+# Tests inherit the project configuration with one exception: a test's
+# main() lets an unexpected exception escape on purpose. std::terminate
+# aborts the process, and ctest reports that as a failure, which is the
+# right outcome for an exception nothing in the test expected.
+InheritParentConfig: true
+Checks: '-bugprone-exception-escape'

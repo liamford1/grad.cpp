@@ -1,0 +1,110 @@
+# clang-tidy 19. Run with tools/lint.sh tidy (see README, Development).
+#
+# Families enabled in full, minus the exclusions below: bugprone-*,
+# performance-*, modernize-*. Plus a hand-picked subset of readability-*,
+# cppcoreguidelines-* and misc-*: the checks that find bugs or dead code,
+# not the ones that restate a style preference.
+#
+# Disabled on purpose:
+#   bugprone-easily-swappable-parameters
+#       Fires on every (M, N, K) GEMM signature and every pair of extents;
+#       the call sites are the documentation there.
+#   bugprone-narrowing-conversions
+#       The build already enforces -Wconversion and -Wsign-conversion
+#       under -Werror, and the size convention (tensor.h) routes the
+#       deliberate narrowings through grad::narrow.
+#   modernize-use-trailing-return-type
+#       Style only.
+#   modernize-use-nodiscard
+#       [[nodiscard]] marks results that are a bug to drop (Tensor
+#       factories, Variable ops, loss values). Putting it on every const
+#       getter, as the check wants, would bury that signal.
+#   modernize-use-auto
+#       Its findings are all `const size_t d = static_cast<size_t>(x)`:
+#       the explicit type at a conversion is the size convention written
+#       out, and is what -Wconversion reviews against.
+#   modernize-use-designated-initializers
+#       Positional aggregates are table rows here (commands, preset
+#       fields, test cases) whose struct is defined a few lines above.
+#   modernize-avoid-c-arrays
+#       Its findings are Tensor's unique_ptr<float[]> storage (the buffer
+#       handed to BLAS and Metal), char buffers filled by snprintf, and
+#       small constant tables (the token-file magic, the dashboard's
+#       Braille bit masks, test-case lists). std::array would only add a
+#       size to spell out.
+#   modernize-raw-string-literal
+#       Its findings are the JSON writer in bench.cpp, one line per key;
+#       converting only the lines it picks leaves raw and escaped literals
+#       interleaved in one statement.
+#   modernize-return-braced-init-list
+#       For containers, `return {a, b}` prefers an initializer_list
+#       constructor where `T(a, b)` does not, so the rewrite is not always
+#       the same call; the named type is clearer at a glance anyway.
+#   modernize-use-ranges
+#       Swapping std::sort/partial_sort for ranges versions is not a
+#       correctness change, and the sampling path's ordering among ties
+#       feeds seeded output; not worth a numerics re-verification.
+#   performance-avoid-endl
+#       std::endl in the trainer and CLI is a deliberate flush: progress
+#       lines are tailed by training_health.sh and train_supervised.sh
+#       while a run is in flight.
+#   performance-enum-size
+#       No enum is stored in bulk; GPTArch goes to the checkpoint header
+#       as an int32 either way.
+#
+# misc-const-correctness is limited to references and pointers
+# (AnalyzeValues: false): flagging every non-const local value would add
+# `const` to several hundred lines of kernel and test code without
+# catching anything -Wshadow and review do not.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  performance-*,
+  -performance-avoid-endl,
+  -performance-enum-size,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -modernize-use-auto,
+  -modernize-use-designated-initializers,
+  -modernize-avoid-c-arrays,
+  -modernize-use-ranges,
+  -modernize-raw-string-literal,
+  -modernize-return-braced-init-list,
+  readability-container-size-empty,
+  readability-redundant-*,
+  readability-else-after-return,
+  readability-make-member-function-const,
+  readability-qualified-auto,
+  readability-inconsistent-declaration-parameter-name,
+  readability-non-const-parameter,
+  readability-misleading-indentation,
+  cppcoreguidelines-special-member-functions,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-virtual-class-destructor,
+  cppcoreguidelines-prefer-member-initializer,
+  misc-unused-*,
+  misc-const-correctness,
+  misc-definitions-in-headers,
+  misc-redundant-expression,
+  misc-misplaced-const,
+  misc-throw-by-value-catch-by-reference,
+  misc-uniqueptr-reset-release,
+  misc-static-assert
+WarningsAsErrors: '*'
+# Project headers only: include/ (library and CLI), src/ (CLI-private
+# headers) and tests/. tools/lint.sh narrows this to an absolute prefix
+# of the checkout, so SDK and /usr/include headers can never match.
+HeaderFilterRegex: '.*/(include|src|tests)/.*\.h$'
+CheckOptions:
+  # Match the tree's `size_t count_ = 0;` rather than `count_{0}`.
+  modernize-use-default-member-init.UseAssignment: true
+  misc-const-correctness.AnalyzeValues: false
+  # A class that deletes its copy operations is meant to be neither
+  # copied nor moved; spelling out the deleted moves adds nothing.
+  cppcoreguidelines-special-member-functions.AllowMissingMoveFunctionsWhenCopyIsDeleted: true
+  # `virtual ~Base() = default;` on an interface is not a resource owner.
+  cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
