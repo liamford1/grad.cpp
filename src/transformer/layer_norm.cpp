@@ -91,9 +91,10 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         }
     });
 
-    auto output = Variable::create(std::move(result), input->requiresGrad());
+    const bool needs_grad = compute_requires_grad(input);
+    auto output = Variable::create(std::move(result), needs_grad);
 
-    if (input->requiresGrad()) {
+    if (needs_grad) {
         auto self_input = input;
         auto self_gamma = gamma;
         auto self_beta = beta;

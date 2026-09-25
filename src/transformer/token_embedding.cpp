@@ -64,10 +64,10 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
 
     // The lookup differentiates w.r.t. the embedding table, not the discrete
     // token IDs, so grad tracking must key off the table.
-    bool needs_grad = embedding_table->requiresGrad() || input_ids->requiresGrad();
+    const bool needs_grad = compute_requires_grad(embedding_table, input_ids);
     auto output = Variable::create(std::move(result), needs_grad);
 
-    if (embedding_table->requiresGrad()) {
+    if (needs_grad && embedding_table->requiresGrad()) {
         auto table_var = embedding_table;
         const float scale = embedding_scale;
         const int dm = d_model;

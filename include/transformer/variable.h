@@ -6,6 +6,35 @@
 #include <vector>
 #include <unordered_set>
 
+// Grad mode: whether ops record the autograd graph. On by default. It is
+// thread-local, so a NoGradGuard around evaluation on one thread leaves
+// training on another untouched; parallel_for workers never build graph
+// nodes, so only the thread issuing the ops matters.
+class GradMode {
+    public:
+        [[nodiscard]] static bool is_enabled() noexcept { return enabled_; }
+        static void set_enabled(bool enabled) noexcept { enabled_ = enabled; }
+    private:
+        static inline thread_local bool enabled_ = true;
+};
+
+// Disables grad mode for its lifetime and restores the previous state on
+// exit, so guards nest. While disabled, op outputs do not require grad,
+// record no children and capture no backward closure or forward caches:
+// a forward pass allocates only its activations, each freed as soon as the
+// next op has consumed it. Leaves created with requires_grad = true (model
+// parameters) are unaffected; backward() on an output made under the
+// guard throws, as for any root that does not require grad.
+class NoGradGuard {
+    public:
+        NoGradGuard() noexcept : previous_(GradMode::is_enabled()) { GradMode::set_enabled(false); }
+        ~NoGradGuard() { GradMode::set_enabled(previous_); }
+        NoGradGuard(const NoGradGuard&) = delete;
+        NoGradGuard& operator=(const NoGradGuard&) = delete;
+    private:
+        bool previous_;
+};
+
 // A node in the autograd graph: a value, its (lazily allocated) gradient,
 // the nodes it was computed from, and a closure that propagates gradient
 // to them. Every op below builds one output node and wires its backward
@@ -83,3 +112,11 @@ class Variable : public std::enable_shared_from_this<Variable> {
         void topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted, std::unordered_set<Variable*>& visited);
         [[nodiscard]] std::shared_ptr<Variable> createOutput(Tensor&& result, bool needs_grad);
 };
+
+// Whether an op over these inputs must record a graph node: grad mode is
+// on and at least one input requires grad. Every op, including the fused
+// module ops (attention, LayerNorm, embeddings), decides through this.
+template <typename... Inputs>
+[[nodiscard]] bool compute_requires_grad(const Inputs&... inputs) {
+    return GradMode::is_enabled() && (... || inputs->requiresGrad());
+}

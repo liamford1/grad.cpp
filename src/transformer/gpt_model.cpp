@@ -74,7 +74,7 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
                   false, true, 1.0f, 0.0f);
 
     auto logits = Variable::create(std::move(logits_tensor),
-                                     normalized_output->requiresGrad() || embedding_table->requiresGrad());
+                                   compute_requires_grad(normalized_output, embedding_table));
 
     if (logits->requiresGrad()) {
         logits->addChild(normalized_output);

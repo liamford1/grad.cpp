@@ -55,7 +55,7 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
     other->data.assertValid("Variable::matmul(rhs)");
 
     Tensor result = this->data.matmul(other->data);
-    bool needs_grad = this->requires_grad || other->requires_grad;
+    const bool needs_grad = compute_requires_grad(this, other);
     
     auto output = createOutput(std::move(result), needs_grad);
     
@@ -118,7 +118,7 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
     other->data.assertValid("Variable::add(rhs)");
 
     Tensor result = this->data.add(other->data);
-    bool needs_grad = this->requires_grad || other->requires_grad;
+    const bool needs_grad = compute_requires_grad(this, other);
     auto output = createOutput(std::move(result), needs_grad);
 
     if (needs_grad) {
@@ -317,9 +317,10 @@ std::shared_ptr<Variable> Variable::scale(float factor) {
     data.assertValid("Variable::scale(x)");
 
     Tensor result = this->data.scale(factor);
-    auto output = createOutput(std::move(result), this->requires_grad);
+    const bool needs_grad = compute_requires_grad(this);
+    auto output = createOutput(std::move(result), needs_grad);
     
-    if (this->requires_grad) {
+    if (needs_grad) {
         auto self_ptr = shared_from_this();
         
         output->addChild(self_ptr);
@@ -340,9 +341,10 @@ std::shared_ptr<Variable> Variable::softmax() {
     data.assertValid("Variable::softmax(x)");
 
     Tensor result = this->data.softmax();
-    auto output = createOutput(std::move(result), this->requires_grad);
+    const bool needs_grad = compute_requires_grad(this);
+    auto output = createOutput(std::move(result), needs_grad);
     
-    if (this->requires_grad) {
+    if (needs_grad) {
         auto self_ptr = shared_from_this();
         
         output->addChild(self_ptr);
@@ -436,9 +438,10 @@ std::shared_ptr<Variable> Variable::gelu() {
         }
     });
 
-    auto output = createOutput(std::move(result), this->requires_grad);
+    const bool needs_grad = compute_requires_grad(this);
+    auto output = createOutput(std::move(result), needs_grad);
 
-    if (this->requires_grad) {
+    if (needs_grad) {
         auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
@@ -498,9 +501,10 @@ std::shared_ptr<Variable> Variable::silu() {
         }
     });
 
-    auto output = createOutput(std::move(result), this->requires_grad);
+    const bool needs_grad = compute_requires_grad(this);
+    auto output = createOutput(std::move(result), needs_grad);
 
-    if (this->requires_grad) {
+    if (needs_grad) {
         auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         output->setBackwardFn([self_ptr, output_weak = std::weak_ptr<Variable>(output)]() {
@@ -540,7 +544,7 @@ std::shared_ptr<Variable> Variable::mul(std::shared_ptr<Variable> other) {
     other->data.assertValid("Variable::mul(rhs)");
 
     Tensor result = this->data.elementwise(other->data);
-    bool needs_grad = this->requires_grad || other->requires_grad;
+    const bool needs_grad = compute_requires_grad(this, other);
     auto output = createOutput(std::move(result), needs_grad);
 
     if (needs_grad) {
@@ -581,9 +585,10 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
     fill_dropout_mask(mask.raw(), mask.numel(), dropout_rate, scale);
 
     Tensor result = this->data.elementwise(mask);
-    auto output = createOutput(std::move(result), this->requires_grad);
+    const bool needs_grad = compute_requires_grad(this);
+    auto output = createOutput(std::move(result), needs_grad);
     
-    if (this->requires_grad) {
+    if (needs_grad) {
         auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         auto mask_ptr = std::make_shared<Tensor>(std::move(mask));
@@ -636,9 +641,10 @@ std::shared_ptr<Variable> Variable::log_softmax() {
         }
     });
 
-    auto output = createOutput(std::move(result), this->requires_grad);
+    const bool needs_grad = compute_requires_grad(this);
+    auto output = createOutput(std::move(result), needs_grad);
 
-    if (this->requires_grad) {
+    if (needs_grad) {
         auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
 
@@ -704,9 +710,10 @@ std::shared_ptr<Variable> Variable::nll_loss(std::shared_ptr<Variable> targets) 
 
     Tensor loss_tensor(1, 1);
     loss_tensor.raw()[0] = total_loss;
-    auto output = createOutput(std::move(loss_tensor), this->requires_grad);
+    const bool needs_grad = compute_requires_grad(this);
+    auto output = createOutput(std::move(loss_tensor), needs_grad);
 
-    if (this->requires_grad) {
+    if (needs_grad) {
         auto self_ptr = shared_from_this();
         output->addChild(self_ptr);
         output->addChild(targets);

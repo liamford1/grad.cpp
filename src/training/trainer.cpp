@@ -317,6 +317,10 @@ bool Trainer::train() {
 }
 
 double mean_loss(GPTModel& model, DataLoader& loader, int max_batches) {
+    // Forward-only: with grad mode off no graph is recorded, so each
+    // activation is freed once the next op has consumed it and there is
+    // nothing to release afterwards.
+    NoGradGuard no_grad;
     double weighted_loss = 0.0;
     size_t rows = 0;
     for (int batches = 0; loader.has_next(); batches++) {
@@ -325,13 +329,11 @@ double mean_loss(GPTModel& model, DataLoader& loader, int max_batches) {
         auto in = Variable::create(batch.input, false);
         auto tgt = Variable::create(batch.target, false);
 
-        // The graph is still built (parameters require grad), so release it.
         auto logits = model.forward(in, false);
         auto loss = logits->log_softmax()->nll_loss(tgt);
         const size_t batch_rows = batch.input.getBatchSize();
         weighted_loss += static_cast<double>(loss->getData().getValue(0, 0)) * static_cast<double>(batch_rows);
         rows += batch_rows;
-        loss->release_graph();
     }
     return rows > 0 ? weighted_loss / static_cast<double>(rows) : -1.0;
 }

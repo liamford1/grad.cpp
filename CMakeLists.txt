@@ -252,6 +252,8 @@ if(BUILD_TESTS)
         ENVIRONMENT TRANSFORMER_THREADS=4
         FIXTURES_REQUIRED determinism_reference
         LABELS "integration" TIMEOUT 120)
+
+    add_grad_test(test_grad_mode tests/unit/test_grad_mode.cpp GradMode)
 endif()
 
 include(GNUInstallDirs)

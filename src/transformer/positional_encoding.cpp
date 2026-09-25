@@ -26,7 +26,7 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
         
         auto output = embeddings->add(pos_var);
         
-        if (embeddings->requiresGrad() || position_embeddings->requiresGrad()) {
+        if (output->requiresGrad()) {
             output->addChild(embeddings);
             output->addChild(position_embeddings);
             
@@ -75,7 +75,7 @@ std::shared_ptr<Variable> PositionalEncoding::forward(std::shared_ptr<Variable> 
         auto pos_var = Variable::create(std::move(pos_broadcast), position_embeddings->requiresGrad());
         auto output = embeddings->add(pos_var);
         
-        if (embeddings->requiresGrad() || position_embeddings->requiresGrad()) {
+        if (output->requiresGrad()) {
             output->addChild(embeddings);
             output->addChild(position_embeddings);
             
