@@ -59,9 +59,11 @@ Common commands:
 
 # Sample from a trained checkpoint (vocab is read from the checkpoint)
 ./build/grad generate shakespeare_final.bin "ROMEO:"
+./build/grad generate shakespeare_final.bin "ROMEO:" --temperature 0.6 --top-k 40 --max-tokens 300
 
 # Score a checkpoint on 500 sampled batches of held-out and training windows
 ./build/grad eval tinystories_best.bin data/tinystories.txt 16000 256 500
+./build/grad eval tinystories_best.bin data/tinystories.txt --batches 500   # same, by name
 
 # Interactive REPL: type a prompt, watch it stream a continuation
 ./build/grad chat shakespeare_final.bin
@@ -71,7 +73,12 @@ Common commands:
 
 # Pre-tokenize a corpus for fast, memory-mapped training (see below)
 ./build/grad prepare my_corpus.txt 5000
+
+# List the model/training presets (--json for tools)
+./build/grad presets
 ```
+
+`./build/grad --help` lists the commands, and `./build/grad <command> --help` shows a command's arguments, options, and defaults. Optional arguments can also be given by name (`--corpus`, `--vocab`, `--seq`, ...), so a later one can be set without spelling out those before it. `generate` and `chat` take the decoding settings as flags: `--temperature`, `--top-k`, `--top-p`, `--repetition-penalty`, `--max-tokens`, and `--greedy`.
 
 The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.
 
@@ -96,7 +103,7 @@ Any plain-text file works. For anything larger than Tiny Shakespeare, pre-tokeni
 
 `prepare` trains a BPE tokenizer on the corpus (sampling the first 32MB for merge learning on large corpora, since frequencies converge long before that) and writes the encoded tokens as binary files (uint16 per token, 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM: the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
 
-Three model presets are built in:
+Three model presets are built in (`./build/grad presets` prints every field, including the `fast` smoke-test presets):
 
 | preset | params | config | intended for |
 |---|---|---|---|
@@ -133,6 +140,13 @@ Long runs are interruptible: Ctrl-C saves a resume pair (`<prefix>_resume_model.
 ```
 
 A resumed or warm-started run reseeds the data loader (by step position and checkpoint path respectively), so it draws fresh training windows instead of replaying the batches the checkpoint already saw.
+
+`--seed N` (default 42) drives weight initialization, window sampling, and dropout together, for repeating an experiment under a different seed; the default reproduces runs made before the flag existed. Resume such a run with the same `--seed`:
+
+```bash
+./build/grad train data/tinystories.txt medium --seed 7
+./build/grad train data/tinystories.txt medium resume --seed 7
+```
 
 ## Performance
 
