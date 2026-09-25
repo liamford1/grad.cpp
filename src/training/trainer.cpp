@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <limits>
 #include <stdexcept>
+#include <signal.h>
 
 namespace training {
 
@@ -22,15 +23,40 @@ constexpr uint32_t kResumeVersion = 1;
 
 // SIGINT/SIGTERM request a stop; the training loop honors it at the next
 // step boundary so the resume state is always written from a consistent
-// point. The handlers are restored after the first request, so a second
-// Ctrl-C force-kills as usual.
+// point. SA_RESETHAND restores the default action once a signal has been
+// delivered, so a second Ctrl-C force-kills as usual. The handler only sets
+// a flag; C++17 lets a handler call std::signal only for the signal being
+// handled, so it cannot reset the other one itself.
 volatile std::sig_atomic_t g_stop_requested = 0;
 
 void request_stop(int) {
     g_stop_requested = 1;
-    std::signal(SIGINT, SIG_DFL);
-    std::signal(SIGTERM, SIG_DFL);
 }
+
+// Installs request_stop for SIGINT and SIGTERM for its lifetime and puts the
+// previous handlers back on destruction, including when train() throws.
+class StopSignalGuard {
+public:
+    StopSignalGuard() {
+        g_stop_requested = 0;
+        struct sigaction action {};
+        action.sa_handler = request_stop;
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = SA_RESETHAND;
+        sigaction(SIGINT, &action, &prev_int_);
+        sigaction(SIGTERM, &action, &prev_term_);
+    }
+    ~StopSignalGuard() {
+        sigaction(SIGINT, &prev_int_, nullptr);
+        sigaction(SIGTERM, &prev_term_, nullptr);
+    }
+    StopSignalGuard(const StopSignalGuard&) = delete;
+    StopSignalGuard& operator=(const StopSignalGuard&) = delete;
+
+private:
+    struct sigaction prev_int_ {};
+    struct sigaction prev_term_ {};
+};
 
 // rename() replaces the destination atomically within a filesystem, so a
 // reader (or a crash) sees either the old file or the complete new one.
@@ -201,10 +227,6 @@ bool Trainer::train() {
         static_cast<long>(config_.batch_size) * config_.grad_accum * config_.seq_length,
         param_count, desc);
 
-    g_stop_requested = 0;
-    auto prev_int = std::signal(SIGINT, request_stop);
-    auto prev_term = std::signal(SIGTERM, request_stop);
-
     // Best-val checkpointing: training loss keeps falling long after the
     // model starts memorizing (observed on Shakespeare: val perplexity
     // bottomed at step ~6000 of 50000, then quintupled). The checkpoint
@@ -213,6 +235,9 @@ bool Trainer::train() {
         ? best_val_loss_restored_ : std::numeric_limits<float>::max();
 
     bool interrupted = false;
+    // The handlers cover the loop only; a Ctrl-C during the end-of-run
+    // evaluation and saves takes the default action.
+    std::optional<StopSignalGuard> stop_signals(std::in_place);
     for (int step = start_step_; step < config_.num_steps; step++) {
         training_step(step);
 
@@ -256,9 +281,7 @@ bool Trainer::train() {
             break;
         }
     }
-
-    std::signal(SIGINT, prev_int);
-    std::signal(SIGTERM, prev_term);
+    stop_signals.reset();
 
     if (interrupted) return false;
 
