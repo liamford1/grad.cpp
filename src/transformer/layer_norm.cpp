@@ -1,8 +1,10 @@
 #include "transformer/tensor.h"
 #include "transformer/layer_norm.h"
 #include "transformer/parallel.h"
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 LayerNorm::LayerNorm(int d_model, bool rms) :
@@ -18,19 +20,18 @@ LayerNorm::LayerNorm(int d_model, bool rms) :
     beta = Variable::create(beta_tensor, true);
 }
 
-
-// Rows are contiguous whether the input is 2D (rows, d) or 3D
-// (batch, seq, d), so both cases are one loop over batch*rows.
+// Normalizes over the innermost dimension. Rows are contiguous at any
+// rank, so a 2D (rows, d) and a 3D (batch, seq, d) input are the same loop
+// over the flat rows.
 std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) const {
     const Tensor& input_tensor = input->getData();
+    if (input_tensor.getCols() != static_cast<size_t>(d_model)) {
+        throw std::invalid_argument("LayerNorm: input " + input_tensor.shape().to_string() +
+                                    " does not end in d_model " + std::to_string(d_model));
+    }
 
-    const int total_rows = input_tensor.getIs3D()
-        ? static_cast<int>(input_tensor.getBatchSize() * input_tensor.getRows())
-        : static_cast<int>(input_tensor.getRows());
-
-    Tensor result = input_tensor.getIs3D()
-        ? Tensor::uninitialized(input_tensor.getBatchSize(), input_tensor.getRows(), d_model)
-        : Tensor::uninitialized(input_tensor.getRows(), d_model);
+    const int total_rows = static_cast<int>(input_tensor.getFlatRows());
+    Tensor result = Tensor::empty_like(input_tensor);
 
     const float* input_data = input_tensor.raw();
     const float* gamma_data = gamma->getData().raw();
@@ -91,34 +92,33 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
         }
     });
 
-    auto output = Variable::create(std::move(result), input->requiresGrad());
+    const bool needs_grad = compute_requires_grad(input, gamma, beta);
+    auto output = Variable::create(std::move(result), needs_grad);
 
-    if (input->requiresGrad()) {
+    if (needs_grad) {
         auto self_input = input;
         auto self_gamma = gamma;
         auto self_beta = beta;
         int self_d = d_model;
 
-        output->addChild(input);
-        output->addChild(gamma);
-        output->addChild(beta);
-
         const bool rms = rms_;
-        output->setBackwardFn([self_input, self_gamma, self_beta,
-                               output_weak = std::weak_ptr<Variable>(output),
-                               means, inv_stds, self_d, total_rows, rms]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
-            self_gamma->ensureGrad();
-            if (!rms) self_beta->ensureGrad();
-            self_input->ensureGrad();
+        output->setBackward({input, gamma, beta},
+                            [self_input, self_gamma, self_beta,
+                             means, inv_stds, self_d, total_rows, rms](Variable& output) {
+            // Each gradient is computed only if its target requires grad
+            // (beta never does in RMS mode): ensureGrad leaves a frozen
+            // tensor's grad unallocated, so it must not be written.
+            const bool grad_gamma = self_gamma->requiresGrad();
+            const bool grad_beta = !rms && self_beta->requiresGrad();
+            const bool grad_input = self_input->requiresGrad();
+            if (grad_gamma) self_gamma->ensureGrad();
+            if (grad_beta) self_beta->ensureGrad();
+            if (grad_input) self_input->ensureGrad();
 
-            const float* output_grad_data = output->getGrad().raw();
+            const float* output_grad_data = output.getGrad().raw();
             const float* gamma_data = self_gamma->getData().raw();
             const float* input_data = self_input->getData().raw();
-            float* dGamma_out = self_gamma->getGrad().raw();
-            float* dBeta_out = rms ? nullptr : self_beta->getGrad().raw();
-            float* dInput_out = self_input->getGrad().raw();
+            float* dInput_out = grad_input ? self_input->getGrad().raw() : nullptr;
 
             // dInput rows are disjoint across the parallel chunks, but
             // dGamma/dBeta sum over every row. Each fixed block of
@@ -130,13 +130,13 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
             constexpr size_t kRowsPerBlock = 16;
             const size_t d = static_cast<size_t>(self_d);
             const size_t num_blocks = (total_rows + kRowsPerBlock - 1) / kRowsPerBlock;
-            std::vector<float> g_parts(num_blocks * d, 0.0f);
-            std::vector<float> b_parts(rms ? 0 : num_blocks * d, 0.0f);
+            std::vector<float> g_parts(grad_gamma ? num_blocks * d : 0, 0.0f);
+            std::vector<float> b_parts(grad_beta ? num_blocks * d : 0, 0.0f);
 
             parallel_for(num_blocks, 1, [&](size_t block_begin, size_t block_end) {
                 for (size_t blk = block_begin; blk < block_end; blk++) {
-                    float* g_part = g_parts.data() + blk * d;
-                    float* b_part = rms ? nullptr : b_parts.data() + blk * d;
+                    float* g_part = grad_gamma ? g_parts.data() + blk * d : nullptr;
+                    float* b_part = grad_beta ? b_parts.data() + blk * d : nullptr;
                     const size_t begin = blk * kRowsPerBlock;
                     const size_t end = std::min(begin + kRowsPerBlock, static_cast<size_t>(total_rows));
 
@@ -148,14 +148,20 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                             const float r = inv_stds[i];
                             const float* dout_row = output_grad_data + i * self_d;
                             const float* input_row = input_data + i * self_d;
-                            float* dInput_row = dInput_out + i * self_d;
+
+                            if (g_part) {
+                                for (int j = 0; j < self_d; j++) {
+                                    g_part[j] += dout_row[j] * input_row[j] * r;
+                                }
+                            }
+                            if (!dInput_out) continue;
 
                             float dot = 0.0f;
                             for (int j = 0; j < self_d; j++) {
-                                g_part[j] += dout_row[j] * input_row[j] * r;
                                 dot += dout_row[j] * gamma_data[j] * input_row[j];
                             }
                             const float k = dot * r * r * r / self_d;
+                            float* dInput_row = dInput_out + i * self_d;
                             for (int j = 0; j < self_d; j++) {
                                 dInput_row[j] += gamma_data[j] * dout_row[j] * r
                                                - input_row[j] * k;
@@ -166,21 +172,26 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
 
                     for (size_t i = begin; i < end; i++) {
                         const float std_inv = inv_stds[i];
-                        // d(var)^(-1/2)/d(var) = -0.5 * (var + eps)^(-3/2) = -0.5 * std_inv^3,
-                        // one multiply per row instead of a pow per element.
-                        const float dvar_scale = -0.5f * std_inv * std_inv * std_inv;
                         const float mean = means[i];
                         const float* dout_row = output_grad_data + i * self_d;
                         const float* input_row = input_data + i * self_d;
 
+                        if (g_part || b_part) {
+                            for (int j = 0; j < self_d; j++) {
+                                const float x_minus_mean = input_row[j] - mean;
+                                const float normalized_ij = x_minus_mean * std_inv;
+                                if (g_part) g_part[j] += dout_row[j] * normalized_ij;
+                                if (b_part) b_part[j] += dout_row[j];
+                            }
+                        }
+                        if (!dInput_out) continue;
+
+                        // d(var)^(-1/2)/d(var) = -0.5 * (var + eps)^(-3/2) = -0.5 * std_inv^3,
+                        // one multiply per row instead of a pow per element.
+                        const float dvar_scale = -0.5f * std_inv * std_inv * std_inv;
                         float dvar = 0.0f;
                         for (int j = 0; j < self_d; j++) {
                             const float x_minus_mean = input_row[j] - mean;
-                            const float normalized_ij = x_minus_mean * std_inv;
-
-                            g_part[j] += dout_row[j] * normalized_ij;
-                            b_part[j] += dout_row[j];
-
                             const float dnorm = dout_row[j] * gamma_data[j];
                             dvar += dnorm * x_minus_mean * dvar_scale;
                         }
@@ -202,10 +213,16 @@ std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) co
                 }
             });
 
-            for (size_t blk = 0; blk < num_blocks; blk++) {
-                const float* g_part = g_parts.data() + blk * d;
-                for (size_t j = 0; j < d; j++) dGamma_out[j] += g_part[j];
-                if (!rms) {
+            if (grad_gamma) {
+                float* dGamma_out = self_gamma->getGrad().raw();
+                for (size_t blk = 0; blk < num_blocks; blk++) {
+                    const float* g_part = g_parts.data() + blk * d;
+                    for (size_t j = 0; j < d; j++) dGamma_out[j] += g_part[j];
+                }
+            }
+            if (grad_beta) {
+                float* dBeta_out = self_beta->getGrad().raw();
+                for (size_t blk = 0; blk < num_blocks; blk++) {
                     const float* b_part = b_parts.data() + blk * d;
                     for (size_t j = 0; j < d; j++) dBeta_out[j] += b_part[j];
                 }

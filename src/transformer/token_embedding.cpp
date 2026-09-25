@@ -40,8 +40,11 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
     }
 
     const int total = batch_size * seq_len;
-    Tensor result = output_3d ? Tensor(batch_size, seq_len, d_model)
-                              : Tensor(seq_len, d_model);
+    // Every row is written below, so no zero-fill.
+    Tensor result = Tensor::uninitialized(
+        output_3d ? Shape{static_cast<size_t>(batch_size), static_cast<size_t>(seq_len),
+                          static_cast<size_t>(d_model)}
+                  : Shape{static_cast<size_t>(seq_len), static_cast<size_t>(d_model)});
 
     std::vector<int> token_ids(total);
     const float* ids = input_tensor.raw();
@@ -64,22 +67,18 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
 
     // The lookup differentiates w.r.t. the embedding table, not the discrete
     // token IDs, so grad tracking must key off the table.
-    bool needs_grad = embedding_table->requiresGrad() || input_ids->requiresGrad();
+    const bool needs_grad = compute_requires_grad(embedding_table, input_ids);
     auto output = Variable::create(std::move(result), needs_grad);
 
-    if (embedding_table->requiresGrad()) {
+    if (needs_grad && embedding_table->requiresGrad()) {
         auto table_var = embedding_table;
         const float scale = embedding_scale;
         const int dm = d_model;
 
-        output->addChild(embedding_table);
-        output->setBackwardFn([table_var,
-                               output_weak = std::weak_ptr<Variable>(output),
-                               ids = std::move(token_ids), scale, dm]() {
-            auto output = output_weak.lock();
-            if (!output || !output->hasGrad()) return;
+        output->setBackward({embedding_table},
+                            [table_var, ids = std::move(token_ids), scale, dm](Variable& output) {
             table_var->ensureGrad();
-            const float* dOut = output->getGrad().raw();
+            const float* dOut = output.getGrad().raw();
             float* dTable = table_var->getGrad().raw();
 
             for (size_t t = 0; t < ids.size(); t++) {

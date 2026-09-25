@@ -56,36 +56,26 @@ std::shared_ptr<Variable> GPTModel::forward(std::shared_ptr<Variable> token_ids,
     const Tensor& emb_data = embedding_table->getData();
     const Tensor& norm_data = normalized_output->getData();
 
-    bool is_3d = norm_data.getIs3D();
-    int batch_size = is_3d ? norm_data.getBatchSize() : 1;
-    int seq_len = norm_data.getRows();
-    int d_model_dim = norm_data.getCols();
-    int vocab = emb_data.getRows();
+    const int d_model_dim = static_cast<int>(norm_data.getCols());
+    const int vocab = static_cast<int>(emb_data.getRows());
 
     // Weight tying: logits = norm @ E^T. A 3D (batch, seq, d) tensor is
     // contiguous, so it multiplies as one flat (batch*seq, d) matrix, and
     // the transpose happens inside the sgemm instead of materializing E^T.
-    int flat_rows = batch_size * seq_len;
-    Tensor logits_tensor = is_3d
-        ? Tensor::uninitialized(batch_size, seq_len, vocab)
-        : Tensor::uninitialized(seq_len, vocab);
+    const int flat_rows = static_cast<int>(norm_data.getFlatRows());
+    Tensor logits_tensor = Tensor::uninitialized(norm_data.shape().with_last_dim(vocab));
     blas_sgemm_ex(norm_data.raw(), emb_data.raw(), logits_tensor.raw(),
                   flat_rows, vocab, d_model_dim,
                   false, true, 1.0f, 0.0f);
 
     auto logits = Variable::create(std::move(logits_tensor),
-                                     normalized_output->requiresGrad() || embedding_table->requiresGrad());
+                                   compute_requires_grad(normalized_output, embedding_table));
 
     if (logits->requiresGrad()) {
-        logits->addChild(normalized_output);
-        logits->addChild(embedding_table);
-
-        logits->setBackwardFn([normalized_output, embedding_table,
-                               logits_weak = std::weak_ptr<Variable>(logits),
-                               flat_rows, vocab, d_model_dim]() {
-            auto logits = logits_weak.lock();
-            if (!logits || !logits->hasGrad()) return;
-            const Tensor& grad_logits = logits->getGrad();
+        logits->setBackward({normalized_output, embedding_table},
+                            [normalized_output, embedding_table,
+                             flat_rows, vocab, d_model_dim](Variable& logits) {
+            const Tensor& grad_logits = logits.getGrad();
             const Tensor& norm_data = normalized_output->getData();
             const Tensor& emb_data = embedding_table->getData();
 

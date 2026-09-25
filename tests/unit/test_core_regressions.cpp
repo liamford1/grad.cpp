@@ -1,6 +1,7 @@
 // Regression tests for core-engine invariants: dropout RNG independence
 // and determinism, nested parallel_for, tensor shape validation, loss
-// gradients, checkpoint validation, and the 2D attention path.
+// gradients, checkpoint validation, the 2D attention path, and the general
+// tensor Shape.
 //
 // Uses its own CHECK rather than assert so it stays meaningful in Release
 // (NDEBUG) builds.
@@ -190,6 +191,49 @@ void test_tensor_shapes() {
 
     Tensor m1(2, 3, 4), m2(5, 3, 4);
     CHECK(throws<std::invalid_argument>([&] { m1.multiply_inplace(m2); }));
+}
+
+void test_shape() {
+    const Shape s{2, 3, 4};
+    CHECK(s.rank() == 3 && s.numel() == 24);
+    CHECK(s.to_string() == "(2, 3, 4)");
+    CHECK(Shape{}.to_string() == "()" && Shape{}.numel() == 0);
+    CHECK(s == (Shape{2, 3, 4}) && s != (Shape{2, 3, 5}) && s != (Shape{2, 3}));
+    CHECK(s.with_last_dim(7) == (Shape{2, 3, 7}) && s.with_last_dim(7).numel() == 42);
+    CHECK(s.transposed() == (Shape{2, 4, 3}) && (Shape{5}).transposed() == Shape{5});
+    CHECK(throws<std::invalid_argument>([] { Shape t{1, 2, 3, 4, 5}; (void)t; }));
+    CHECK(throws<std::invalid_argument>([] { Tensor t(Shape{}); (void)t; }));
+    CHECK(throws<std::invalid_argument>([] { Tensor t(Shape{3, 0}); (void)t; }));
+
+    // The 2D/3D view over each rank; leading dimensions fold into the batch.
+    const Tensor v(Shape{6});
+    CHECK(v.getRows() == 1 && v.getCols() == 6 && v.getBatchSize() == 1 && !v.getIs3D());
+    const Tensor m(3, 4);
+    CHECK(m.getRows() == 3 && m.getBatchSize() == 1 && m.getFlatRows() == 3 && !m.getIs3D());
+    Tensor q(Shape{2, 3, 4, 5});
+    CHECK(q.getBatchSize() == 6 && q.getRows() == 4 && q.getFlatRows() == 24 && q.getIs3D());
+    Tensor moved = std::move(q);
+    CHECK(q.numel() == 0 && q.rank() == 0 && q.getBatchSize() == 0 && q.getRows() == 0);
+    CHECK(moved.shape() == (Shape{2, 3, 4, 5}));
+
+    // Elementwise ops are rank-agnostic; like-constructors copy the shape.
+    for (size_t i = 0; i < moved.numel(); i++) moved.values()[i] = static_cast<float>(i);
+    Tensor z = Tensor::zeros_like(moved);
+    CHECK(z.shape() == moved.shape() && z.values()[z.numel() - 1] == 0.0f);
+    CHECK(Tensor::empty_like(moved).shape() == moved.shape());
+    const Tensor doubled = moved.add(moved);
+    CHECK(doubled.shape() == moved.shape() && doubled.values()[119] == 238.0f);
+    CHECK(throws<std::invalid_argument>([&] { (void)moved.subtract(Tensor(Shape{2, 3, 4, 6})); }));
+    CHECK(throws<std::invalid_argument>([&] { z.add_inplace(Tensor(6, 20)); }));
+
+    // Batched transpose and matmul keep the leading dimensions.
+    const Tensor t = moved.transpose();
+    CHECK(t.shape() == (Shape{2, 3, 5, 4}) && t.getValue(1, 2, 3) == moved.getValue(1, 3, 2));
+    const Tensor w(5, 7);
+    CHECK(moved.matmul(w).shape() == (Shape{2, 3, 4, 7}));
+    CHECK(throws<std::invalid_argument>([&] { (void)m.matmul(Tensor(3, 4)); }));
+    CHECK(throws<std::invalid_argument>([&] { (void)m.matmul(Tensor(2, 4, 5)); }));
+    CHECK(throws<std::invalid_argument>([&] { (void)Tensor(2, 3, 4).matmul(Tensor(3, 4, 5)); }));
 }
 
 void test_nll_upstream_gradient() {
@@ -433,6 +477,7 @@ int main() {
     test_init_seed();
     test_parallel_for();
     test_tensor_shapes();
+    test_shape();
     test_nll_upstream_gradient();
     test_attention_2d_dropout_gradients(/*rope=*/false);
     test_attention_2d_dropout_gradients(/*rope=*/true);
