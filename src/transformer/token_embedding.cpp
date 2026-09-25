@@ -40,8 +40,11 @@ std::shared_ptr<Variable> TokenEmbedding::forward(std::shared_ptr<Variable> inpu
     }
 
     const int total = batch_size * seq_len;
-    Tensor result = output_3d ? Tensor(batch_size, seq_len, d_model)
-                              : Tensor(seq_len, d_model);
+    // Every row is written below, so no zero-fill.
+    Tensor result = Tensor::uninitialized(
+        output_3d ? Shape{static_cast<size_t>(batch_size), static_cast<size_t>(seq_len),
+                          static_cast<size_t>(d_model)}
+                  : Shape{static_cast<size_t>(seq_len), static_cast<size_t>(d_model)});
 
     std::vector<int> token_ids(total);
     const float* ids = input_tensor.raw();

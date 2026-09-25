@@ -1,8 +1,10 @@
 #include "transformer/tensor.h"
 #include "transformer/layer_norm.h"
 #include "transformer/parallel.h"
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 LayerNorm::LayerNorm(int d_model, bool rms) :
@@ -19,18 +21,18 @@ LayerNorm::LayerNorm(int d_model, bool rms) :
 }
 
 
-// Rows are contiguous whether the input is 2D (rows, d) or 3D
-// (batch, seq, d), so both cases are one loop over batch*rows.
+// Normalizes over the innermost dimension. Rows are contiguous at any
+// rank, so a 2D (rows, d) and a 3D (batch, seq, d) input are the same loop
+// over the flat rows.
 std::shared_ptr<Variable> LayerNorm::forward(std::shared_ptr<Variable> input) const {
     const Tensor& input_tensor = input->getData();
+    if (input_tensor.getCols() != static_cast<size_t>(d_model)) {
+        throw std::invalid_argument("LayerNorm: input " + input_tensor.shape().to_string() +
+                                    " does not end in d_model " + std::to_string(d_model));
+    }
 
-    const int total_rows = input_tensor.getIs3D()
-        ? static_cast<int>(input_tensor.getBatchSize() * input_tensor.getRows())
-        : static_cast<int>(input_tensor.getRows());
-
-    Tensor result = input_tensor.getIs3D()
-        ? Tensor::uninitialized(input_tensor.getBatchSize(), input_tensor.getRows(), d_model)
-        : Tensor::uninitialized(input_tensor.getRows(), d_model);
+    const int total_rows = static_cast<int>(input_tensor.getFlatRows());
+    Tensor result = Tensor::empty_like(input_tensor);
 
     const float* input_data = input_tensor.raw();
     const float* gamma_data = gamma->getData().raw();

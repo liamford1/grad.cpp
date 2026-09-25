@@ -8,6 +8,88 @@
 #include <string>
 #include <vector>
 
+namespace {
+
+// Sums a broadcasting add's output gradient g (viewed as batch x rows x
+// cols) down to a 2D operand of shape (R, C), over every axis the operand
+// was broadcast along: the batch always, rows if br, columns if bc.
+Tensor reduce_broadcast(const Tensor& g, size_t R, size_t C, bool br, bool bc) {
+    Tensor out(R, C);
+    const size_t B = g.getBatchSize();
+    const size_t GR = g.getRows();
+    const size_t GC = g.getCols();
+    const float* g_ptr = g.raw();
+    float* out_ptr = out.raw();
+
+    if (br && bc) {
+        float s = 0.0f;
+        for (size_t i = 0; i < g.numel(); ++i) s += g_ptr[i];
+        out_ptr[0] = s;
+    } else if (br) {
+        for (size_t j = 0; j < C; ++j) {
+            float s = 0.0f;
+            for (size_t b = 0; b < B; ++b) {
+                for (size_t ii = 0; ii < GR; ++ii) {
+                    s += g_ptr[b * GR * GC + ii * GC + j];
+                }
+            }
+            out_ptr[j] = s;
+        }
+    } else if (bc) {
+        for (size_t i = 0; i < R; ++i) {
+            float s = 0.0f;
+            for (size_t b = 0; b < B; ++b) {
+                const float* row = g_ptr + b * GR * GC + i * GC;
+                for (size_t jj = 0; jj < GC; ++jj) s += row[jj];
+            }
+            out_ptr[i] = s;
+        }
+    } else {
+        for (size_t b = 0; b < B; ++b) {
+            for (size_t i = 0; i < R; ++i) {
+                const float* row = g_ptr + b * GR * GC + i * GC;
+                float* out_row = out_ptr + i * C;
+                for (size_t j = 0; j < C; ++j) out_row[j] += row[j];
+            }
+        }
+    }
+    return out;
+}
+
+// Adds the gradient of an add's output, dO, into grad, the gradient of the
+// operand whose data is x. Fast paths cover the two shapes that dominate
+// training: same-shape adds (residual connections) accumulate directly,
+// and row-vector biases reduce via cache-friendly row-major column sums.
+// Any other 2D operand goes through the general reduction.
+void accumulate_add_grad(const Tensor& dO, const Tensor& x, Tensor& grad) {
+    if (x.shape() == dO.shape()) {
+        blas_vadd(grad.raw(), dO.raw(), grad.raw(), dO.numel());
+        return;
+    }
+    if (x.getIs3D()) {
+        throw std::runtime_error("add backward: operand " + x.shape().to_string() +
+                                 " does not broadcast to " + dO.shape().to_string());
+    }
+    const size_t C = dO.getCols();
+    if (x.getRows() == 1 && x.getCols() == C && C > 1) {
+        const size_t rows = dO.getFlatRows();
+        const float* g = dO.raw();
+        float* out = grad.raw();
+        for (size_t i = 0; i < rows; i++) {
+            const float* row = g + i * C;
+            for (size_t j = 0; j < C; j++) {
+                out[j] += row[j];
+            }
+        }
+        return;
+    }
+    const bool br = x.getRows() == 1 && dO.getRows() > 1;
+    const bool bc = x.getCols() == 1 && dO.getCols() > 1;
+    grad.add_inplace(reduce_broadcast(dO, x.getRows(), x.getCols(), br, bc));
+}
+
+}  // namespace
+
 // Grads stay empty until ensureGrad() - see the header note on lazy
 // gradient allocation.
 Variable::Variable(Private, const Tensor& data, bool requires_grad)
@@ -24,10 +106,8 @@ Variable::Variable(Private, int batch_size, int rows, int cols, bool requires_gr
 
 void Variable::ensureGrad() {
     if (!requires_grad || grad.numel() > 0) return;
-    // The Tensor constructor zero-fills, so the grad is accumulation-ready.
-    grad = data.getIs3D()
-        ? Tensor(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor(data.getRows(), data.getCols());
+    // Zero-filled, so the grad is accumulation-ready.
+    grad = Tensor::zeros_like(data);
 }
 
 std::shared_ptr<Variable> Variable::create(const Tensor& data, bool requires_grad) {
@@ -78,9 +158,9 @@ std::shared_ptr<Variable> Variable::matmul(std::shared_ptr<Variable> other) {
                 // sums dW over batch*rows with no temporaries.
                 const Tensor& X = self_ptr->data;
                 const Tensor& dY = output->grad;
-                int K = other->data.getRows();
-                int N = other->data.getCols();
-                int flat = X.getIs3D() ? X.getBatchSize() * X.getRows() : X.getRows();
+                const int K = static_cast<int>(other->data.getRows());
+                const int N = static_cast<int>(other->data.getCols());
+                const int flat = static_cast<int>(X.getFlatRows());
 
                 if (self_ptr->requires_grad) {
                     self_ptr->ensureGrad();
@@ -131,181 +211,13 @@ std::shared_ptr<Variable> Variable::add(std::shared_ptr<Variable> other) {
             auto output = output_weak.lock();
             if (!output || !output->hasGrad()) return;
 
-            const Tensor& x  = self_ptr->data;
-            const Tensor& dO = output->grad;
-
-            auto reduce2D = [](const Tensor& g, int R, int C, bool br, bool bc) -> Tensor {
-                if (!br && !bc && g.getRows() == static_cast<size_t>(R) && g.getCols() == static_cast<size_t>(C) && !g.getIs3D()) {
-                    Tensor out(R, C);
-                    const float* src = g.raw();
-                    float* dst = out.raw();
-                    const int total = R * C;
-                    for (int i = 0; i < total; ++i) dst[i] = src[i];
-                    return out;
-                }
-
-                Tensor out(R, C);
-                const int GR = g.getRows();
-                const int GC = g.getCols();
-                
-                const float* g_ptr = g.raw();
-                float* out_ptr = out.raw();
-
-                if (br && bc) {
-                    float s = 0.0f;
-                    const int total = GR * GC;
-                    for (int i = 0; i < total; ++i) {
-                        s += g_ptr[i];
-                    }
-                    out_ptr[0] = s;
-                } else if (br) {
-                    for (int j = 0; j < C; ++j) {
-                        float s = 0.0f;
-                        for (int ii = 0; ii < GR; ++ii) {
-                            s += g_ptr[ii * GC + j];
-                        }
-                        out_ptr[j] = s;
-                    }
-                } else if (bc) {
-                    for (int i = 0; i < R; ++i) {
-                        float s = 0.0f;
-                        const float* g_row = g_ptr + i * GC;
-                        for (int jj = 0; jj < GC; ++jj) {
-                            s += g_row[jj];
-                        }
-                        out_ptr[i] = s;
-                    }
-                } else {
-                    for (int i = 0; i < R; ++i) {
-                        for (int j = 0; j < C; ++j) {
-                            out_ptr[i * C + j] = g_ptr[i * GC + j];
-                        }
-                    }
-                }
-                return out;
-            };
-
-            auto reduce3Dfrom2D = [](const Tensor& g3, int R, int C, bool br, bool bc) -> Tensor {
-                Tensor out(R, C);
-                const int B  = g3.getBatchSize();
-                const int GR = g3.getRows();
-                const int GC = g3.getCols();
-
-                const float* g3_ptr = g3.raw();
-                float* out_ptr = out.raw();
-
-                if (!br && !bc) {
-                    for (int b = 0; b < B; ++b) {
-                        const float* batch_ptr = g3_ptr + b * GR * GC;
-                        for (int i = 0; i < R; ++i) {
-                            const float* row_ptr = batch_ptr + i * GC;
-                            float* out_row = out_ptr + i * C;
-                            for (int j = 0; j < C; ++j) {
-                                out_row[j] += row_ptr[j];
-                            }
-                        }
-                    }
-                    return out;
-                }
-
-                if (br && bc) {
-                    float s = 0.0f;
-                    const int total = B * GR * GC;
-                    for (int i = 0; i < total; ++i) {
-                        s += g3_ptr[i];
-                    }
-                    out_ptr[0] = s;
-                } else if (br) {
-                    for (int j = 0; j < C; ++j) {
-                        float s = 0.0f;
-                        for (int b = 0; b < B; ++b) {
-                            for (int ii = 0; ii < GR; ++ii) {
-                                s += g3_ptr[b * GR * GC + ii * GC + j];
-                            }
-                        }
-                        out_ptr[j] = s;
-                    }
-                } else {
-                    for (int i = 0; i < R; ++i) {
-                        float s = 0.0f;
-                        for (int b = 0; b < B; ++b) {
-                            const float* batch_row = g3_ptr + b * GR * GC + i * GC;
-                            for (int jj = 0; jj < GC; ++jj) {
-                                s += batch_row[jj];
-                            }
-                        }
-                        out_ptr[i] = s;
-                    }
-                }
-                return out;
-            };
-
-            // Fast paths for the two shapes that dominate training:
-            // same-shape adds (residual connections) accumulate directly,
-            // and row-vector biases reduce via cache-friendly row-major
-            // column sums. Everything else falls back to the general
-            // broadcast reduction below.
-            auto fast_accumulate = [&dO](const Tensor& shape, Tensor& grad) -> bool {
-                const bool same_shape = shape.getIs3D() == dO.getIs3D()
-                    && shape.getRows() == dO.getRows()
-                    && shape.getCols() == dO.getCols()
-                    && (!shape.getIs3D() || shape.getBatchSize() == dO.getBatchSize());
-                if (same_shape) {
-                    blas_vadd(grad.raw(), dO.raw(), grad.raw(), dO.numel());
-                    return true;
-                }
-                if (!shape.getIs3D() && shape.getRows() == 1
-                    && shape.getCols() == dO.getCols() && dO.getCols() > 1) {
-                    const size_t rows = dO.getIs3D()
-                        ? dO.getBatchSize() * dO.getRows() : dO.getRows();
-                    const size_t C = dO.getCols();
-                    const float* g = dO.raw();
-                    float* out = grad.raw();
-                    for (size_t i = 0; i < rows; i++) {
-                        const float* row = g + i * C;
-                        for (size_t j = 0; j < C; j++) {
-                            out[j] += row[j];
-                        }
-                    }
-                    return true;
-                }
-                return false;
-            };
-
             if (self_ptr->requires_grad) self_ptr->ensureGrad();
             if (other->requires_grad) other->ensureGrad();
-
-            if (self_ptr->requires_grad && !fast_accumulate(x, self_ptr->grad)) {
-                if (!x.getIs3D() && !dO.getIs3D()) {
-                    bool br = (x.getRows() == 1) && (dO.getRows() > 1);
-                    bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
-                    Tensor dx = reduce2D(dO, x.getRows(), x.getCols(), br, bc);
-                    self_ptr->grad.add_inplace(dx);
-                } else if (!x.getIs3D() && dO.getIs3D()) {
-                    bool br = (x.getRows() == 1) && (dO.getRows() > 1);
-                    bool bc = (x.getCols() == 1) && (dO.getCols() > 1);
-                    Tensor dx = reduce3Dfrom2D(dO, x.getRows(), x.getCols(), br, bc);
-                    self_ptr->grad.add_inplace(dx);
-                } else {
-                    throw std::runtime_error("add backward: unexpected shape combination for x");
-                }
+            if (self_ptr->requires_grad) {
+                accumulate_add_grad(output->grad, self_ptr->data, self_ptr->grad);
             }
-
-            if (other->requires_grad && !fast_accumulate(other->data, other->grad)) {
-                const Tensor& yD = other->data;
-                if (!yD.getIs3D() && !dO.getIs3D()) {
-                    bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
-                    bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
-                    Tensor dy = reduce2D(dO, yD.getRows(), yD.getCols(), br, bc);
-                    other->grad.add_inplace(dy);
-                } else if (!yD.getIs3D() && dO.getIs3D()) {
-                    bool br = (yD.getRows() == 1) && (dO.getRows() > 1);
-                    bool bc = (yD.getCols() == 1) && (dO.getCols() > 1);
-                    Tensor dy = reduce3Dfrom2D(dO, yD.getRows(), yD.getCols(), br, bc);
-                    other->grad.add_inplace(dy);
-                } else {
-                    throw std::runtime_error("add backward: unexpected shape combination for y");
-                }
+            if (other->requires_grad) {
+                accumulate_add_grad(output->grad, other->data, other->grad);
             }
         });
     }
@@ -359,53 +271,28 @@ std::shared_ptr<Variable> Variable::softmax() {
 
             if (self_ptr->requires_grad) {
                 self_ptr->ensureGrad();
-                if (result.getIs3D()) {
-                    Tensor temp_grad(result.getBatchSize(), result.getRows(), result.getCols());
-                    const float* result_data = result.raw();
-                    const float* grad_out_data = output->grad.raw();
-                    float* temp_grad_data = temp_grad.raw();
+                // Per row: dX = y * (dY - dot(y, dY)).
+                Tensor temp_grad = Tensor::empty_like(result);
+                const size_t rows = result.getFlatRows();
+                const size_t cols = result.getCols();
+                const float* result_data = result.raw();
+                const float* grad_out_data = output->grad.raw();
+                float* temp_grad_data = temp_grad.raw();
 
-                    for (size_t b = 0; b < result.getBatchSize(); b++) {
-                        const size_t batch_offset = b * result.getRows() * result.getCols();
+                for (size_t i = 0; i < rows; i++) {
+                    const float* row_result = result_data + i * cols;
+                    const float* row_grad_out = grad_out_data + i * cols;
+                    float* row_grad = temp_grad_data + i * cols;
 
-                        for (size_t i = 0; i < result.getRows(); i++) {
-                            const float* row_result = result_data + batch_offset + i * result.getCols();
-                            const float* row_grad_out = grad_out_data + batch_offset + i * result.getCols();
-                            float* row_grad = temp_grad_data + batch_offset + i * result.getCols();
-
-                            float dot_product = 0.0f;
-                            for (size_t j = 0; j < result.getCols(); j++) {
-                                dot_product += row_result[j] * row_grad_out[j];
-                            }
-
-                            for (size_t j = 0; j < result.getCols(); j++) {
-                                row_grad[j] = row_result[j] * (row_grad_out[j] - dot_product);
-                            }
-                        }
+                    float dot_product = 0.0f;
+                    for (size_t j = 0; j < cols; j++) {
+                        dot_product += row_result[j] * row_grad_out[j];
                     }
-                    self_ptr->grad.add_inplace(temp_grad);
-                } else {
-                    Tensor temp_grad(result.getRows(), result.getCols());
-                    const float* result_data = result.raw();
-                    const float* grad_out_data = output->grad.raw();
-                    float* temp_grad_data = temp_grad.raw();
-
-                    for (size_t i = 0; i < result.getRows(); i++) {
-                        const float* row_result = result_data + i * result.getCols();
-                        const float* row_grad_out = grad_out_data + i * result.getCols();
-                        float* row_grad = temp_grad_data + i * result.getCols();
-
-                        float dot_product = 0.0f;
-                        for (size_t j = 0; j < result.getCols(); j++) {
-                            dot_product += row_result[j] * row_grad_out[j];
-                        }
-
-                        for (size_t j = 0; j < result.getCols(); j++) {
-                            row_grad[j] = row_result[j] * (row_grad_out[j] - dot_product);
-                        }
+                    for (size_t j = 0; j < cols; j++) {
+                        row_grad[j] = row_result[j] * (row_grad_out[j] - dot_product);
                     }
-                    self_ptr->grad.add_inplace(temp_grad);
                 }
+                self_ptr->grad.add_inplace(temp_grad);
             }
         });
     }
@@ -423,9 +310,7 @@ std::shared_ptr<Variable> Variable::gelu() {
     const size_t n = data.numel();
     const float* x = data.raw();
 
-    Tensor result = data.getIs3D()
-        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor::uninitialized(data.getRows(), data.getCols());
+    Tensor result = Tensor::empty_like(data);
     float* out = result.raw();
 
     parallel_for(n, 32768, [&](size_t begin, size_t end) {
@@ -486,9 +371,7 @@ std::shared_ptr<Variable> Variable::silu() {
     const size_t n = data.numel();
     const float* x = data.raw();
 
-    Tensor result = data.getIs3D()
-        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor::uninitialized(data.getRows(), data.getCols());
+    Tensor result = Tensor::empty_like(data);
     float* out = result.raw();
 
     parallel_for(n, 32768, [&](size_t begin, size_t end) {
@@ -578,9 +461,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
 
     data.assertValid("Variable::dropout(x)");
     float scale = 1.0f / (1.0f - dropout_rate);
-    Tensor mask = data.getIs3D()
-        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor::uninitialized(data.getRows(), data.getCols());
+    Tensor mask = Tensor::empty_like(data);
 
     fill_dropout_mask(mask.raw(), mask.numel(), dropout_rate, scale);
 
@@ -606,16 +487,12 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
 }
 
 std::shared_ptr<Variable> Variable::log_softmax() {
-    // Rows are contiguous whether the tensor is 2D or 3D, so both cases are
-    // one loop over batch*rows. The exp goes through vec_exp (SIMD).
+    // Rows are contiguous at any rank, so every batch is one loop over the
+    // flat rows. The exp goes through vec_exp (SIMD).
     const size_t cols = data.getCols();
-    const size_t total_rows = data.getIs3D()
-        ? data.getBatchSize() * data.getRows()
-        : data.getRows();
+    const size_t total_rows = data.getFlatRows();
 
-    Tensor result = data.getIs3D()
-        ? Tensor::uninitialized(data.getBatchSize(), data.getRows(), data.getCols())
-        : Tensor::uninitialized(data.getRows(), data.getCols());
+    Tensor result = Tensor::empty_like(data);
 
     const float* in = data.raw();
     float* out = result.raw();

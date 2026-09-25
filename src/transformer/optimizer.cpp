@@ -49,13 +49,8 @@ void AdamOptimizer::step() {
         Variable* param_ptr = param.get();
 
         if (m_.find(param_ptr) == m_.end()) {
-            if (data.getIs3D()) {
-                m_[param_ptr] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
-                v_[param_ptr] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
-            } else {
-                m_[param_ptr] = Tensor(data.getRows(), data.getCols());
-                v_[param_ptr] = Tensor(data.getRows(), data.getCols());
-            }
+            m_[param_ptr] = Tensor::zeros_like(data);
+            v_[param_ptr] = Tensor::zeros_like(data);
         }
 
         Tensor& m = m_[param_ptr];
@@ -148,13 +143,8 @@ bool AdamOptimizer::load_state(std::istream& in) {
 
         Variable* key = param.get();
         if (m_.find(key) == m_.end()) {
-            if (data.getIs3D()) {
-                m_[key] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
-                v_[key] = Tensor(data.getBatchSize(), data.getRows(), data.getCols());
-            } else {
-                m_[key] = Tensor(data.getRows(), data.getCols());
-                v_[key] = Tensor(data.getRows(), data.getCols());
-            }
+            m_[key] = Tensor::zeros_like(data);
+            v_[key] = Tensor::zeros_like(data);
         }
         in.read(reinterpret_cast<char*>(m_[key].raw()), numel * sizeof(float));
         in.read(reinterpret_cast<char*>(v_[key].raw()), numel * sizeof(float));
