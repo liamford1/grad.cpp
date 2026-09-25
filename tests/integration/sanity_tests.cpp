@@ -154,6 +154,32 @@ void test_dataloader() {
     std::cout << "DataLoader test complete" << std::endl;
 }
 
+// Capped validation reads SpreadSubset: `count` windows at
+// floor(i * size / count), first window included, the same on every read.
+void test_spread_subset() {
+    utils::print_header("SpreadSubset: evenly spread, deterministic windows");
+    std::vector<int> tokens(1001);
+    for (int i = 0; i < 1001; i++) tokens[i] = i;
+    auto source = std::make_shared<TextDataset>(tokens, 10, 10);  // 99 windows
+    SpreadSubset subset(source, 7);
+    if (subset.size() != 7) throw std::runtime_error("SpreadSubset size is not the requested count");
+    for (size_t i = 0; i < subset.size(); i++) {
+        const size_t expected_window = i * source->size() / subset.size();
+        const int first_token = subset.get_item(i).first.front();
+        if (first_token != static_cast<int>(expected_window * 10)) {
+            throw std::runtime_error("SpreadSubset window " + std::to_string(i) + " starts at token "
+                                     + std::to_string(first_token));
+        }
+    }
+    if (subset.get_item(6).first.front() < 800) {
+        throw std::runtime_error("SpreadSubset does not reach the end of the source");
+    }
+    if (SpreadSubset(source, 1000).size() != source->size()) {
+        throw std::runtime_error("SpreadSubset count is not capped at the source size");
+    }
+    std::cout << "SUCCESS" << std::endl;
+}
+
 void benchmark_training_speed() {
     utils::print_header("Performance Benchmark: 100 Steps");
 
@@ -405,6 +431,7 @@ int main(int argc, char* argv[]) {
                 test_overfit_tiny_sequence();
             } else if (test_name == "dataloader") {
                 test_dataloader();
+                test_spread_subset();
             } else if (test_name == "benchmark") {
                 benchmark_training_speed();
             } else if (test_name == "parity-gpt2") {
@@ -422,6 +449,7 @@ int main(int argc, char* argv[]) {
         } else {
             test_overfit_tiny_sequence();
             test_dataloader();
+            test_spread_subset();
             test_inference_parity(GPTArch::GPT2);
             test_inference_parity(GPTArch::Modern);
             test_file_formats();

@@ -99,6 +99,14 @@ Trainer::Trainer(const TrainingConfig& config,
                              config_.learning_rate * 0.1f);
 
     metrics_ = std::make_unique<utils::TrainingMetrics>(config_.num_steps);
+
+    if (val_loader_ && config_.max_eval_batches > 0) {
+        const size_t windows = static_cast<size_t>(config_.max_eval_batches)
+                             * static_cast<size_t>(val_loader_->batch_size());
+        eval_loader_ = std::make_unique<DataLoader>(
+            std::make_shared<SpreadSubset>(val_loader_->dataset(), windows),
+            val_loader_->batch_size(), /*shuffle=*/false);
+    }
 }
 
 std::string Trainer::resume_model_path() const {
@@ -330,8 +338,9 @@ double mean_loss(GPTModel& model, DataLoader& loader, int max_batches) {
 
 float Trainer::evaluate() {
     if (!val_loader_) return -1.0f;
-    val_loader_->reset();
-    return static_cast<float>(mean_loss(model_, *val_loader_, config_.max_eval_batches));
+    DataLoader& loader = eval_loader_ ? *eval_loader_ : *val_loader_;
+    loader.reset();
+    return static_cast<float>(mean_loss(model_, loader));
 }
 
 void Trainer::training_step(int step) {

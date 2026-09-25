@@ -33,8 +33,8 @@ struct TrainingConfig {
     float weight_decay = 0.1f;  // AdamW decay on weight matrices
     // Cap on batches per validation pass (0 = whole val set). At large
     // corpus scale the 5% holdout is tens of millions of tokens; a fixed
-    // sample of the (unshuffled) val loader gives a stable perplexity
-    // estimate in bounded time.
+    // set of windows spread evenly across it (SpreadSubset) gives a stable,
+    // representative perplexity estimate in bounded time.
     int max_eval_batches = 0;
 };
 
@@ -53,8 +53,9 @@ public:
     // (after a warning); the previous file, if any, is left untouched.
     [[nodiscard]] bool save_checkpoint(const std::string& path);
 
-    // Mean loss over the validation set, capped at max_eval_batches from
-    // its start (forward-only, no dropout). Perplexity is exp of this.
+    // Mean loss over the validation set, or with max_eval_batches > 0 over
+    // that many batches of windows spread evenly across it, the same ones
+    // on every call (forward-only, no dropout). Perplexity is exp of this.
     // Returns -1 if there is no val loader.
     [[nodiscard]] float evaluate();
 
@@ -70,6 +71,9 @@ private:
     GPTModel& model_;
     DataLoader& loader_;
     DataLoader* val_loader_;
+    // Capped-eval view of val_loader_'s dataset; null when evaluating the
+    // whole split.
+    std::unique_ptr<DataLoader> eval_loader_;
     std::unique_ptr<AdamOptimizer> optimizer_;
     std::unique_ptr<utils::TrainingMetrics> metrics_;
     std::unique_ptr<utils::MetricsLog> mlog_;
