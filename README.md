@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/liamford1/grad.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/liamford1/grad.cpp/actions/workflows/ci.yml)
 
-A from-scratch autograd engine and the GPT-style language models it trains, implemented in C++20: tensors, reverse-mode automatic differentiation with hand-derived backward passes, multi-head attention, AdamW, and a BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
+A from-scratch autograd engine and the GPT-style language models it trains, implemented in C++20: tensors, reverse-mode automatic differentiation with hand-derived backward passes, multi-head attention, AdamW, and a byte-level BPE tokenizer, with no ML frameworks. The only external dependency is a BLAS library (Apple Accelerate on macOS, OpenBLAS on Linux) for fast matrix multiplication.
 
 The largest model trained with it so far is a **70M-parameter GPT trained from scratch on TinyStories**: 40,000 optimizer steps, 328M tokens and 37 hours on a single M2 Pro. It reaches a held-out loss of 1.693 (perplexity 5.44). Here is a sample from it, at temperature 0.8, the first draw, unedited:
 
@@ -17,12 +17,12 @@ Every gradient that trained it was derived and implemented by hand. The [run rep
 - **Tensor library** (`tensor.h/cpp`): 2D/3D float tensors with BLAS-backed matmul, broadcasting, and numerically stable softmax/log-softmax
 - **Reverse-mode autograd** (`variable.h/cpp`): dynamic computation graph with hand-derived backward passes for every op, validated against numerical gradients
 - **Transformer components**: multi-head self-attention with causal masking, pre-LayerNorm residual blocks, GELU feed-forward, learned positional embeddings, and weight tying between the token embedding and the output projection
-- **BPE tokenizer**: byte-pair encoding trained on the corpus, with caching so repeat runs start instantly
+- **Tokenizers**: a lossless byte-level BPE (v2: GPT-2 pre-tokenization with Unicode letter and number classes, `<|endoftext|>` as a special token, incremental training, parallel encoding) beside the original whitespace BPE (v1) that the TinyStories checkpoint was trained with; checkpoints record which tokenizer they belong to
 - **Training stack**: AdamW (decoupled weight decay, matrices only) with linear warmup + cosine LR decay, gradient accumulation, gradient clipping, seeded dropout (each mask is a pure function of seed, stream and position, so it does not depend on thread scheduling), a memory-mapped data pipeline for multi-GB corpora, resumable validated checkpoints written atomically, per-step metrics, and held-out validation during training
 - **Text generation and evaluation**: KV-cached incremental decoding (`inference.h`), greedy or sampled with temperature, top-k, top-p, and a repetition penalty; `grad eval` scores a checkpoint on sampled or full held-out data
 - **Tooling**: a live terminal training dashboard (`grad watch`), a self-resuming training supervisor, a benchmark harness with repeated trials and JSON provenance, and a PyTorch baseline for head-to-head comparisons
 
-About 8,300 lines of implementation and 2,300 lines of tests.
+About 9,900 lines of implementation and 2,800 lines of tests.
 
 ## Trained models
 
@@ -72,15 +72,16 @@ Common commands:
 ./build/grad bench --steps 20 --trials 5 --json grad-benchmark.json
 
 # Pre-tokenize a corpus for fast, memory-mapped training (see below)
-./build/grad prepare my_corpus.txt 5000
+./build/grad prepare my_corpus.txt 5000                  # tokenizer v2
+./build/grad prepare my_corpus.txt 5000 --tokenizer v1   # the original tokenizer
 
 # List the model/training presets (--json for tools)
 ./build/grad presets
 ```
 
-`./build/grad --help` lists the commands, and `./build/grad <command> --help` shows a command's arguments, options, and defaults. Optional arguments can also be given by name (`--corpus`, `--vocab`, `--seq`, ...), so a later one can be set without spelling out those before it. `generate` and `chat` take the decoding settings as flags: `--temperature`, `--top-k`, `--top-p`, `--repetition-penalty`, `--max-tokens`, and `--greedy`.
+`./build/grad --help` lists the commands, and `./build/grad <command> --help` shows a command's arguments, options, and defaults. Optional arguments can also be given by name (`--corpus`, `--vocab`, `--seq`, ...), so a later one can be set without spelling out those before it. `generate` and `chat` take the decoding settings as flags: `--temperature`, `--top-k`, `--top-p`, `--repetition-penalty`, `--max-tokens`, and `--greedy`. Every command that tokenizes takes `--tokenizer v1|v2` (see [Tokenizers](#tokenizers)).
 
-The first `train` run also trains the BPE tokenizer and caches it (`tokenizer_5000.cache`); later runs reuse the cache. Checkpoints are plain binary dumps of the weights plus hyperparameters, so `generate` can reconstruct the model from the file alone.
+The first `train` run also trains the tokenizer and saves it (`data/shakespeare.txt.bytebpe_5000.tok`); later runs reuse it. A checkout that already has v1's `tokenizer_5000.cache` keeps using that. Checkpoints are plain binary dumps of the weights plus hyperparameters and the tokenizer's fingerprint, so `generate` can reconstruct the model from the file alone and pick the matching tokenizer.
 
 The build also produces an installable `grad::core` CMake target:
 
@@ -108,11 +109,12 @@ Release builds are tuned for the build machine with `-march=native` (that is how
 Any plain-text file works. For anything larger than Tiny Shakespeare, pre-tokenize it once:
 
 ```bash
-./build/grad prepare my_corpus.txt 5000   # writes my_corpus.txt.5000.{train,val}.bin
+./build/grad prepare my_corpus.txt 5000   # writes my_corpus.txt.bytebpe_5000.tok and
+                                          # my_corpus.txt.v2.5000.{train,val}.bin
 ./build/grad train my_corpus.txt          # memory-maps the .bin files
 ```
 
-`prepare` trains a BPE tokenizer on the corpus (sampling the first 32MB for merge learning on large corpora, since frequencies converge long before that) and writes the encoded tokens as binary files (uint16 per token, 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM: the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
+`prepare` trains a BPE tokenizer on the corpus (sampling the first 32MB for merge learning on large corpora, since frequencies converge long before that) and writes the encoded tokens as binary files (uint16 per token, so vocabularies up to 65,536; 95/5 train/val split). Training memory-maps them, so the corpus is never re-encoded and usable corpus size is bounded by disk, not RAM: the kernel pages in only the windows each batch actually touches. Without the `.bin` files, `train` falls back to encoding the corpus in memory, which is fine at Tiny Shakespeare scale.
 
 Three model presets are built in (`./build/grad presets` prints every field, including the `fast` smoke-test presets):
 
@@ -133,6 +135,26 @@ curl -L -o data/tinystories.txt \
 ./build/grad train data/tinystories.txt medium     # writes tinystories_final.bin
 ./build/grad chat tinystories_final.bin data/tinystories.txt
 ```
+
+That now trains with tokenizer v2. The 70M run above used v1 (`prepare ... --tokenizer v1`, which writes `tinystories.txt.tokenizer_16000.cache` and `tinystories.txt.16000.*.bin`); its checkpoints keep loading, generating and scoring exactly as before.
+
+### Tokenizers
+
+**v2** (`ByteBpe`, the default for new corpora) is a byte-level BPE in the GPT-2 style. Its base vocabulary is the 256 bytes, so `decode(encode(s)) == s` for every input: newlines, tabs, runs of spaces, underscores, emoji and even invalid UTF-8 survive. Text is first split with GPT-2's pre-tokenization pattern, implemented by hand with Unicode 16 letter and number tables, and merges never cross those splits. `<|endoftext|>`, which separates TinyStories' stories, is one reserved token. Training is incremental BPE with a deterministic tie-break, so a corpus gives the same vocabulary on every platform. Encoding is rank-based with a pre-token cache, and large inputs are encoded in parallel chunks with output identical to a serial encode. The [design note](docs/design/tokenizer-v2.md) has the details and the `GTOK` file format.
+
+**v1** (`BpeV1`) is the original tokenizer, kept byte for byte because existing checkpoints depend on it. It splits on whitespace, so newlines and runs of spaces never reach the model and `_` decodes as a space.
+
+On a 20MB TinyStories slice at vocab 16,000 (M3 Pro, 4 threads, under `nice` on a machine in use, so the ranges are wide):
+
+| | v1 | v2 |
+|---|---|---|
+| training the tokenizer | 100 s | 0.3-0.6 s |
+| encoding | 7 MB/s | 130-220 MB/s |
+| bytes per token | 5.0 (whitespace dropped) | 4.2 (lossless) |
+
+v2 spends about 20% more tokens on the same text. It keeps every newline, and GPT-2's pattern splits punctuation from words, where v1 merges `girl.` into one token.
+
+Each tokenizer's files have their own names, so both can sit beside a corpus: v1 uses `<corpus>.tokenizer_<vocab>.cache` (for Tiny Shakespeare, `tokenizer_<vocab>.cache` in the working directory) and `<corpus>.<vocab>.{train,val}.bin`, and v2 uses `<corpus>.bytebpe_<vocab>.tok` and `<corpus>.v2.<vocab>.{train,val}.bin`. Commands pick the tokenizer in this order: `--tokenizer`, the tokenizer the checkpoint records, v1 for older checkpoints that record none, and then whichever tokenizer's files exist. If both exist, the command stops and asks for `--tokenizer`. Checkpoints store the tokenizer's 64-bit fingerprint in a trailer that older binaries ignore. `generate`, `chat`, `eval` and resumed or warm-started training refuse a tokenizer whose fingerprint does not match.
 
 Every run logs per-step metrics to `<prefix>_metrics.csv`, and a live terminal dashboard renders them: loss curves on a braille canvas (raw + EMA), the validation track with running best, gradient-norm and step-time sparklines, progress and ETA. Open it in a second terminal while training:
 
@@ -184,6 +206,7 @@ The test suite checks the parts that are easiest to get silently wrong. Every ch
 - **Gradient checking**: analytical gradients from the autograd engine compared against central-difference numerical gradients, for individual ops through full attention blocks and the whole model, including attention with dropout active
 - **Architecture behaviors**: attention bias, weight tying, dropout statistics and mask independence across threads
 - **Integration checks**: tiny-sequence overfitting, parity between full-sequence and KV-cached inference for both architectures, the data loader, and rejection of truncated or corrupt checkpoints, token files and tokenizer caches
+- **Tokenizers**: round trips over random bytes, invalid UTF-8, whitespace runs and special tokens; pre-tokenizer splits checked against GPT-2's regex; training determinism and the tie-break rule; encoding against the merge-in-order definition; chunked encoding; rejection of every truncation of a tokenizer file; v1 ids checked against the pre-v2 binary
 - **Packaging**: CI builds a small consumer project against the installed `grad::core` CMake package
 - **Hardware-aware results**: Metal parity is reported as skipped, not passed, when no Metal device is exposed
 
@@ -227,7 +250,7 @@ Set `CLANG_FORMAT` / `CLANG_TIDY` to use binaries that are not on `PATH`, and `J
 
 - **Explicitness over abstraction.** Every forward and backward pass is readable C++, with no expression templates and no code generation. The autograd graph is a DAG of `Variable` nodes holding closures for their backward functions; `backward()` topologically sorts and walks it.
 - **Numerics matter.** Softmax and log-softmax use the max-subtraction trick; the loss path computes log-softmax + NLL rather than softmax + log; gradient checks catch regressions.
-- **Performance where it counts.** Profiling showed matmul dominating, so it delegates to BLAS (`blas_wrapper.h`); everything else stays simple. The BPE tokenizer caches merges to make encoding runs fast.
+- **Performance where it counts.** Profiling showed matmul dominating, so it delegates to BLAS (`blas_wrapper.h`); everything else stays simple. Tokenizer v2 caches pre-tokens and encodes large corpora in parallel chunks.
 - **The training loop is honest.** Loss decreases because the math is right, not because a framework fixed it. The 70M run above took 37 hours on an M2 Pro, and its complete per-step record is [committed](docs/runs/2026-09-tinystories-70m/metrics.csv).
 
 ## Repository layout
@@ -237,7 +260,7 @@ include/grad/, src/   grad::core (headers install to <prefix>/include/grad/)
   transformer/   tensor, variable (autograd), attention, layer_norm,
                  feedforward, embeddings, transformer_block, gpt_model,
                  optimizer, inference (KV cache), text_gen, Metal backend
-  tokenizer/     BPE tokenizer
+  tokenizer/     byte-level BPE (v2), GPT-2 pre-tokenizer, original BPE (v1)
   data/          datasets, memory-mapped token files, batching dataloader
   training/      trainer (loop, evaluation, checkpointing, resume)
   utils/         metrics log, terminal dashboard, training helpers
@@ -248,14 +271,16 @@ tests/
   package/       consumer project for the installed CMake package
 benchmarks/      PyTorch baseline for head-to-head comparisons
 docs/runs/       run reports with their full metrics
-tools/           plot_run.py (metrics CSV to SVG), lint.sh (clang-format, clang-tidy)
+docs/design/     design notes (tokenizer v2)
+tools/           plot_run.py (metrics CSV to SVG), lint.sh (clang-format, clang-tidy),
+                 gen_unicode_tables.py (the pre-tokenizer's Unicode classes)
 train_supervised.sh, training_health.sh   self-resuming run supervisor + health monitor
 data/            Tiny Shakespeare corpus (~1.1MB)
 ```
 
 ## Limitations and roadmap
 
-- **The tokenizer drops whitespace structure.** Pre-tokenization splits on whitespace, so newlines and runs of spaces never reach the model, and `_` doubles as the space marker. A byte-level, lossless tokenizer v2 with round-trip tests is next. It is a versioned format change, because existing checkpoints depend on the v1 vocabulary.
+- **The 70M checkpoint uses tokenizer v1**, which drops whitespace structure: newlines and runs of spaces never reached that model, and `_` decodes as a space. New corpora default to the lossless v2, and a v2 TinyStories run has not been trained yet.
 - **The Metal backend dispatches synchronously.** It routes matmuls above ~10 GFLOPs to the GPU via zero-copy unified memory. At 22M parameters that threshold is never crossed, since Apple's AMX (CPU) wins below it (BENCHMARKS.md #7). At 70M only the logits matmul crosses it. PyTorch MPS is 1.5× faster at 22M, and closing that gap needs asynchronous command buffers and fused kernels. A CUDA port was attempted earlier and rolled back (see git history).
 - **The `Tensor` type special-cases 2D and 3D** instead of carrying a general shape and strides, and evaluation still builds an autograd graph that it immediately discards (no no-grad mode yet).
 - Scope: this is a training and inference stack built to be read and measured, not a production serving engine.
