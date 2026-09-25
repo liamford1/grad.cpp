@@ -11,6 +11,7 @@
 
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,15 @@ Prompt choose_prompt(const std::string& prompt, const std::string& corpus_path, 
     return held_out_prompts(corpus_path, vocab_size, tokenizer).at(0);
 }
 
+// "temp=0.8", plus any cut that is on.
+std::string describe_sampling(const SamplingOptions& options) {
+    std::ostringstream out;
+    out << "temp=" << options.temperature;
+    if (options.top_k > 0) out << ", top-k=" << options.top_k;
+    if (options.top_p < 1.0f) out << ", top-p=" << options.top_p;
+    return out.str();
+}
+
 }  // namespace
 
 int run_generate(const Invocation& invocation) {
@@ -51,8 +61,10 @@ int run_generate(const Invocation& invocation) {
     std::string prompt;
     std::string corpus = kDefaultCorpus;
     std::optional<int> vocab;
+    SamplingOptions sampling{.max_tokens = 150};
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
+    cmd.describe("Prints a greedy continuation of the prompt, then a sampled one.");
     cmd.optional("ckpt", checkpoint, "checkpoint to sample from");
     cmd.optional("prompt", prompt,
                  "text to continue; empty (\"\") picks one from the corpus's held-out split");
@@ -60,6 +72,7 @@ int run_generate(const Invocation& invocation) {
     cmd.optional("vocab", vocab, "vocab size; must match the checkpoint's")
         .at_least(1)
         .default_text("the checkpoint's");
+    add_sampling_options(cmd, sampling, "print only the greedy continuation");
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     std::cout << "\ngrad.cpp Generation\n" << std::endl;
@@ -70,11 +83,17 @@ int run_generate(const Invocation& invocation) {
 
     std::cout << "\n--- Greedy Decoding ---\n" << std::endl;
     std::cout << "Prompt: \"" << chosen.text << "\"" << std::endl;
-    std::cout << generator.generate_greedy(chosen.tokens, 150) << std::endl;
+    std::cout << generator.generate_greedy(chosen.tokens, sampling.max_tokens,
+                                           sampling.repetition_penalty)
+              << std::endl;
+    if (sampling.greedy) return 0;
 
-    std::cout << "\n--- Sampling (temp=0.8) ---\n" << std::endl;
+    std::cout << "\n--- Sampling (" << describe_sampling(sampling) << ") ---\n" << std::endl;
     std::cout << "Prompt: \"" << chosen.text << "\"" << std::endl;
-    std::cout << generator.generate_sample(chosen.tokens, 0.8f, 150) << std::endl;
+    std::cout << generator.generate_sample(chosen.tokens, sampling.temperature,
+                                           sampling.max_tokens, sampling.repetition_penalty,
+                                           sampling.top_k, sampling.top_p)
+              << std::endl;
     return 0;
 }
 

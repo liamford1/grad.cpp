@@ -4,6 +4,7 @@
 // tokenizer loading, prompt selection, and checkpoint loading for
 // inference.
 
+#include "cli/args.h"
 #include "data/dataset.h"
 #include "tokenizer/bpe_tokenizer.h"
 #include "transformer/gpt_model.h"
@@ -73,6 +74,21 @@ struct Prompt {
 [[nodiscard]] std::vector<Prompt> sample_prompts(const std::string& corpus_path,
                                                  const BPETokenizer& tokenizer,
                                                  const Dataset& val, size_t count = 3);
+
+// Decoding settings for generate and chat, as TextGen takes them.
+struct SamplingOptions {
+    int max_tokens;
+    float temperature = 0.8f;
+    int top_k = 0;       // 0 = no top-k cut
+    float top_p = 1.0f;  // 1 = no nucleus cut
+    float repetition_penalty = 1.2f;
+    bool greedy = false;
+};
+
+// Declares --max-tokens, --temperature, --top-k, --top-p,
+// --repetition-penalty and --greedy on cmd, bound to options; the current
+// values are the defaults.
+void add_sampling_options(Command& cmd, SamplingOptions& options, const std::string& greedy_help);
 
 // A checkpoint and the tokenizer it was trained with, for generate/chat.
 struct InferenceModel {

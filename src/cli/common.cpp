@@ -128,6 +128,24 @@ std::vector<Prompt> sample_prompts(const std::string& corpus_path, const BPEToke
     return prompts;
 }
 
+void add_sampling_options(Command& cmd, SamplingOptions& options, const std::string& greedy_help) {
+    cmd.option("--max-tokens", options.max_tokens, "tokens to generate per continuation")
+        .at_least(1);
+    cmd.option("--temperature", options.temperature,
+               "sampling temperature; lower is more conservative")
+        .positive();
+    cmd.option("--top-k", options.top_k, "sample from the k most likely tokens only; 0 is off")
+        .at_least(0);
+    cmd.option("--top-p", options.top_p,
+               "sample from the smallest set of tokens whose probability reaches p; 1 is off")
+        .positive()
+        .at_most(1);
+    cmd.option("--repetition-penalty", options.repetition_penalty,
+               "divides the logits of the last 50 tokens; 1 is off")
+        .positive();
+    cmd.flag("--greedy", options.greedy, greedy_help);
+}
+
 GPTModel load_checkpoint(const std::string& checkpoint_path, std::optional<int> requested_vocab) {
     utils::print_section("Loading Model");
     GPTModel model = GPTModel::load(checkpoint_path);
