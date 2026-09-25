@@ -1,6 +1,7 @@
 #pragma once
 #include "dataset.h"
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,11 +26,19 @@ inline void write(const std::string& path, const std::vector<int>& tokens, int v
 // Dataset backed by a memory-mapped token file. The kernel pages in only
 // the windows actually read, so usable corpus size is bounded by disk, not
 // RAM, and training starts without re-encoding anything.
+//
+// Token ids are checked against the header's vocab as each window is read
+// (a compare per token, next to a full forward pass) rather than by a scan
+// at open, which would page in the whole file: 726MB for TinyStories.
 class MappedTokenDataset : public Dataset {
     private:
-        int fd_ = -1;
-        void* map_ = nullptr;
-        size_t map_bytes_ = 0;
+        // munmap on destruction. The file descriptor is closed as soon as
+        // the mapping exists; the mapping keeps the file alive by itself.
+        struct Unmap {
+            size_t bytes = 0;
+            void operator()(void* addr) const noexcept;
+        };
+        std::unique_ptr<void, Unmap> map_;
         const uint16_t* tokens_ = nullptr;
         size_t count_ = 0;
         int vocab_size_ = 0;
@@ -39,7 +48,6 @@ class MappedTokenDataset : public Dataset {
         // stride = 1 for training windows, seq_length for non-overlapping
         // evaluation windows (same convention as TextDataset).
         MappedTokenDataset(const std::string& path, int seq_length, int stride = 1);
-        ~MappedTokenDataset() override;
         MappedTokenDataset(const MappedTokenDataset&) = delete;
         MappedTokenDataset& operator=(const MappedTokenDataset&) = delete;
 

@@ -19,14 +19,42 @@ if(GRAD_NATIVE_ARCH AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(GRAD_ARCH_FLAGS "-march=native")
 endif()
 
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -DDEBUG")
-if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wall -Wextra ${GRAD_ARCH_FLAGS} -funroll-loops -fno-math-errno")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wall -Wextra ${GRAD_ARCH_FLAGS} -funroll-loops -fno-math-errno -flto")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Oi /Ot /GL /DNDEBUG /W4")
+# Optimization flags only; warnings are per target (grad_enable_warnings
+# below) so they apply in every build type, including the sanitizer build,
+# and never leak into a consumer of the installed package.
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
 endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG ${GRAD_ARCH_FLAGS} -funroll-loops -fno-math-errno")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # -flto=auto rather than -flto: same code, but LTRANS runs in parallel
+    # instead of lto-wrapper warning that it fell back to serial.
+    # -ffat-lto-objects keeps real object code next to the LTO IR, so the
+    # installed libgrad.a also links into consumers that do not use LTO or
+    # use a different GCC.
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG ${GRAD_ARCH_FLAGS} -funroll-loops -fno-math-errno -flto=auto -ffat-lto-objects")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Oi /Ot /GL /DNDEBUG")
+endif()
+
+option(GRAD_WARNINGS_AS_ERRORS "Treat compiler warnings as errors in grad.cpp's own targets" OFF)
+
+function(grad_enable_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+        if(GRAD_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        # COMPILE_LANGUAGE covers the Objective-C++ Metal backend as well.
+        target_compile_options(${target} PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall -Wextra -Wpedantic>)
+        if(GRAD_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Werror>)
+        endif()
+    endif()
+endfunction()
 
 if(APPLE)
     enable_language(OBJCXX)
@@ -68,6 +96,7 @@ set(GRAD_CORE_SOURCES
 add_library(grad_core STATIC ${GRAD_CORE_SOURCES})
 add_library(grad::core ALIAS grad_core)
 set_target_properties(grad_core PROPERTIES OUTPUT_NAME grad EXPORT_NAME core)
+grad_enable_warnings(grad_core)
 target_include_directories(grad_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
@@ -83,11 +112,13 @@ if(APPLE)
     if(NOT ACCELERATE_LIBRARY OR NOT METAL_LIBRARY OR NOT MPS_LIBRARY OR NOT FOUNDATION_LIBRARY)
         message(FATAL_ERROR "Required Apple Accelerate/Metal frameworks were not found")
     endif()
+    # Linked by name, not by the found paths: the paths point into this
+    # machine's SDK and would be baked into the installed gradTargets.cmake.
     target_link_libraries(grad_core PUBLIC
-        ${ACCELERATE_LIBRARY}
-        ${METAL_LIBRARY}
-        ${MPS_LIBRARY}
-        ${FOUNDATION_LIBRARY}
+        "-framework Accelerate"
+        "-framework Metal"
+        "-framework MetalPerformanceShaders"
+        "-framework Foundation"
     )
     target_compile_definitions(grad_core PUBLIC
         ACCELERATE_NEW_LAPACK
@@ -96,12 +127,20 @@ if(APPLE)
     message(STATUS "Using Apple Accelerate and Metal")
 else()
     find_package(BLAS REQUIRED)
-    target_link_libraries(grad_core PUBLIC ${BLAS_LIBRARIES})
+    # BLAS::BLAS (CMake 3.18+) exports as a target that gradConfig.cmake
+    # re-finds on the consumer's machine; BLAS_LIBRARIES would export this
+    # machine's absolute library paths.
+    if(TARGET BLAS::BLAS)
+        target_link_libraries(grad_core PUBLIC BLAS::BLAS)
+    else()
+        target_link_libraries(grad_core PUBLIC ${BLAS_LIBRARIES})
+    endif()
     message(STATUS "Using system BLAS")
 endif()
 
 add_executable(grad src/main.cpp)
 target_link_libraries(grad PRIVATE grad::core)
+grad_enable_warnings(grad)
 
 find_package(Git QUIET)
 set(GRAD_GIT_SHA "unknown")
@@ -150,6 +189,7 @@ if(BUILD_TESTS)
     function(add_grad_test target source test_name)
         add_executable(${target} ${source})
         target_link_libraries(${target} PRIVATE grad::core)
+        grad_enable_warnings(${target})
         add_test(NAME ${test_name} COMMAND ${target})
         set_tests_properties(${test_name} PROPERTIES LABELS "unit" TIMEOUT 120)
     endfunction()
@@ -173,13 +213,19 @@ if(BUILD_TESTS)
 
     add_executable(sanity_tests tests/integration/sanity_tests.cpp)
     target_link_libraries(sanity_tests PRIVATE grad::core)
+    grad_enable_warnings(sanity_tests)
     add_test(NAME SanityOverfit COMMAND sanity_tests overfit)
     add_test(NAME InferenceParityGPT2 COMMAND sanity_tests parity-gpt2)
     add_test(NAME InferenceParityModern COMMAND sanity_tests parity-modern)
+    add_test(NAME SanityDataLoader COMMAND sanity_tests dataloader)
+    add_test(NAME FileFormatValidation COMMAND sanity_tests file-formats)
     set_tests_properties(
         SanityOverfit InferenceParityGPT2 InferenceParityModern
+        SanityDataLoader FileFormatValidation
         PROPERTIES LABELS "integration" TIMEOUT 120
     )
+    # `sanity_tests benchmark` is a timing run on data/shakespeare.txt, not
+    # a check (it has no pass/fail criterion), so it is not registered.
 
     message(STATUS "Tests enabled: run ctest --test-dir ${CMAKE_BINARY_DIR} --output-on-failure")
 endif()

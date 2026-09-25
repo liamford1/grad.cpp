@@ -2,6 +2,7 @@
 #include <cmath>
 #include "transformer/variable.h"
 #include "transformer/tensor.h"
+#include "../test_util.h"
 
 void test_dropout_training_mode() {
     std::cout << "\n=== Test 1: Dropout in Training Mode ===" << std::endl;
@@ -32,7 +33,10 @@ void test_dropout_training_mode() {
     std::cout << "Scaled values: " << num_scaled << "/100" << std::endl;
     std::cout << "Expected scale: " << expected_scale << std::endl;
     
-    bool reasonable_dropout = (num_zeros >= 35 && num_zeros <= 65);
+    // The mask RNG has a fixed seed, so these counts are deterministic;
+    // the bands are 3 sigma for a fair Bernoulli(0.5) over 100 draws.
+    bool reasonable_dropout = CHECK(num_zeros >= 35 && num_zeros <= 65);
+    CHECK(num_zeros + num_scaled == 100);
     std::cout << (reasonable_dropout ? "✓ Dropout rate looks correct" : "✗ Dropout rate suspicious") << std::endl;
 }
 
@@ -54,6 +58,7 @@ void test_dropout_inference_mode() {
         }
     }
     
+    CHECK(all_unchanged);
     std::cout << (all_unchanged ? "✓ Inference mode unchanged" : "✗ Inference mode modified") << std::endl;
 }
 
@@ -78,7 +83,7 @@ void test_dropout_mean_preservation() {
     std::cout << "Output mean: " << mean << std::endl;
     std::cout << "Expected: ~5.0 (due to scaling)" << std::endl;
     
-    bool mean_preserved = (std::abs(mean - 5.0f) < 0.5f);
+    bool mean_preserved = CHECK_NEAR(mean, 5.0f, 0.5f);
     std::cout << (mean_preserved ? "✓ Mean preserved" : "✗ Mean not preserved") << std::endl;
 }
 
@@ -89,6 +94,5 @@ int main() {
     test_dropout_inference_mode();
     test_dropout_mean_preservation();
     
-    std::cout << "\n=== Dropout Tests Complete ===" << std::endl;
-    return 0;
+    return test_util::exit_code();
 }

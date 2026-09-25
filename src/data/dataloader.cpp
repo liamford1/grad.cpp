@@ -1,6 +1,6 @@
 #include "data/dataloader.h"
 #include <algorithm>
-#include <iostream>
+#include <stdexcept>
 #include <vector>
 
 DataLoader::DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool shuffle, unsigned int seed)
@@ -8,11 +8,7 @@ DataLoader::DataLoader(std::shared_ptr<Dataset> dataset, int batch_size, bool sh
       batch_size_(batch_size),
       shuffle_(shuffle),
       current_index_(0),
-      rng_(seed) {
-
-    std::cout << "Created DataLoader with " << num_batches()
-              << " batches of size " << batch_size_ << std::endl;
-}
+      rng_(seed) {}
 
 bool DataLoader::has_next() const {
     return current_index_ < dataset_->size();

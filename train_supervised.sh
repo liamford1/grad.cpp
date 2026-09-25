@@ -16,9 +16,13 @@ MAX_RESTARTS="${3:-500}"
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$REPO/build/grad"
-BASE="$(basename "$CORPUS" .txt)"
-# `modern` writes its checkpoints under a separate prefix so both lineages coexist.
-PREFIX="$BASE"; [ "$PRESET" = modern ] && PREFIX="${BASE}_modern"
+# Checkpoint prefix, derived exactly as main.cpp does: the corpus filename
+# minus its last extension, then "_modern" for the modern-architecture
+# presets and "_fast" for the fast ones, so lineages coexist on one corpus.
+BASE="$(basename "$CORPUS")"; BASE="${BASE%.*}"
+PREFIX="$BASE"
+case "$PRESET" in modern|fast-modern) PREFIX="${PREFIX}_modern" ;; esac
+case "$PRESET" in fast*) PREFIX="${PREFIX}_fast" ;; esac
 LOG="$REPO/${PREFIX}_supervisor.log"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
