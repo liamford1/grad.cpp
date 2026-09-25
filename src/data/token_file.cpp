@@ -63,7 +63,7 @@ bool exists(const std::string& path) {
 
 }  // namespace tokenfile
 
-void MappedTokenDataset::Unmap::operator()(void* addr) const noexcept {
+void tokenfile::Unmap::operator()(void* addr) const noexcept {
     ::munmap(addr, bytes);
 }
 
@@ -99,7 +99,7 @@ MappedTokenDataset::MappedTokenDataset(const std::string& path, int seq_length, 
     }
     // Owned from here on: any later throw unmaps through the member's
     // destructor.
-    map_ = std::unique_ptr<void, Unmap>(addr, Unmap{map_bytes});
+    map_ = std::unique_ptr<void, tokenfile::Unmap>(addr, tokenfile::Unmap{map_bytes});
 
     const char* base = static_cast<const char*>(addr);
     if (std::memcmp(base, kMagic, 4) != 0) {

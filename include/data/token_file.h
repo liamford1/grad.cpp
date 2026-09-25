@@ -21,6 +21,15 @@ inline void write(const std::string& path, const std::vector<int>& tokens, int v
 
 [[nodiscard]] bool exists(const std::string& path);
 
+// unique_ptr deleter for a read-only file mapping. Declared at namespace
+// scope rather than nested in MappedTokenDataset: GCC does not treat a
+// nested class with a default member initializer as default-constructible
+// until the enclosing class is complete, and unique_ptr requires that.
+struct Unmap {
+    size_t bytes = 0;
+    void operator()(void* addr) const noexcept;
+};
+
 }  // namespace tokenfile
 
 // Dataset backed by a memory-mapped token file. The kernel pages in only
@@ -34,11 +43,7 @@ class MappedTokenDataset : public Dataset {
     private:
         // munmap on destruction. The file descriptor is closed as soon as
         // the mapping exists; the mapping keeps the file alive by itself.
-        struct Unmap {
-            size_t bytes = 0;
-            void operator()(void* addr) const noexcept;
-        };
-        std::unique_ptr<void, Unmap> map_;
+        std::unique_ptr<void, tokenfile::Unmap> map_;
         const uint16_t* tokens_ = nullptr;
         size_t count_ = 0;
         int vocab_size_ = 0;
