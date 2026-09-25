@@ -623,6 +623,9 @@ std::vector<int> ByteBpe::encode_chunked(std::string_view text, std::size_t chun
     parallel_for(parts.size(), 1, [&](std::size_t begin, std::size_t end) {
         for (std::size_t i = begin; i < end; i++) {
             const std::size_t stop = i + 1 < starts.size() ? starts[i + 1] : text.size();
+            // Natural text runs about 4 bytes per token; reserving for 3
+            // keeps a large chunk from doubling its buffer past need.
+            parts[i].reserve((stop - starts[i]) / 3);
             encode_into(text.substr(starts[i], stop - starts[i]), /*with_specials=*/true, parts[i]);
         }
     });
