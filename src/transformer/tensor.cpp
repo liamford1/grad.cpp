@@ -1,5 +1,8 @@
 #include "grad/transformer/tensor.h"
 #include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/device.h"
+#include "grad/transformer/metal_backend.h"
+#include "grad/transformer/metal_ops.h"
 #include "grad/transformer/parallel.h"
 
 #include <algorithm>
@@ -32,6 +35,14 @@ namespace {
 // the Metal backend's alignment check routes them to the CPU automatically.
 constexpr size_t kPageBytes = 16384;
 constexpr size_t kAlignThresholdBytes = size_t{256} * 1024;
+
+// In Metal mode a new pool block is idle by construction (the pool reuses a
+// block only once the GPU is done with it), so the CPU may clear it with no
+// fence. Up to this size memset is cheaper than encoding a fill kernel
+// (~5 us); above it the encoding thread would spend its time in memset
+// while the GPU waits for work (a 70M backward zero-fills ~1 GB of
+// activation gradients per micro-batch), so the GPU clears it instead.
+constexpr size_t kCpuZeroFillBytes = size_t{64} * 1024;
 
 void check_dims(const Shape& shape) {
     if (shape.rank() == 0) {
@@ -120,6 +131,18 @@ InitStream& init_stream() {
 
 }  // namespace
 
+namespace tensor_detail {
+
+void release_device_storage(const float* p) noexcept {
+    metal::release(p);
+}
+
+void fence_device() {
+    metal::fence();
+}
+
+}  // namespace tensor_detail
+
 Shape::Shape(std::initializer_list<size_t> dims) {
     if (dims.size() > kMaxRank) {
         throw std::invalid_argument("Shape: rank " + std::to_string(dims.size())
@@ -168,19 +191,27 @@ static_assert(std::is_nothrow_swappable_v<Tensor>);
 // size rule for the release path to drift away from.
 Tensor::Storage Tensor::alloc_floats(size_t n) {
     const size_t raw_bytes = n * sizeof(float);
+    if (metal_mode()) {
+        return Storage(metal::allocate(raw_bytes), Deleter{tensor_detail::Allocator::Metal});
+    }
     if (raw_bytes >= kAlignThresholdBytes) {
         const size_t bytes = ((raw_bytes + kPageBytes - 1) / kPageBytes) * kPageBytes;
         void* p = nullptr;
         if (posix_memalign(&p, kPageBytes, bytes) != 0) {
             throw std::bad_alloc();
         }
-        return Storage(static_cast<float*>(p), Deleter{true});
+        return Storage(static_cast<float*>(p), Deleter{tensor_detail::Allocator::PageAligned});
     }
-    return Storage(new float[n], Deleter{false});
+    return Storage(new float[n], Deleter{tensor_detail::Allocator::Heap});
 }
 
 Tensor::Tensor(const Shape& shape) : Tensor(uninitialized(shape)) {
-    std::memset(data.get(), 0, numel() * sizeof(float));
+    const size_t bytes = numel() * sizeof(float);
+    if (metal_mode() && bytes > kCpuZeroFillBytes) {
+        metal::ops::fill(device_data(), numel(), 0.0f);
+    } else {
+        std::memset(data.get(), 0, bytes);
+    }
 }
 
 Tensor::Tensor(size_t rows, size_t cols) : Tensor(Shape{rows, cols}) {}
@@ -207,12 +238,20 @@ Tensor Tensor::uninitialized(size_t batch_size, size_t rows, size_t cols) {
 Tensor::Tensor(const Tensor& other) : shape_(other.shape_) {
     if (const size_t total = numel(); total > 0) {
         data = alloc_floats(total);
-        std::memcpy(data.get(), other.data.get(), total * sizeof(float));
+        // A tensor the GPU may still be writing is copied by the GPU, in
+        // stream order, rather than by a CPU memcpy that would have to wait.
+        if (other.device_visible_ && metal_mode()) {
+            metal::ops::copy(other.device_data(), device_data(), total);
+        } else {
+            std::memcpy(data.get(), other.raw(), total * sizeof(float));
+        }
     }
 }
 
 Tensor::Tensor(Tensor&& other) noexcept
-    : data(std::move(other.data)), shape_(std::exchange(other.shape_, Shape{})) {}
+    : data(std::move(other.data)),
+      shape_(std::exchange(other.shape_, Shape{})),
+      device_visible_(std::exchange(other.device_visible_, false)) {}
 
 // Copy-and-swap: the copy may throw, but *this is not touched until it has
 // succeeded, so assignment is strongly exception-safe. The temporary takes
@@ -231,12 +270,14 @@ void Tensor::swap(Tensor& other) noexcept {
     using std::swap;
     swap(data, other.data);
     swap(shape_, other.shape_);
+    swap(device_visible_, other.device_visible_);
 }
 
 float Tensor::getValue(size_t row, size_t col) const {
     if (row >= getRows() || col >= getCols()) {
         throw std::out_of_range("Tensor(2D) index out of bounds");
     }
+    fence();
     return data[row * getCols() + col];
 }
 
@@ -244,6 +285,7 @@ void Tensor::setValue(size_t row, size_t col, float value) {
     if (row >= getRows() || col >= getCols()) {
         throw std::out_of_range("Tensor(2D) index out of bounds");
     }
+    fence();
     data[row * getCols() + col] = value;
 }
 
@@ -251,6 +293,7 @@ float Tensor::getValue(size_t batch, size_t row, size_t col) const {
     if (batch >= getBatchSize() || row >= getRows() || col >= getCols()) {
         throw std::out_of_range("Tensor(3D) index out of bounds");
     }
+    fence();
     return data[(batch * getRows() + row) * getCols() + col];
 }
 
@@ -258,6 +301,7 @@ void Tensor::setValue(size_t batch, size_t row, size_t col, float value) {
     if (batch >= getBatchSize() || row >= getRows() || col >= getCols()) {
         throw std::out_of_range("Tensor(3D) index out of bounds");
     }
+    fence();
     data[(batch * getRows() + row) * getCols() + col] = value;
 }
 
@@ -283,9 +327,12 @@ Tensor Tensor::matmul(const Tensor& other) const {
     // the largest per-sequence product in the medium preset
     // (256x768 @ 768x3072) is 1.2 GFLOP against a 10 GFLOP threshold, so
     // each call runs the same cblas_sgemm it always did.
+    const float* lhs = raw();
+    const float* rhs = other.raw();
+    float* out = result.raw();
     for (size_t b = 0; b < getBatchSize(); b++) {
-        blas_sgemm_ex(data.get() + b * M * K, other.data.get() + (batched_rhs ? b * K * N : 0),
-                      result.data.get() + b * M * N, M, N, K, false, false, 1.0f, 0.0f);
+        blas_sgemm_ex(lhs + b * M * K, rhs + (batched_rhs ? b * K * N : 0), out + b * M * N, M, N,
+                      K, false, false, 1.0f, 0.0f);
     }
     return result;
 }
@@ -406,7 +453,7 @@ Tensor Tensor::softmax() const {
 
 void Tensor::fill(float value) {
     assertValid("fill(this)");
-    blas_vfill(value, data.get(), numel());
+    blas_vfill(value, raw(), numel());
 }
 
 Tensor Tensor::scale(float scaler) const {
@@ -477,25 +524,28 @@ void Tensor::assertValid(const std::string& context) const {
 
 void Tensor::scale_inplace(float scalar) {
     assertValid("scale_inplace");
-    blas_vsmul(data.get(), scalar, data.get(), numel());
+    float* p = raw();
+    blas_vsmul(p, scalar, p, numel());
 }
 
 void Tensor::add_inplace(const Tensor& other) {
     assertValid("add_inplace");
     other.assertValid("add_inplace(other)");
     require_same_shape(*this, other, "add_inplace");
-    blas_vadd(data.get(), other.raw(), data.get(), numel());
+    float* p = raw();
+    blas_vadd(p, other.raw(), p, numel());
 }
 
 void Tensor::multiply_inplace(const Tensor& other) {
     assertValid("multiply_inplace");
     other.assertValid("multiply_inplace(other)");
     require_same_shape(*this, other, "multiply_inplace");
-    blas_vmul(data.get(), other.raw(), data.get(), numel());
+    float* p = raw();
+    blas_vmul(p, other.raw(), p, numel());
 }
 
 void Tensor::zero() {
-    if (numel() > 0) std::memset(data.get(), 0, numel() * sizeof(float));
+    if (numel() > 0) std::memset(raw(), 0, numel() * sizeof(float));
 }
 
 }  // namespace grad

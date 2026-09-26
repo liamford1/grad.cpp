@@ -70,41 +70,72 @@ private:
 };
 
 namespace tensor_detail {
-// Releases a Tensor buffer with whichever allocator produced it. Two are in
-// play (page-aligned for large tensors so Metal can wrap them zero-copy,
-// plain new[] below that - see Tensor::alloc_floats), and stamping the
-// choice into the deleter at allocation time means the release path can
-// never disagree with it.
+// Which allocator produced a Tensor buffer. Three are in play: page-aligned
+// for large tensors so the CPU-mode Metal offload can wrap them zero-copy,
+// plain new[] below that (see Tensor::alloc_floats), and in Metal mode the
+// resident pool of shared MTLBuffers (metal_backend.h).
+enum class Allocator : unsigned char { Heap, PageAligned, Metal };
+
+// Hands a Metal-pool buffer back to the pool, which defers its reuse until
+// queued GPU work can no longer read it.
+void release_device_storage(const float* p) noexcept;
+
+// Releases a Tensor buffer with whichever allocator produced it. Stamping
+// the choice into the deleter at allocation time means the release path
+// can never disagree with it.
 //
 // This lives at namespace scope deliberately: libc++ constrains
 // unique_ptr's default constructor on is_default_constructible<Deleter>,
 // and a private nested deleter fails that access check while the enclosing
 // class is being completed, which silently deletes Tensor's own defaulted
 // default constructor (-Wdefaulted-function-deleted).
-struct PageAwareDeleter {
-    bool page_aligned = false;
+struct StorageDeleter {
+    Allocator allocator = Allocator::Heap;
     void operator()(float* p) const noexcept {
-        if (page_aligned) std::free(p);
-        else delete[] p;
+        switch (allocator) {
+            case Allocator::Heap:
+                delete[] p;
+                break;
+            case Allocator::PageAligned:
+                std::free(p);
+                break;
+            case Allocator::Metal:
+                release_device_storage(p);
+                break;
+        }
     }
 };
+
+// Waits for queued GPU work (metal::fence); out of line so this header
+// does not pull in the backend.
+void fence_device();
 }  // namespace tensor_detail
 
 // Dense row-major float storage of any Shape up to Shape::kMaxRank,
-// owned through a unique_ptr carrying a PageAwareDeleter. The model code
+// owned through a unique_ptr carrying a StorageDeleter. The model code
 // works in 2D (rows, cols) and 3D (batch, rows, cols) terms, which the
 // getRows/getCols/getBatchSize/getIs3D accessors present as a view over
 // the shape; elementwise ops and reductions go through numel() and never
 // branch on rank.
 class Tensor {
 private:
-    using Deleter = tensor_detail::PageAwareDeleter;
+    using Deleter = tensor_detail::StorageDeleter;
     using Storage = std::unique_ptr<float[], Deleter>;
 
     Storage data;
     Shape shape_;
+    // Set once the storage has been handed to the GPU stream through
+    // device_data(). Only then can queued GPU work touch these bytes, so
+    // only then do the CPU accessors below need to fence. Never set in
+    // CPU mode, where the fence is one byte load and a not-taken branch.
+    mutable bool device_visible_ = false;
 
     [[nodiscard]] static Storage alloc_floats(size_t n);
+
+    void fence() const {
+        if (device_visible_) [[unlikely]]
+            tensor_detail::fence_device();
+    }
 
 public:
     Tensor() = default;
@@ -209,10 +240,41 @@ public:
 
     void assertValid(const std::string& context = "") const;
 
-    [[nodiscard]] float* raw() noexcept { return data.get(); }
-    [[nodiscard]] const float* raw() const noexcept { return data.get(); }
-    [[nodiscard]] std::span<float> values() noexcept { return {data.get(), numel()}; }
-    [[nodiscard]] std::span<const float> values() const noexcept { return {data.get(), numel()}; }
+    // CPU access to the storage. If the tensor has been handed to the GPU
+    // and work is queued, these first wait for the GPU (and rethrow a GPU
+    // failure), so a CPU read never sees a stale value and a CPU write
+    // never races a queued kernel. The pointer stays valid for CPU use
+    // until the tensor is next handed to the GPU.
+    [[nodiscard]] float* raw() {
+        fence();
+        return data.get();
+    }
+    [[nodiscard]] const float* raw() const {
+        fence();
+        return data.get();
+    }
+    [[nodiscard]] std::span<float> values() {
+        fence();
+        return {data.get(), numel()};
+    }
+    [[nodiscard]] std::span<const float> values() const {
+        fence();
+        return {data.get(), numel()};
+    }
+
+    // The storage for encoding GPU work (metal_ops.h): no fence, since the
+    // stream orders its own kernels, and the tensor is marked visible to
+    // the GPU so later CPU accesses fence. Every pointer the GPU receives
+    // comes from here; that is what makes the CPU accessors safe.
+    [[nodiscard]] float* device_data() noexcept {
+        device_visible_ = true;
+        return data.get();
+    }
+    [[nodiscard]] const float* device_data() const noexcept {
+        device_visible_ = true;
+        return data.get();
+    }
+    [[nodiscard]] bool device_visible() const noexcept { return device_visible_; }
 };
 
 }  // namespace grad
