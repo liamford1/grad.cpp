@@ -1,7 +1,8 @@
 # Metal-resident execution
 
-Status: in progress on `feature/metal-resident`. CPU mode, the default, is
-unchanged bit for bit.
+Status: implemented on `feature/metal-resident` (`--device metal`), tested
+for correctness against the CPU, and not yet measured. CPU mode, the default,
+is unchanged bit for bit.
 
 ## Why
 
@@ -72,12 +73,15 @@ branch per accessor call. Accessors are called per op, not per element (the
 one per-element caller, `compute_grad_norm`, now hoists `raw()` out of its
 loop, same summation order), so this is below measurement noise and changes
 no arithmetic. In Metal mode a fence that finds work pending costs the time
-to drain the stream; the stream counts these (`metal::stream_stats()`), and
-the expected count is **one per optimizer step** (the trainer reads the
-micro-batch losses and the gradient norm together after encoding AdamW) and
-one per evaluation batch. Pointers returned by `raw()` stay valid for CPU
-use only until the tensor is next handed to the GPU; the gradient-check
-tests, which poke parameters through such pointers, do so between syncs.
+to drain the stream; the stream counts these (`metal::stream_stats()`).
+Measured on the test models: **one per optimizer step** in the trainer (it
+reads the micro-batch losses and the gradient norm together after encoding
+AdamW; `MetalTrainingParity` asserts it), none inside a `grad bench` trial
+(steps pipeline and the trial ends with one sync, as the PyTorch baseline
+does), and one per evaluation batch. Pointers returned by `raw()` stay valid
+for CPU use only until the tensor is next handed to the GPU; the
+gradient-check tests, which poke parameters through such pointers, do so
+between syncs.
 
 **Memory lifetime.** Freeing a tensor whose storage a queued kernel will
 still read would be a use-after-free, and backward retires activations as
@@ -94,8 +98,17 @@ pending work, so the CPU may fill it without a fence; small zero-filled
 tensors (<= 64 KB) are cleared on the CPU for that reason, larger ones with a
 fill kernel so the encoding thread does not spend its time in memset.
 
-**Errors.** A command buffer failure is recorded by its completion handler
-and rethrown by the next fence or sync, on the thread that fences. Nothing
+**Run-ahead bound.** Deferred reuse makes memory grow with the CPU's lead:
+if nothing reads a result, the CPU can encode several micro-batches while
+the GPU works on the first, and every activation they release waits for its
+command buffer. A commit therefore waits for the oldest buffer while more
+than `GRAD_METAL_MAX_IN_FLIGHT` (default 16) are outstanding: at 32
+dispatches each, about half of a 70M micro-batch (~1,000 dispatches) of lead,
+which keeps the GPU fed and bounds the extra memory.
+
+**Errors.** A command buffer failure is found when the stream drains
+completed buffers (at a sync, or while throttling) and is rethrown by the
+next fence or sync, on the thread that fences. Nothing
 falls back to the CPU after work is queued: the queued work may have
 consumed its inputs (beta = 1 accumulation), as in the existing sgemm.
 
@@ -116,7 +129,8 @@ cross-entropy, embedding gather and scatter, RoPE, dropout, AdamW, and the
 gradient-norm reduction and clip scaling.
 
 **Compilation.** The kernels live in `src/transformer/metal_kernels.metal`,
-are embedded into the library as a string at configure time, and are
+are embedded into the library as a byte array at configure time (a string
+literal would hit -Wpedantic's 65,536-character limit), and are
 compiled once per process with `newLibraryWithSource` in safe math mode. A
 build-time metallib would need the offline `metal` compiler, which on
 current Xcode is a separate download (absent on this machine) and not
@@ -124,6 +138,15 @@ guaranteed on CI images; runtime compilation needs only Metal.framework and
 costs a fraction of a second once per process, negligible against any
 training run. Linux builds compile neither and link stubs; `metal_mode()`
 can never become true there.
+
+**Numerics.** Safe math mode keeps IEEE semantics and precise
+transcendentals. Multiply-adds may still be fused into one rounding, by the
+Metal compiler and by clang on the CPU (`-ffp-contract=on` is its default),
+so elementwise results that are a product plus a sum can differ from the CPU
+by an ulp of the product; disabling contraction in the kernels
+(`#pragma METAL fp contract(off)`) was tried and only moved the mismatch to
+the expressions clang fuses. Single-rounding elementwise results (add, mul,
+scale, gathers, bias adds, masks) are bitwise equal to the CPU's.
 
 **Determinism.** Every reduction runs in a fixed order independent of
 scheduling: row reductions use a fixed-width threadgroup tree, column
@@ -160,37 +183,81 @@ one-hot gradient (2 x 131 MB per 70M micro-batch). `log_softmax` and
 
 Each op keeps one entry point and branches once on `metal_mode()`:
 
-    if (metal_mode()) return metal_graph::gelu(self);   // encodes forward, closure encodes backward
+    if (metal_mode()) return metal_graph::gelu(shared_from_this());
     ...unchanged CPU code...
 
-The Metal versions live in `metal_graph.cpp`, build the same graph nodes
-with the same children in the same order, and their backward closures
-encode GPU work exactly as the CPU closures run CPU work, so backward
-traversal, gradient accumulation order and node retirement are shared. The
-CPU branches are untouched; the only edits on the CPU side are fences on
-Tensor accessors and hoisting `raw()` in `compute_grad_norm`. The
-determinism probe hashes (`gpt2 b5f8ffd5bbbd37d5`, `modern
-c27c183eba166512`) are the check that CPU training is bit-identical.
+The Metal versions build the same graph nodes with the same children in the
+same order, and their backward closures encode GPU work exactly as the CPU
+closures run CPU work, so backward traversal, gradient accumulation order
+and node retirement are shared. The Variable ops' versions live in
+`metal_graph.cpp`; the fused module ops (attention, LayerNorm/RMSNorm, the
+embeddings, the tied logits projection) keep theirs as file-local functions
+beside their CPU code, a deviation from the first plan: each module's two
+paths then read side by side, and the Metal path reuses the module's own
+helpers (the RoPE table builder) instead of exporting them. The optimizer
+branches per operation, and the trainer has a Metal step that reads the
+losses only after AdamW is encoded. The CPU branches are untouched apart
+from fences on Tensor accessors, `compute_grad_norm` hoisting `raw()`, and
+the trainer, eval and bench calling `cross_entropy`, which is the same
+`log_softmax()->nll_loss()` pair in CPU mode. The determinism probe hashes
+(`gpt2 b5f8ffd5bbbd37d5`, `modern c27c183eba166512`) are unchanged.
 
-## Correctness strategy
+One bug class is specific to this design: a backward closure outlives the
+forward's stack frame, so any helper it copies must capture by value. A
+by-reference capture in the attention backward read dead stack slots, and
+the parity test caught it at the first updated step (loss off by 3e-2, and
+different on every run).
 
-- Per-kernel tests against the CPU implementation within fp32 tolerances
-  (reductions reorder, so not bitwise; bounds scale with the reduction
-  length, as in MetalMatmulVsCPU), and dropout masks checked for exact
-  equality.
-- Gradient checks through GPU ops (central differences on a small graph).
-- GPU determinism: the same seeded training run twice, parameter hashes
-  equal.
-- End-to-end parity: tiny GPT-2 and modern models trained N steps from one
-  seed on the CPU and on Metal, dropout on, losses within a tolerance
-  justified by the observed per-step drift.
-- Every Metal test exits 77 (skip) when no Metal device is present, so the
-  Linux jobs pass.
+## Correctness strategy and results
+
+- `MetalStream`: GEMM chains encode with no wait and the first read waits
+  once; CPU writes wait for queued GPU writers; tensors never handed to the
+  GPU never wait; freed storage is not reused under a queued kernel; the
+  batched strided GEMM and MPS against CPU BLAS at attention and odd shapes.
+- `MetalKernelsVsCPU`: every kernel against the CPU implementation or its
+  formula. Single-rounding outputs and all dropout masks match bit for bit;
+  fused multiply-adds within an ulp of the product; transcendentals within
+  1e-5 relative (observed worst 0.3 of that); reordered reductions within a
+  bound scaled to their length (observed at most 0.09 of it).
+- `MetalGradientChecking`: central differences through matmul, bias add,
+  GELU, LayerNorm, SiLU gating, dropout and the fused loss on the GPU.
+- `MetalTrainingParity`: GPT-2 and modern models (d64, 2 layers, vocab 97)
+  trained 8 steps from one seed with dropout 0.1, accumulation 2 and clipping
+  every step. Observed: every micro-batch loss within 2e-6 of the CPU's (a
+  few ulps at 4.8), evaluation loss identical, gradient norms within 2e-7
+  relative, mean parameter difference 1e-7. The bound is 2e-4 on losses,
+  100x the observed drift and 100x below what a wrong kernel produced. The
+  worst single parameter differs by up to 4e-4: weights with a zero or
+  near-zero true gradient (the key biases, since softmax ignores a constant
+  added to a row) receive rounding noise that Adam normalizes into full-size
+  steps, so single weights are bounded by one lr, the mean by rounding. A
+  second Metal run is bitwise identical, and each step waits once.
+  `MetalTrainingParityThrottled` repeats it with 3-dispatch command buffers
+  and a lead of 2.
+- `MetalTrainerParity`: the Trainer itself in both modes; logged losses
+  agree. `MetalInferenceParity`: KV-cached CPU decoding against the Metal
+  forward on 3D and 2D input.
+- Every Metal test exits 77 (skip) without a Metal device;
+  `-DGRAD_METAL_BACKEND=OFF` builds the stubs on macOS to check that
+  configuration, which is what Linux builds.
+
+## What remains
+
+- Measurement, below. Nothing about performance is known yet.
+- Performance work the measurements are expected to motivate: a faster
+  attention (the batched GEMM is a plain 32x32 simdgroup tile, and the full
+  S x S scores are computed and masked rather than only the causal half, or
+  a fused flash-style kernel), multi-tensor AdamW and gradient-norm launches
+  (one dispatch per parameter today), and dropout masks stored as bytes.
+- The fp16 operand option exists only for the CPU-mode offload.
+- Generation stays on the CPU. It is latency-bound single-token work where
+  the resident stream's advantage, batching many dispatches, does not apply.
 
 ## Measurements to take when the machine is idle
 
 Nothing below has been run; the machine was busy with a 35-hour training
 run while this was built. Protocol: idle machine, `nice` off, 5 trials.
+BENCHMARKS.md carries the same list as a table.
 
 1. `grad bench --device metal --steps 20 --trials 5 --json` vs
    `grad bench` (CPU) at 22M; compare with PyTorch MPS (9,464 tok/s).
@@ -203,13 +270,17 @@ run while this was built. Protocol: idle machine, `nice` off, 5 trials.
    (~850 GFLOP per micro-batch), and MPS GEMMs are the same kernels PyTorch
    uses.
 3. Syncs per optimizer step from `metal::stream_stats()` (bench prints it).
-   *Expected:* 1. More means a CPU read slipped into the step.
-4. Command buffers and dispatches per step, and the `GRAD_METAL_COMMIT`
-   sweep (8, 16, 32, 64, 128). *Expected:* flat beyond 16 if the GPU is
-   the bottleneck.
+   *Expected:* 0 within a bench trial and 1 per `grad train` step. More
+   means a CPU read slipped into the step.
+4. Command buffers, dispatches and run-ahead waits per step, and sweeps of
+   `GRAD_METAL_COMMIT` (8, 16, 32, 64, 128) and `GRAD_METAL_MAX_IN_FLIGHT`
+   (4, 16, 64). *Expected:* flat beyond 16 and 8 respectively if the GPU is
+   the bottleneck; run-ahead waits every step mean the CPU encodes faster
+   than the GPU executes, which is the goal.
 5. Peak memory (`footprint`, not RSS: GPU-shared pages) at 70M vs CPU.
-   *Expected:* CPU peak plus one command buffer's worth of deferred
-   frees; the allocator caches blocks, so a plateau, not growth.
+   *Expected:* CPU peak plus at most `GRAD_METAL_MAX_IN_FLIGHT` command
+   buffers' worth of deferred frees; the allocator caches blocks by size,
+   so a plateau after the first step, not growth.
 6. GPU time split (Xcode Metal capture or `MTLCommandBuffer.GPUStartTime`):
    GEMM vs attention kernels vs elementwise. *Expected:* the batched
    attention GEMM and dropout generation are the first optimization targets.
