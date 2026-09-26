@@ -6,7 +6,10 @@
 #include "grad/transformer/layer_norm.h"
 #include "grad/transformer/gpt_model.h"
 #include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/device.h"
+#include "grad/transformer/metal_ops.h"
 #include "grad/utils/narrow.h"
+#include "metal_graph.h"
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -18,6 +21,37 @@
 #include <vector>
 
 namespace grad {
+
+namespace {
+
+// Metal mode: the tied logits projection and its two gradients as MPS
+// GEMMs, the same products as the CPU path below.
+std::shared_ptr<Variable> logits_metal(const std::shared_ptr<Variable>& norm,
+                                       const std::shared_ptr<Variable>& table, Tensor&& logits,
+                                       size_t flat_rows, size_t vocab, size_t d) {
+    namespace ops = metal::ops;
+    ops::gemm(norm->getData().device_data(), table->getData().device_data(), logits.device_data(),
+              flat_rows, vocab, d, false, true, 1.0f, 0.0f);
+    auto node = Variable::create(std::move(logits), compute_requires_grad(norm, table));
+    if (node->requiresGrad()) {
+        node->setBackward({norm, table}, [norm, table, flat_rows, vocab, d](Variable& out) {
+            const float* dLogits = out.getGrad().device_data();
+            if (norm->requiresGrad()) {  // dNorm += dLogits @ E
+                ops::gemm(dLogits, table->getData().device_data(),
+                          metal_graph::grad_for_write(*norm), flat_rows, d, vocab, false, false,
+                          1.0f, 1.0f);
+            }
+            if (table->requiresGrad()) {  // dE += dLogits^T @ Norm
+                ops::gemm(dLogits, norm->getData().device_data(),
+                          metal_graph::grad_for_write(*table), vocab, d, flat_rows, true, false,
+                          1.0f, 1.0f);
+            }
+        });
+    }
+    return node;
+}
+
+}  // namespace
 
 GPTModel::GPTModel(int vocab_size, int d_model, int num_layers, int num_heads, int max_len,
                    float dropout_rate, GPTArch arch)
@@ -68,6 +102,10 @@ std::shared_ptr<Variable> GPTModel::forward(const std::shared_ptr<Variable>& tok
     // the transpose happens inside the sgemm instead of materializing E^T.
     const size_t flat_rows = norm_data.getFlatRows();
     Tensor logits_tensor = Tensor::uninitialized(norm_data.shape().with_last_dim(vocab));
+    if (metal_mode()) {
+        return logits_metal(normalized_output, embedding_table, std::move(logits_tensor), flat_rows,
+                            vocab, d_model_dim);
+    }
     blas_sgemm_ex(norm_data.raw(), emb_data.raw(), logits_tensor.raw(), flat_rows, vocab,
                   d_model_dim, false, true, 1.0f, 0.0f);
 

@@ -190,9 +190,29 @@ Training throughput against PyTorch 2.14 on the same M3 Pro, fp32, under the rep
 | 22M · d512 L6 · seq 96 | **6,560 tok/s** | 4,370 | 9,464 |
 | 70M · d768 L8 · seq 256 | **2,542 tok/s** | 2,458 | 6,794 |
 
-On CPU, grad.cpp is 1.5× faster than PyTorch at 22M, where per-op overhead matters. At 70M they are at parity, because both spend the step in the same Accelerate GEMMs. PyTorch's GPU backend is 1.4× faster at 22M and 2.7× faster at 70M, because it keeps the whole step on the device, where grad.cpp only offloads its largest matmuls. That gap is the next piece of work. These are results for these workloads, not claims about either framework in general. Raw records and method: [BENCHMARKS.md](BENCHMARKS.md#head-to-head-pytorch-214-on-m3-pro-2026-09-25).
+On CPU, grad.cpp is 1.5× faster than PyTorch at 22M, where per-op overhead matters. At 70M they are at parity, because both spend the step in the same Accelerate GEMMs. PyTorch's GPU backend is 1.4× faster at 22M and 2.7× faster at 70M, because it keeps the whole step on the device, where grad.cpp's CPU mode only offloads its largest matmuls. The [Metal-resident mode](#metal-resident-execution) below is the answer to that gap; it has not been measured yet. These are results for these workloads, not claims about either framework in general. Raw records and method: [BENCHMARKS.md](BENCHMARKS.md#head-to-head-pytorch-214-on-m3-pro-2026-09-25).
 
 The full optimization history, 1.2 → 7.9 steps/s across 11 measured rounds including null results, is in [BENCHMARKS.md](BENCHMARKS.md). Current benchmark commands run repeated trials, report the median, identify dirty builds, record the compiler/system/backend, and optionally write JSON.
+
+## Metal-resident execution
+
+`--device metal` (or `GRAD_DEVICE=metal`) runs the whole training step, forward, backward, gradient clipping and AdamW, on the Apple GPU:
+
+```bash
+./build/grad train data/shakespeare.txt small --device metal
+./build/grad bench --device metal --json grad-metal.json
+./build/grad eval ckpt.bin data/tinystories.txt --device metal
+```
+
+**Status: implemented and tested, not yet measured.** It was built while the machine ran a 35-hour training job, so no throughput numbers exist yet; the measurements to take, and what they are expected to show, are in [BENCHMARKS.md](BENCHMARKS.md#metal-resident-mode-measurements-pending) and the [design note](docs/design/metal-resident.md). The default device is the CPU, which is unchanged, including its large-matmul GPU offload.
+
+**How it works.** Unified memory means tensors never move: in Metal mode their storage is shared `MTLBuffer`s, and each op encodes its kernel into one command stream instead of running on the calling thread. The CPU encodes a whole step while the GPU executes it, and waits only when it reads a result: once per optimizer step in `grad train` (the losses and gradient norm, read together after AdamW is encoded), never inside a `grad bench` trial. Reads are safe by construction: a tensor handed to the GPU makes its CPU accessors wait for queued work first, and one never handed to the GPU never waits. GEMMs run on MPS; attention's per-head products, norms, softmax, the fused cross-entropy, embeddings, RoPE, dropout, AdamW and the gradient norm are kernels in [`metal_kernels.metal`](src/transformer/metal_kernels.metal), compiled at startup, so building needs no Metal toolchain.
+
+**What stays on the CPU:** data loading, token-id validation, KV-cached generation (single-token decoding is latency-bound; it reads the GPU-trained weights directly), and checkpoint I/O. Checkpoints are the same files in both modes.
+
+**Numerics.** Everything is fp32. Dropout masks are bitwise identical to the CPU's, the same function of (seed, stream, position). Results are not bitwise equal to the CPU's, because reductions sum in a different order, but they are deterministic: the same run twice gives the same bits. On the test models, CPU and Metal training losses agree within 2e-6 per micro-batch over 8 steps.
+
+**Requirements and knobs.** An Apple GPU of family 7 or later (M1 onward). Select the device before building tensors, as the CLI does; Metal-mode tensors stay readable from CPU code. `GRAD_METAL_COMMIT` (dispatches per command buffer, default 32) and `GRAD_METAL_MAX_IN_FLIGHT` (command buffers the CPU may run ahead, default 16, which bounds the memory held by frees awaiting the GPU) are tuning knobs for the measurements.
 
 ## Tests
 
@@ -207,7 +227,8 @@ The test suite checks the parts that are easiest to get silently wrong. Every ch
 - **Integration checks**: tiny-sequence overfitting, parity between full-sequence and KV-cached inference for both architectures, the data loader, and rejection of truncated or corrupt checkpoints, token files and tokenizer caches
 - **Tokenizers**: round trips over random bytes, invalid UTF-8, whitespace runs and special tokens; pre-tokenizer splits checked against GPT-2's regex; training determinism and the tie-break rule; encoding against the merge-in-order definition; chunked encoding; rejection of every truncation of a tokenizer file; v1 ids checked against the pre-v2 binary
 - **Packaging**: CI builds a small consumer project against the installed `grad::core` CMake package
-- **Hardware-aware results**: Metal parity is reported as skipped, not passed, when no Metal device is exposed
+- **Metal-resident mode**: every GPU kernel against the CPU implementation (dropout masks bit for bit), the stream's waiting and deferred-reuse rules, gradient checks through GPU ops, KV-cached decoding against the GPU forward, and tiny GPT-2 and modern models trained on both devices from one seed: losses agree, a second Metal run is bitwise identical, and a Metal step waits for the GPU once
+- **Hardware-aware results**: Metal tests are reported as skipped, not passed, when no Metal device is exposed
 
 CI builds with warnings as errors (`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast`, and Clang's stricter `-Wshadow-all`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer. A `lint` job checks formatting and runs clang-tidy (see Development).
 
@@ -258,7 +279,8 @@ Set `CLANG_FORMAT` / `CLANG_TIDY` to use binaries that are not on `PATH`, and `J
 include/grad/, src/   grad::core (headers install to <prefix>/include/grad/)
   transformer/   tensor, variable (autograd), attention, layer_norm,
                  feedforward, embeddings, transformer_block, gpt_model,
-                 optimizer, inference (KV cache), text_gen, Metal backend
+                 optimizer, inference (KV cache), text_gen, device selection,
+                 Metal backend (stream, allocator, kernels, graph dispatch)
   tokenizer/     byte-level BPE (v2), GPT-2 pre-tokenizer, original BPE (v1)
   data/          datasets, memory-mapped token files, batching dataloader
   training/      trainer (loop, evaluation, checkpointing, resume)
@@ -270,7 +292,7 @@ tests/
   package/       consumer project for the installed CMake package
 benchmarks/      PyTorch baseline for head-to-head comparisons
 docs/runs/       run reports with their full metrics
-docs/design/     design notes (tokenizer v2)
+docs/design/     design notes (tokenizer v2, Metal-resident execution)
 tools/           plot_run.py (metrics CSV to SVG), lint.sh (clang-format, clang-tidy),
                  gen_unicode_tables.py (the pre-tokenizer's Unicode classes)
 train_supervised.sh, training_health.sh   self-resuming run supervisor + health monitor
@@ -280,7 +302,7 @@ data/            Tiny Shakespeare corpus (~1.1MB)
 ## Limitations and roadmap
 
 - **The 70M checkpoint uses tokenizer v1**, which drops whitespace structure: newlines and runs of spaces never reached that model, and `_` decodes as a space. New corpora default to the lossless v2, and a v2 TinyStories run has not been trained yet.
-- **The Metal backend dispatches synchronously.** It routes matmuls above ~10 GFLOPs to the GPU via zero-copy unified memory. At 22M parameters that threshold is never crossed, since Apple's AMX (CPU) wins below it (BENCHMARKS.md #7). At 70M only the logits matmul crosses it. PyTorch MPS is 1.5× faster at 22M, and closing that gap needs asynchronous command buffers and fused kernels. A CUDA port was attempted earlier and rolled back (see git history).
+- **Metal-resident mode is unmeasured.** It is correct against the CPU on test models and deterministic, but its throughput against CPU mode and PyTorch MPS, its syncs per step and its peak memory have not been measured (see BENCHMARKS.md). The first optimization targets are expected to be attention (a simple tiled GEMM, full S×S scores) and per-parameter AdamW dispatches. A CUDA port was attempted earlier and rolled back (see git history).
 - **The `Tensor` type special-cases 2D and 3D** instead of carrying a general shape and strides, and evaluation still builds an autograd graph that it immediately discards (no no-grad mode yet).
 - Scope: this is a training and inference stack built to be read and measured, not a production serving engine.
 

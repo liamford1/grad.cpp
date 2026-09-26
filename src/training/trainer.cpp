@@ -1,5 +1,6 @@
 #include "grad/training/trainer.h"
 #include "grad/utils/training_utils.h"
+#include "grad/transformer/device.h"
 #include "grad/transformer/variable.h"
 #include <cerrno>
 #include <cmath>
@@ -11,8 +12,10 @@
 #include <iostream>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 // sigaction and sigemptyset are POSIX, declared by <signal.h>; <csignal>
 // promises only the ISO C subset.
 #include <signal.h>  // NOLINT(modernize-deprecated-headers)
@@ -202,6 +205,7 @@ bool Trainer::train() {
     }
     // Explicit format: inherited stream state (progress printers set
     // fixed(1)) would render 3e-4 as "0.0".
+    std::cout << "  Device: " << device_name(current_device()) << std::endl;
     std::cout << "  Learning rate: " << std::defaultfloat << std::setprecision(6)
               << config_.learning_rate << std::endl;
     std::cout << "  Training steps: " << config_.num_steps;
@@ -325,7 +329,7 @@ double mean_loss(GPTModel& model, DataLoader& loader, int max_batches) {
         auto tgt = Variable::create(batch.target, false);
 
         auto logits = model.forward(in, false);
-        auto loss = logits->log_softmax()->nll_loss(tgt);
+        auto loss = logits->cross_entropy(tgt);
         const size_t batch_rows = batch.input.getBatchSize();
         weighted_loss +=
             static_cast<double>(loss->getData().getValue(0, 0)) * static_cast<double>(batch_rows);
@@ -342,6 +346,10 @@ float Trainer::evaluate() {
 }
 
 void Trainer::training_step(int step) {
+    if (metal_mode()) {
+        training_step_metal(step);
+        return;
+    }
     auto step_start = std::chrono::steady_clock::now();
     optimizer_->zero_grad();
 
@@ -363,7 +371,7 @@ void Trainer::training_step(int step) {
         auto tgt = Variable::create(batch.target, false);
 
         auto logits = model_.forward(in, true);
-        auto loss = logits->log_softmax()->nll_loss(tgt);
+        auto loss = logits->cross_entropy(tgt);
 
         loss->backward();
         loss_sum += loss->getData().getValue(0, 0);
@@ -384,7 +392,44 @@ void Trainer::training_step(int step) {
 
     optimizer_->clip_grad_norm(5.0f);
     optimizer_->step();
+    log_step(step, loss_val, grad_norm, step_start);
+}
 
+void Trainer::training_step_metal(int step) {
+    auto step_start = std::chrono::steady_clock::now();
+    optimizer_->zero_grad();
+
+    // The losses stay on the GPU until the step is encoded: reading each
+    // one after its backward would drain the stream once per micro-batch.
+    std::vector<std::shared_ptr<Variable>> losses;
+    for (int micro = 0; micro < config_.grad_accum; micro++) {
+        if (!loader_.has_next()) loader_.reset();
+        auto batch = loader_.next_batch();
+        auto in = Variable::create(batch.input, false);
+        auto tgt = Variable::create(batch.target, false);
+        auto loss = model_.forward(in, true)->cross_entropy(tgt);
+        loss->backward();
+        loss->release_graph();
+        losses.push_back(std::move(loss));
+    }
+    if (config_.grad_accum > 1) {
+        optimizer_->scale_grads(1.0f / static_cast<float>(config_.grad_accum));
+    }
+    // Measures the pre-clip norm, as compute_grad_norm does on the CPU.
+    optimizer_->clip_grad_norm(5.0f);
+    optimizer_->step();
+
+    // The step's one wait for the GPU.
+    float loss_sum = 0.0f;
+    for (const auto& loss : losses) loss_sum += loss->getData().getValue(0, 0);
+    const float loss_val = loss_sum / static_cast<float>(config_.grad_accum);
+    const float grad_norm = optimizer_->last_grad_norm();
+    metrics_->record_step(step, loss_val, grad_norm);
+    log_step(step, loss_val, grad_norm, step_start);
+}
+
+void Trainer::log_step(int step, float loss_val, float grad_norm,
+                       std::chrono::steady_clock::time_point step_start) {
     if (mlog_) {
         auto step_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - step_start)

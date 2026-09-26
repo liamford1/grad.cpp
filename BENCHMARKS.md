@@ -58,6 +58,21 @@ Readings:
 - **The GPU gap widens with scale: PyTorch MPS is 1.44× faster at 22M and 2.3 to 2.7× faster at 70M.** grad.cpp sends only matmuls above ~10 GFLOP to the GPU, one synchronous dispatch at a time (#7, #11). PyTorch keeps the whole step on the device. Closing this gap takes a device-resident Metal execution path, not more CPU tuning.
 - These records replace the 70M comparison withdrawn below.
 
+## Metal-resident mode: measurements pending
+
+`--device metal` runs the whole step on the GPU ([design](docs/design/metal-resident.md)). It is tested for correctness against the CPU but has **not been measured**: it was built while the M3 Pro ran a 35-hour training job, and no number is recorded here until it has been run on an idle machine. What will be measured, all under the repeated-trial protocol above:
+
+| measurement | command | compare with |
+|---|---|---|
+| 22M training tok/s | `grad bench --device metal --steps 20 --warmup 3 --trials 5 --json` | `grad bench` (6,560) and PyTorch MPS (9,464) |
+| 70M GPT-2 and modern tok/s | `benchmarks/time_train_steps.sh <grad> data/tinystories.txt medium 35 --device metal` (and `modern`) | CPU 2,542 / 2,602, PyTorch MPS 6,794 / 6,008 |
+| syncs, command buffers and dispatches per step | printed by `grad bench --device metal`, and in its JSON | expected 0 syncs inside a bench trial, 1 per `grad train` step |
+| sensitivity to batching and lead | the 22M bench with `GRAD_METAL_COMMIT` = 8, 16, 32, 64, 128 and `GRAD_METAL_MAX_IN_FLIGHT` = 4, 16, 64 | the defaults (32, 16) |
+| peak memory | `footprint` during a 70M run (GPU-shared pages do not all show in RSS), and the bench's peak Metal tensor memory | CPU mode's 1.8-2.3 GB |
+| GPU time by kernel | an Xcode Metal capture of one 22M step | the GEMM share of the step |
+
+Expected, with reasons, so the results can be read against something: at 22M, above PyTorch MPS, since the step is ~100 GFLOP of GEMM (~30 ms) plus ~900 dispatches, and dispatch overhead would have to exceed ~50 us each to fall below 9,464 tok/s; at 70M, near PyTorch MPS (5,000-7,000 tok/s), since the step is GEMM-bound and both run the same MPS GEMMs, with the batched attention GEMM kernel and dropout generation as the likely gap. A result outside these ranges is a finding to explain, not to round.
+
 ## Head-to-head: PyTorch (2026-07-19, M2 Pro, superseded)
 
 Same machine, same session, runs interleaved minutes apart. The PyTorch side is [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py): the identical 22.0M-parameter config, optimizer settings, dropout placement, and loss, but written as idiomatic PyTorch with fused QKV and `scaled_dot_product_attention`. Training throughput is fp32.

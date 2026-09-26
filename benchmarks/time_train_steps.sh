@@ -6,14 +6,15 @@
 # `grad bench` covers the 22M config; this covers the larger presets, whose
 # step time is dominated by the same code path a full run uses.
 #
-# Usage: benchmarks/time_train_steps.sh <grad-binary> <corpus.txt> <preset> [steps]
+# Usage: benchmarks/time_train_steps.sh <grad-binary> <corpus.txt> <preset> [steps] [train flags...]
 #   e.g. (in a scratch dir with data/ linked)
 #        benchmarks/time_train_steps.sh ~/grad.cpp/build/grad data/tinystories.txt medium 35
+#        benchmarks/time_train_steps.sh ~/grad.cpp/build/grad data/tinystories.txt medium 35 --device metal
 set -uo pipefail
 BIN="${1:?usage: time_train_steps.sh <grad> <corpus> <preset> [steps]}"
 CORPUS="${2:?corpus}"; PRESET="${3:?preset}"; STEPS="${4:-35}"
 
-"$BIN" train "$CORPUS" "$PRESET" > time_train_steps.log 2>&1 &
+"$BIN" train "$CORPUS" "$PRESET" "${@:5}" > time_train_steps.log 2>&1 &
 pid=$!
 csv=""
 while kill -0 "$pid" 2>/dev/null; do

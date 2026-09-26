@@ -110,6 +110,7 @@ int run_eval(const Invocation& invocation) {
     int seq = 256;
     int max_batches = 0;
     std::optional<std::string> tokenizer_flag;
+    std::optional<std::string> device;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe(
@@ -127,9 +128,12 @@ int run_eval(const Invocation& invocation) {
         .at_least(0)
         .named("--batches");
     add_tokenizer_option(cmd, tokenizer_flag, kInferenceTokenizerHelp);
+    add_device_option(cmd, device);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
-    evaluate(checkpoint, corpus, vocab, parse_tokenizer_flag(tokenizer_flag), seq, max_batches);
+    const std::optional<TokenizerKind> kind = parse_tokenizer_flag(tokenizer_flag);
+    apply_device(device);
+    evaluate(checkpoint, corpus, vocab, kind, seq, max_batches);
     return 0;
 }
 

@@ -37,6 +37,12 @@ private:
     std::unordered_map<Variable*, Tensor> m_;
     std::unordered_map<Variable*, Tensor> v_;
 
+    // The pre-clip gradient norm of the last clip_grad_norm call: a float
+    // on the CPU; in Metal mode (norm, clip coefficient) on the GPU, read
+    // only when last_grad_norm() asks, so clipping never waits for it.
+    float last_norm_ = 0.0f;
+    Tensor device_norm_;
+
     float scheduled_lr() const;
 
 public:
@@ -46,7 +52,12 @@ public:
 
     void step() override;
     void zero_grad() override;
+    // In Metal mode the norm, the clip decision and the scaling all run on
+    // the GPU; nothing waits.
     void clip_grad_norm(float max_norm);
+    // The global gradient norm the last clip_grad_norm measured, before
+    // clipping. In Metal mode this waits for the GPU.
+    [[nodiscard]] float last_grad_norm() const;
     void set_warmup_steps(int steps) { warmup_steps_ = steps; }
 
     // Multiply every parameter gradient by s. Gradient accumulation
