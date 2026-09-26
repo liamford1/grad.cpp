@@ -9,6 +9,7 @@
 
 #include "grad/data/dataloader.h"
 #include "grad/data/dataset.h"
+#include "grad/transformer/device.h"
 #include "grad/transformer/gpt_model.h"
 #include "grad/transformer/metal_backend.h"
 #include "grad/transformer/optimizer.h"
@@ -24,6 +25,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -54,6 +56,13 @@ struct BenchmarkOptions {
     int warmup = 3;
     int trials = 5;
     std::string json_path;
+};
+
+// Per optimizer step, averaged over the timed trials; all zero in CPU mode.
+struct StreamPerStep {
+    double syncs = 0.0;
+    double command_buffers = 0.0;
+    double dispatches = 0.0;
 };
 
 // The benchmarked model: the 22M "small" config, pinned here rather than
@@ -103,7 +112,8 @@ void write_benchmark_json(const BenchmarkOptions& options,
                           const std::vector<double>& train_steps_per_s,
                           const std::vector<double>& train_tokens_per_s,
                           const std::vector<double>& generation_tokens_per_s,
-                          size_t parameter_count, size_t peak_memory_mb) {
+                          size_t parameter_count, size_t peak_memory_mb,
+                          const StreamPerStep& stream, size_t metal_peak_mb) {
     if (options.json_path.empty()) return;
     std::ofstream out(options.json_path);
     if (!out) throw std::runtime_error("Cannot write benchmark JSON: " + options.json_path);
@@ -129,6 +139,7 @@ void write_benchmark_json(const BenchmarkOptions& options,
         << "  \"system\": \"" << GRAD_SYSTEM << "\",\n"
         << "  \"metal_available\": " << (metal::available() ? "true" : "false") << ",\n"
         << "  \"metal_fp16\": " << (metal::fp16_active() ? "true" : "false") << ",\n"
+        << "  \"device\": \"" << device_name(current_device()) << "\",\n"
         << "  \"parameters\": " << parameter_count << ",\n"
         << "  \"config\": {\"vocab\": " << kConfig.vocab_size
         << ", \"d_model\": " << kConfig.d_model << ", \"layers\": " << kConfig.num_layers
@@ -147,7 +158,11 @@ void write_benchmark_json(const BenchmarkOptions& options,
         << "  \"median_training_steps_per_second\": " << median(train_steps_per_s) << ",\n"
         << "  \"median_training_tokens_per_second\": " << median(train_tokens_per_s) << ",\n"
         << "  \"median_generation_tokens_per_second\": " << median(generation_tokens_per_s) << ",\n"
-        << "  \"peak_rss_mb\": " << peak_memory_mb << "\n"
+        << "  \"peak_rss_mb\": " << peak_memory_mb << ",\n"
+        << "  \"metal_stream_per_step\": {\"syncs\": " << stream.syncs
+        << ", \"command_buffers\": " << stream.command_buffers
+        << ", \"dispatches\": " << stream.dispatches << "},\n"
+        << "  \"metal_peak_live_mb\": " << metal_peak_mb << "\n"
         << "}\n";
     if (!out.good()) {
         throw std::runtime_error("Failed while writing benchmark JSON: " + options.json_path);
@@ -182,13 +197,18 @@ void benchmark(const BenchmarkOptions& options) {
               << " heads=" << kConfig.num_heads << " seq=" << seq_length << " batch=" << batch_size
               << " params=" << parameter_count << std::endl;
 
+    // In Metal mode nothing in a step reads GPU results, so steps pipeline:
+    // the CPU encodes step k+1 while the GPU runs step k, and each trial
+    // ends with a sync so its time covers all the work it queued (the
+    // PyTorch baseline syncs the same way).
+    const bool metal = metal_mode();
     const auto run_step = [&]() {
         if (!loader.has_next()) loader.reset();
         auto batch = loader.next_batch();
         auto in = Variable::create(batch.input, false);
         auto tgt = Variable::create(batch.target, false);
         auto logits = model.forward(in, true);
-        auto loss = logits->log_softmax()->nll_loss(tgt);
+        auto loss = logits->cross_entropy(tgt);
         optimizer.zero_grad();
         loss->backward();
         loss->release_graph();
@@ -202,12 +222,15 @@ void benchmark(const BenchmarkOptions& options) {
               << GRAD_BUILD_TYPE << ", " << GRAD_COMPILER << std::endl;
 
     for (int i = 0; i < options.warmup; i++) run_step();
+    if (metal) metal::synchronize();
 
     std::vector<double> train_steps_per_s;
     std::vector<double> train_tokens_per_s;
+    const metal::StreamStats stream_before = metal::stream_stats();
     for (int trial = 0; trial < options.trials; ++trial) {
         const auto start = std::chrono::steady_clock::now();
         for (int i = 0; i < options.steps; i++) run_step();
+        if (metal) metal::synchronize();
         const auto end = std::chrono::steady_clock::now();
         const double train_s = std::chrono::duration<double>(end - start).count();
         const double steps_per_s = options.steps / train_s;
@@ -221,6 +244,22 @@ void benchmark(const BenchmarkOptions& options) {
     std::cout << "  median: " << std::fixed << std::setprecision(2) << median(train_steps_per_s)
               << " steps/s, " << std::setprecision(0) << median(train_tokens_per_s) << " tok/s"
               << std::endl;
+    StreamPerStep per_step;
+    if (metal) {
+        // The trial-end syncs are the protocol's, not the step's.
+        const metal::StreamStats after = metal::stream_stats();
+        const double steps = static_cast<double>(options.steps) * options.trials;
+        per_step.syncs =
+            (static_cast<double>(after.syncs - stream_before.syncs) - options.trials) / steps;
+        per_step.command_buffers =
+            static_cast<double>(after.command_buffers - stream_before.command_buffers) / steps;
+        per_step.dispatches =
+            static_cast<double>(after.dispatches - stream_before.dispatches) / steps;
+        std::cout << "  metal stream per step: " << std::setprecision(2) << per_step.syncs
+                  << " syncs, " << std::setprecision(1) << per_step.command_buffers
+                  << " command buffers, " << std::setprecision(0) << per_step.dispatches
+                  << " dispatches" << std::endl;
+    }
 
     utils::print_section("Generation throughput");
     constexpr int kGenTokens = 64;
@@ -243,8 +282,10 @@ void benchmark(const BenchmarkOptions& options) {
 
     const size_t peak_memory_mb = utils::get_peak_memory_mb();
     std::cout << "\nPeak RSS: " << peak_memory_mb << " MB" << std::endl;
+    const size_t metal_peak_mb = metal::stream_stats().peak_live_bytes / (size_t{1} << 20);
+    if (metal) std::cout << "Peak Metal tensor memory: " << metal_peak_mb << " MB" << std::endl;
     write_benchmark_json(options, train_steps_per_s, train_tokens_per_s, generation_tokens_per_s,
-                         parameter_count, peak_memory_mb);
+                         parameter_count, peak_memory_mb, per_step, metal_peak_mb);
     if (!options.json_path.empty()) {
         std::cout << "Benchmark JSON: " << options.json_path << std::endl;
     }
@@ -254,6 +295,7 @@ void benchmark(const BenchmarkOptions& options) {
 
 int run_bench(const Invocation& invocation) {
     BenchmarkOptions options;
+    std::optional<std::string> device;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe(
@@ -264,8 +306,10 @@ int run_bench(const Invocation& invocation) {
     cmd.option("--warmup", options.warmup, "untimed steps before the first trial").at_least(0);
     cmd.option("--trials", options.trials, "timed windows; the median is reported").at_least(1);
     cmd.option("--json", options.json_path, "also write the results as JSON").metavar("PATH");
+    add_device_option(cmd, device);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
+    apply_device(device);
     benchmark(options);
     return 0;
 }
