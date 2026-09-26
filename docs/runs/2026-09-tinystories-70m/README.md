@@ -86,6 +86,10 @@ The grammar is fluent and the stories have a recognizable shape, with a setup, a
 - **The validation split is the file's own tail**, not TinyStories' official validation file (see Comparability).
 - **In-loop validation scored a fixed prefix of the split**, which read 0.25 nats optimistic (see Results). The trainer has since been fixed.
 
+## Weights
+
+`tinystories_best.bin` and its tokenizer are published as the [`tinystories-70m` release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m), with SHA-256 checksums and usage.
+
 ## Reproduce
 
 ```bash

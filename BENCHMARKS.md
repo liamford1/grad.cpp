@@ -42,7 +42,23 @@ Run benchmarks on an otherwise idle machine. The JSON includes every trial, the 
 
 Not an optimization round, and on different hardware (M3 Pro), so not comparable row-for-row with the table above. It is the throughput a real run sustained: the `medium` preset (69.8M parameters, d768 L8, seq 256, 8 × 4 accumulation) trained for 40,000 steps on TinyStories. The median optimizer step took 3.23s, or **2,540 tokens/s** (10th to 90th percentile 3.20 to 3.44s), over 37.1 hours in four resumed sessions. End-of-step RSS stayed between 1.8 and 2.3GB with no drift. Details and the full per-step CSV are in the [run report](docs/runs/2026-09-tinystories-70m/README.md).
 
-## Head-to-head: PyTorch (2026-07-19)
+## Head-to-head: PyTorch 2.14 on M3 Pro (2026-09-25)
+
+Both engines measured under the repeated-trial protocol on an idle M3 Pro, fp32, with the same configs, optimizer settings and loss (PyTorch side: [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py), idiomatic fused QKV and `scaled_dot_product_attention`). Raw JSON and method: [`benchmarks/results/2026-09-25-m3pro/`](benchmarks/results/2026-09-25-m3pro/).
+
+| training config | grad.cpp (CPU) | PyTorch (CPU) | PyTorch (MPS GPU) |
+|---|---:|---:|---:|
+| 22M `small` · d512 L6 · seq 96 · batch 8 | **6,560 tok/s** | 4,370 | 9,464 |
+| 70M `medium` (GPT-2 block) · d768 L8 · seq 256 · 8×4 | **2,542 tok/s** | 2,458 | 6,794 |
+| 69M `modern` (RMSNorm/RoPE/SwiGLU) · same shape | **2,602 tok/s** | 2,443 | 6,008 |
+
+Readings:
+
+- **On CPU, grad.cpp's lead shrinks with scale: 1.50× at 22M, 1.03 to 1.07× at 70M.** At 22M per-op overhead is a large share of the step, and that is where a specialized engine wins. At 70M the step is dominated by large GEMMs, and both engines hand those to the same Accelerate/AMX BLAS. Parity there is the expected result, not a regression.
+- **The GPU gap widens with scale: PyTorch MPS is 1.44× faster at 22M and 2.3 to 2.7× faster at 70M.** grad.cpp sends only matmuls above ~10 GFLOP to the GPU, one synchronous dispatch at a time (#7, #11). PyTorch keeps the whole step on the device. Closing this gap takes a device-resident Metal execution path, not more CPU tuning.
+- These records replace the 70M comparison withdrawn below.
+
+## Head-to-head: PyTorch (2026-07-19, M2 Pro, superseded)
 
 Same machine, same session, runs interleaved minutes apart. The PyTorch side is [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py): the identical 22.0M-parameter config, optimizer settings, dropout placement, and loss, but written as idiomatic PyTorch with fused QKV and `scaled_dot_product_attention`. Training throughput is fp32.
 

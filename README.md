@@ -8,7 +8,7 @@ The largest model trained with it so far is a **70M-parameter GPT trained from s
 
 > **Once upon a time, there was a little dragon who** wanted to meet someone else. He flew around and saw an old lady. She smiled at the dragon, and said, "Hello! My name is Frank." The big queen thought this sounded like fun, so she asked Frank if he would join her for some fun. Then, they became best friends. They went on adventures together, learning to be as friendly with one another.
 
-Every gradient that trained it was derived and implemented by hand. The [run report](docs/runs/2026-09-tinystories-70m/README.md) has the full configuration, loss curves, a checkpoint evaluation, more samples, and an audit finding: the trainer's in-loop validation read 0.25 nats optimistic, and that has since been fixed.
+Every gradient that trained it was derived and implemented by hand. The [run report](docs/runs/2026-09-tinystories-70m/README.md) has the full configuration, loss curves, a checkpoint evaluation, more samples, and an audit finding: the trainer's in-loop validation read 0.25 nats optimistic, and that has since been fixed. The weights are published as a [GitHub Release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m); after building, two downloads and `./build/grad chat grad-tinystories-70m.bin data/tinystories.txt` let you talk to it.
 
 ![70M TinyStories training run](docs/runs/2026-09-tinystories-70m/loss.svg)
 
@@ -183,15 +183,14 @@ A resumed or warm-started run reseeds the data loader (by step position and chec
 
 ## Performance
 
-Training throughput for the 22M benchmark config vs PyTorch 2.13 on the same M2 Pro (fp32). The PyTorch side ([`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py)) builds the identical model with idiomatic fused QKV and `scaled_dot_product_attention`:
+Training throughput against PyTorch 2.14 on the same M3 Pro, fp32, under the repeated-trial protocol. The PyTorch side ([`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py)) builds the identical models with idiomatic fused QKV and `scaled_dot_product_attention`:
 
 | training config | grad.cpp (CPU) | PyTorch (CPU) | PyTorch (MPS GPU) |
 |---|---:|---:|---:|
-| 22M · d512 L6 · seq 96 | **5,418 tok/s** | 3,685 | 8,112 |
+| 22M · d512 L6 · seq 96 | **6,560 tok/s** | 4,370 | 9,464 |
+| 70M · d768 L8 · seq 256 | **2,542 tok/s** | 2,458 | 6,794 |
 
-On this specific CPU workload, grad.cpp is 1.5× faster than PyTorch; PyTorch MPS is 1.5× faster than grad.cpp. This is a specialized workload result, not a claim of general framework superiority. The 70M comparison previously shown here was withdrawn after a source-metrics audit found an inconsistent throughput calculation; [BENCHMARKS.md](BENCHMARKS.md) records the correction.
-
-At 70M parameters, training over the full 40,000-step run held a median of **2,540 tokens/s** (3.23s per 8,192-token optimizer step, 10th to 90th percentile 3.20 to 3.44s) with flat memory. See the [run report](docs/runs/2026-09-tinystories-70m/README.md#how-the-run-went). A PyTorch comparison at that scale is pending a rerun under the repeated-trial protocol.
+On CPU, grad.cpp is 1.5× faster than PyTorch at 22M, where per-op overhead matters. At 70M they are at parity, because both spend the step in the same Accelerate GEMMs. PyTorch's GPU backend is 1.4× faster at 22M and 2.7× faster at 70M, because it keeps the whole step on the device, where grad.cpp only offloads its largest matmuls. That gap is the next piece of work. These are results for these workloads, not claims about either framework in general. Raw records and method: [BENCHMARKS.md](BENCHMARKS.md#head-to-head-pytorch-214-on-m3-pro-2026-09-25).
 
 The full optimization history, 1.2 → 7.9 steps/s across 11 measured rounds including null results, is in [BENCHMARKS.md](BENCHMARKS.md). Current benchmark commands run repeated trials, report the median, identify dirty builds, record the compiler/system/backend, and optionally write JSON.
 
