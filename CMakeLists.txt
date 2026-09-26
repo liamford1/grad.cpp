@@ -341,7 +341,13 @@ if(BUILD_TESTS)
     add_test(NAME MetalTrainingParity COMMAND metal_parity parity)
     add_test(NAME MetalTrainerParity COMMAND metal_parity trainer ${CMAKE_CURRENT_BINARY_DIR})
     add_test(NAME MetalGradientChecking COMMAND metal_parity gradcheck)
-    set_tests_properties(MetalTrainingParity MetalTrainerParity MetalGradientChecking PROPERTIES
+    # The same parity run with tiny command buffers and a lead of two, so
+    # commit batching and the run-ahead throttle cannot change results.
+    add_test(NAME MetalTrainingParityThrottled COMMAND metal_parity parity)
+    set_tests_properties(MetalTrainingParityThrottled PROPERTIES
+        ENVIRONMENT "GRAD_METAL_COMMIT=3;GRAD_METAL_MAX_IN_FLIGHT=2")
+    set_tests_properties(MetalTrainingParity MetalTrainerParity MetalGradientChecking
+                         MetalTrainingParityThrottled PROPERTIES
         SKIP_RETURN_CODE 77 LABELS "integration;hardware" TIMEOUT 120)
 
     add_grad_test(test_grad_mode tests/unit/test_grad_mode.cpp GradMode)

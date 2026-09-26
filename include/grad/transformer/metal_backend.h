@@ -35,6 +35,8 @@
 //   GRAD_METAL_FP16=1       fp16 operands, fp32 accumulate (CPU mode)
 //   GRAD_METAL_COMMIT=N     dispatches per committed command buffer in
 //                           Metal mode (default 32)
+//   GRAD_METAL_MAX_IN_FLIGHT=N  committed command buffers the CPU may run
+//                           ahead of the GPU before waiting (default 16)
 namespace grad::metal {
 
 // Counters of the resident stream since process start, for benchmarks
@@ -43,6 +45,7 @@ struct StreamStats {
     uint64_t syncs = 0;            // waits for the GPU (fences that found work, explicit syncs)
     uint64_t command_buffers = 0;  // committed command buffers
     uint64_t dispatches = 0;       // kernels and MPS GEMMs encoded
+    uint64_t throttle_waits = 0;   // waits because the CPU ran too far ahead
     size_t live_bytes = 0;         // pool blocks in use by tensors
     size_t peak_live_bytes = 0;
     size_t cached_bytes = 0;  // pool blocks held for reuse (free or awaiting the GPU)

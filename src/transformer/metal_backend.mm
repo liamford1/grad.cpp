@@ -380,6 +380,15 @@ Stream::Stream() {
         const long n = std::atol(value);
         if (n > 0) commit_every_ = static_cast<size_t>(n);
     }
+    // Storage released while its command buffer is queued is reused only
+    // once that buffer completes, so memory grows with how far the CPU runs
+    // ahead of the GPU. 16 buffers of 32 dispatches is about half a 70M
+    // micro-batch of lead (~1,000 dispatches each): enough queued work to
+    // keep the GPU busy, and a bounded addition to peak memory.
+    if (const char* value = std::getenv("GRAD_METAL_MAX_IN_FLIGHT")) {
+        const long n = std::atol(value);
+        if (n > 0) max_in_flight_ = static_cast<size_t>(n);
+    }
 }
 
 bool Stream::open_locked() {
@@ -427,12 +436,22 @@ void Stream::commit_locked() {
     has_open_work_.store(false, std::memory_order_relaxed);
     open_seq_.store(seq + 1, std::memory_order_relaxed);
     command_buffers_.fetch_add(1, std::memory_order_relaxed);
-    // Completed buffers are dropped here too, so a caller that never syncs
-    // does not accumulate them; a failure among them waits in error_ for
-    // the next sync.
-    if (in_flight_.size() > 64) {
+    throttle_locked();
+}
+
+void Stream::throttle_locked() {
+    // Completed buffers are dropped first, so a caller that never syncs does
+    // not accumulate them; a failure among them waits in error_ for the
+    // next sync. What remains is (nearly) the work the GPU has not done.
+    const auto drain = [this] {
         const std::string failure = drain_errors_locked(false);
         if (error_.empty()) error_ = failure;
+    };
+    drain();
+    while (in_flight_.size() > max_in_flight_) {
+        [in_flight_.front() waitUntilCompleted];
+        throttle_waits_.fetch_add(1, std::memory_order_relaxed);
+        drain();
     }
 }
 
@@ -505,6 +524,7 @@ void Stream::add_stats(StreamStats& out) const {
     out.syncs = syncs_.load(std::memory_order_relaxed);
     out.command_buffers = command_buffers_.load(std::memory_order_relaxed);
     out.dispatches = dispatches_.load(std::memory_order_relaxed);
+    out.throttle_waits = throttle_waits_.load(std::memory_order_relaxed);
 }
 
 Stream& stream() {

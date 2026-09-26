@@ -242,6 +242,7 @@ private:
     void end_encoder_locked();
     void dispatched_locked();
     void commit_locked();
+    void throttle_locked();
     // Records "could not create a command buffer or encoder" for the next
     // sync to report; the encode is dropped.
     void fail_open();
@@ -253,6 +254,7 @@ private:
     std::deque<id<MTLCommandBuffer>> in_flight_;
     std::string error_;
     size_t commit_every_ = 32;
+    size_t max_in_flight_ = 16;
     size_t open_dispatches_ = 0;
     std::atomic<uint64_t> open_seq_{1};
     std::atomic<uint64_t> completed_seq_{0};
@@ -261,6 +263,7 @@ private:
     std::atomic<uint64_t> syncs_{0};
     std::atomic<uint64_t> command_buffers_{0};
     std::atomic<uint64_t> dispatches_{0};
+    std::atomic<uint64_t> throttle_waits_{0};
 };
 
 Stream& stream();

@@ -63,6 +63,7 @@ struct StreamPerStep {
     double syncs = 0.0;
     double command_buffers = 0.0;
     double dispatches = 0.0;
+    double throttle_waits = 0.0;
 };
 
 // The benchmarked model: the 22M "small" config, pinned here rather than
@@ -161,7 +162,8 @@ void write_benchmark_json(const BenchmarkOptions& options,
         << "  \"peak_rss_mb\": " << peak_memory_mb << ",\n"
         << "  \"metal_stream_per_step\": {\"syncs\": " << stream.syncs
         << ", \"command_buffers\": " << stream.command_buffers
-        << ", \"dispatches\": " << stream.dispatches << "},\n"
+        << ", \"dispatches\": " << stream.dispatches
+        << ", \"throttle_waits\": " << stream.throttle_waits << "},\n"
         << "  \"metal_peak_live_mb\": " << metal_peak_mb << "\n"
         << "}\n";
     if (!out.good()) {
@@ -255,10 +257,13 @@ void benchmark(const BenchmarkOptions& options) {
             static_cast<double>(after.command_buffers - stream_before.command_buffers) / steps;
         per_step.dispatches =
             static_cast<double>(after.dispatches - stream_before.dispatches) / steps;
+        per_step.throttle_waits =
+            static_cast<double>(after.throttle_waits - stream_before.throttle_waits) / steps;
         std::cout << "  metal stream per step: " << std::setprecision(2) << per_step.syncs
                   << " syncs, " << std::setprecision(1) << per_step.command_buffers
                   << " command buffers, " << std::setprecision(0) << per_step.dispatches
-                  << " dispatches" << std::endl;
+                  << " dispatches, " << std::setprecision(1) << per_step.throttle_waits
+                  << " run-ahead waits" << std::endl;
     }
 
     utils::print_section("Generation throughput");
