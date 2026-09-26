@@ -1,5 +1,7 @@
 #include "grad/transformer/optimizer.h"
 #include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/device.h"
+#include "grad/transformer/metal_ops.h"
 #include "grad/transformer/parallel.h"
 #include <cmath>
 #include <cstdint>
@@ -76,6 +78,11 @@ void AdamOptimizer::step() {
         const float wd = decay_param ? weight_decay_ : 0.0f;
 
         const size_t n = data.numel();
+        if (metal_mode()) {
+            metal::ops::adamw(data.device_data(), grad.device_data(), m.device_data(),
+                              v.device_data(), n, {lr, b1, b2, inv_bc1, inv_bc2, eps, wd});
+            continue;
+        }
         float* dptr = data.raw();
         float* gptr = grad.raw();
         float* mptr = m.raw();
@@ -104,6 +111,10 @@ void AdamOptimizer::zero_grad() {
     for (auto& param : parameters_) {
         Tensor& grad = param->getGrad();
         if (grad.numel() == 0) continue;
+        if (metal_mode()) {
+            metal::ops::fill(grad.device_data(), grad.numel(), 0.0f);
+            continue;
+        }
         std::memset(grad.raw(), 0, grad.numel() * sizeof(float));
     }
 }
@@ -112,6 +123,10 @@ void AdamOptimizer::scale_grads(float s) {
     for (auto& param : parameters_) {
         if (!param->requiresGrad() || !param->hasGrad()) continue;
         Tensor& grad = param->getGrad();
+        if (metal_mode()) {
+            metal::ops::scale(grad.device_data(), s, grad.device_data(), grad.numel());
+            continue;
+        }
         vec_scale_inplace(grad.raw(), s, grad.numel());
     }
 }
@@ -171,6 +186,24 @@ bool AdamOptimizer::load_state(std::istream& in) {
 }
 
 void AdamOptimizer::clip_grad_norm(float max_norm) {
+    if (metal_mode()) {
+        // Norm, coefficient (1 when under max_norm) and scaling on the GPU;
+        // scaling by exactly 1 leaves an unclipped gradient bit for bit.
+        std::vector<metal::ops::Span> grads;
+        for (auto& param : parameters_) {
+            if (!param->requiresGrad() || !param->hasGrad()) continue;
+            const Tensor& grad = param->getGrad();
+            grads.push_back({grad.device_data(), grad.numel()});
+        }
+        device_norm_ = Tensor::uninitialized(Shape{2});
+        metal::ops::grad_norm(grads, max_norm, device_norm_.device_data());
+        for (auto& param : parameters_) {
+            if (!param->requiresGrad() || !param->hasGrad()) continue;
+            Tensor& grad = param->getGrad();
+            metal::ops::scale_by(grad.device_data(), device_norm_.device_data() + 1, grad.numel());
+        }
+        return;
+    }
     float total_norm = 0.0f;
     for (auto& param : parameters_) {
         if (!param->requiresGrad() || !param->hasGrad()) continue;
@@ -178,6 +211,8 @@ void AdamOptimizer::clip_grad_norm(float max_norm) {
         total_norm += vec_sum_squares(grad.raw(), grad.numel());
     }
     total_norm = std::sqrt(total_norm);
+    last_norm_ = total_norm;
+    device_norm_ = Tensor();
 
     if (total_norm > max_norm) {
         float clip_coef = max_norm / (total_norm + 1e-6f);
@@ -187,6 +222,10 @@ void AdamOptimizer::clip_grad_norm(float max_norm) {
             vec_scale_inplace(grad.raw(), clip_coef, grad.numel());
         }
     }
+}
+
+float AdamOptimizer::last_grad_norm() const {
+    return device_norm_.numel() > 0 ? device_norm_.raw()[0] : last_norm_;
 }
 
 }  // namespace grad
