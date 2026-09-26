@@ -158,10 +158,11 @@ void benchmark(const BenchmarkOptions& options) {
     std::cout << "\ngrad.cpp Benchmark\n" << std::endl;
 
     const int vocab_size = kConfig.vocab_size;
-    BPETokenizer tokenizer(vocab_size);
+    // v1, the tokenizer every number in BENCHMARKS.md was measured with.
     const std::string text = read_text_file(kDefaultCorpus);
-    load_tokenizer(text, "tokenizer", vocab_size, tokenizer);
-    const std::vector<int> tokens = tokenizer.encode(text);
+    const std::unique_ptr<Tokenizer> tokenizer =
+        load_or_train_tokenizer(kDefaultCorpus, vocab_size, TokenizerKind::BpeV1, text);
+    const std::vector<int> tokens = tokenizer->encode(text);
 
     const int seq_length = kConfig.seq_length;
     const int batch_size = kConfig.batch_size;
@@ -223,8 +224,8 @@ void benchmark(const BenchmarkOptions& options) {
 
     utils::print_section("Generation throughput");
     constexpr int kGenTokens = 64;
-    TextGen generator(model, &tokenizer);
-    const auto prompt = tokenizer.encode("ROMEO:\n");
+    TextGen generator(model, tokenizer.get());
+    const auto prompt = tokenizer->encode("ROMEO:\n");
 
     std::vector<double> generation_tokens_per_s;
     for (int trial = 0; trial < options.trials; ++trial) {

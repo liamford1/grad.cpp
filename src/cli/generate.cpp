@@ -24,9 +24,9 @@ namespace {
 // when the corpus was prepared, else the in-memory 95/5 split the trainer
 // uses.
 std::vector<Prompt> held_out_prompts(const std::string& corpus_path, int vocab_size,
-                                     const BPETokenizer& tokenizer) {
+                                     const Tokenizer& tokenizer) {
     constexpr int kWindow = 6;
-    const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val");
+    const std::string val_bin = token_bin_path(corpus_path, vocab_size, "val", tokenizer.kind());
     if (tokenfile::exists(val_bin)) {
         return sample_prompts(corpus_path, tokenizer,
                               MappedTokenDataset(val_bin, kWindow, kWindow));
@@ -40,7 +40,7 @@ std::vector<Prompt> held_out_prompts(const std::string& corpus_path, int vocab_s
 // An empty prompt means "pick one": the first speaker tag for the default
 // corpus, a held-out opening otherwise.
 Prompt choose_prompt(const std::string& prompt, const std::string& corpus_path, int vocab_size,
-                     const BPETokenizer& tokenizer) {
+                     const Tokenizer& tokenizer) {
     if (!prompt.empty()) return prompt_from_text(tokenizer, prompt);
     if (is_default_corpus(corpus_path)) return prompt_from_text(tokenizer, "ROMEO:\n");
     return held_out_prompts(corpus_path, vocab_size, tokenizer).at(0);
@@ -62,6 +62,7 @@ int run_generate(const Invocation& invocation) {
     std::string prompt;
     std::string corpus = kDefaultCorpus;
     std::optional<int> vocab;
+    std::optional<std::string> tokenizer_flag;
     SamplingOptions sampling{.max_tokens = 150};
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
@@ -74,13 +75,15 @@ int run_generate(const Invocation& invocation) {
         .at_least(1)
         .default_text("the checkpoint's");
     add_sampling_options(cmd, sampling, "print only the greedy continuation");
+    add_tokenizer_option(cmd, tokenizer_flag, kInferenceTokenizerHelp);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     std::cout << "\ngrad.cpp Generation\n" << std::endl;
-    const auto [model, tokenizer] = load_for_inference(checkpoint, corpus, vocab);
-    const Prompt chosen = choose_prompt(prompt, corpus, model.getVocabSize(), tokenizer);
+    const auto [model, tokenizer] =
+        load_for_inference(checkpoint, corpus, vocab, parse_tokenizer_flag(tokenizer_flag));
+    const Prompt chosen = choose_prompt(prompt, corpus, model.getVocabSize(), *tokenizer);
 
-    TextGen generator(model, &tokenizer);
+    TextGen generator(model, tokenizer.get());
 
     std::cout << "\n--- Greedy Decoding ---\n" << std::endl;
     std::cout << "Prompt: \"" << chosen.text << "\"" << std::endl;

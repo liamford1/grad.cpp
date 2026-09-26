@@ -19,6 +19,7 @@ int run_chat(const Invocation& invocation) {
     std::string checkpoint = "shakespeare_final.bin";
     std::string corpus = kDefaultCorpus;
     std::optional<int> vocab;
+    std::optional<std::string> tokenizer_flag;
     SamplingOptions sampling{.max_tokens = 200};
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
@@ -31,11 +32,13 @@ int run_chat(const Invocation& invocation) {
         .at_least(1)
         .default_text("the checkpoint's");
     add_sampling_options(cmd, sampling, "always take the most likely token (top-k 1)");
+    add_tokenizer_option(cmd, tokenizer_flag, kInferenceTokenizerHelp);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     std::cout << "\ngrad.cpp Chat\n" << std::endl;
-    const auto [model, tokenizer] = load_for_inference(checkpoint, corpus, vocab);
-    TextGen generator(model, &tokenizer);
+    const auto [model, tokenizer] =
+        load_for_inference(checkpoint, corpus, vocab, parse_tokenizer_flag(tokenizer_flag));
+    TextGen generator(model, tokenizer.get());
     // TextGen streams only by sampling; restricted to the single most
     // likely token, sampling is greedy decoding.
     const int top_k = sampling.greedy ? 1 : sampling.top_k;
@@ -50,7 +53,7 @@ int run_chat(const Invocation& invocation) {
         if (!std::getline(std::cin, line)) break;
         if (line.empty() || line == "exit" || line == "quit") break;
 
-        const auto prompt = tokenizer.encode(line + "\n");
+        const auto prompt = tokenizer->encode(line + "\n");
         std::cout << line << std::flush;
         generator.generate_stream(
             prompt, [](const std::string& piece) { std::cout << piece << std::flush; },

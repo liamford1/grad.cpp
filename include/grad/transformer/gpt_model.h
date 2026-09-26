@@ -5,9 +5,11 @@
 #include "grad/transformer/transformer_block.h"
 #include "grad/transformer/linear.h"
 #include "grad/transformer/layer_norm.h"
+#include "grad/tokenizer/fingerprint.h"
 
 #include <vector>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace grad {
@@ -16,6 +18,13 @@ namespace grad {
 // biases. Modern: RMSNorm, RoPE, bias-free SwiGLU FFN - same parameter
 // count at equal d_model. The arch is stored in the checkpoint (format v2;
 // v1 files load as GPT2).
+//
+// A checkpoint can also record the tokenizer the model was trained with,
+// in a tagged trailer after the last tensor: "TKFP", uint32 length 12,
+// uint32 TokenizerKind, uint64 fingerprint (little-endian). The header
+// stays at version 2, and loaders before the trailer stop reading at the
+// last tensor, so they still load these files. Files without a trailer
+// load with the tokenizer unknown; unknown trailer tags are skipped.
 //
 // Hyperparameters are int and extents size_t; see the size convention in
 // tensor.h.
@@ -30,6 +39,7 @@ private:
     int max_len_;
     float dropout_rate_;
     GPTArch arch_;
+    std::optional<TokenizerFingerprint> tokenizer_;
 
     TokenEmbedding token_embedding;
     // Constructed for both arches to keep the class layout simple, but
@@ -55,6 +65,15 @@ public:
     int getNumHeads() const { return num_heads_; }
     int getMaxLen() const { return max_len_; }
     GPTArch getArch() const { return arch_; }
+
+    // The tokenizer these embedding rows belong to, when known; save()
+    // writes it and load() restores it.
+    const std::optional<TokenizerFingerprint>& getTokenizerFingerprint() const {
+        return tokenizer_;
+    }
+    void setTokenizerFingerprint(const TokenizerFingerprint& fingerprint) {
+        tokenizer_ = fingerprint;
+    }
 
     const TokenEmbedding& getTokenEmbedding() const { return token_embedding; }
     const PositionalEncoding& getPosEncoding() const { return pos_encoding; }

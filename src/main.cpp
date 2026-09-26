@@ -17,6 +17,12 @@
 
 namespace {
 
+// Exit status for a malformed command line (no command, an unknown one, or
+// arguments the command rejects), distinct from 1 for a failure while
+// running, so callers like train_supervised.sh can tell a mistake that
+// retrying cannot fix from a crash worth resuming after.
+constexpr int kUsageExit = 2;
+
 struct CommandEntry {
     std::string_view name;
     int (*run)(const grad::cli::Invocation&);
@@ -61,7 +67,7 @@ int dispatch(int argc, char* argv[]) {
 
     if (args.size() < 2) {
         print_usage(std::cerr, program);
-        return 1;
+        return kUsageExit;
     }
     const std::string_view name = args[1];
     if (name == "-h" || name == "--help" || name == "help") {
@@ -76,7 +82,7 @@ int dispatch(int argc, char* argv[]) {
     if (!entry) {
         std::cerr << "Error: unknown command '" << name << "'\n\n";
         print_usage(std::cerr, program);
-        return 1;
+        return kUsageExit;
     }
 
     const grad::cli::Invocation invocation{
@@ -90,7 +96,7 @@ int dispatch(int argc, char* argv[]) {
     } catch (const grad::cli::UsageError& e) {
         std::cerr << "Error: " << e.what() << "\nRun '" << invocation.usage_name()
                   << " --help' for usage." << std::endl;
-        return 1;
+        return kUsageExit;
     } catch (const std::exception& e) {
         std::cerr << "\nError: " << e.what() << std::endl;
         return 1;

@@ -8,6 +8,11 @@
 #
 # Usage:  ./train_supervised.sh <corpus.txt> <preset> [max_restarts]
 #   e.g.  ./train_supervised.sh data/tinystories.txt medium
+#
+# The corpus path is relative to the repo root, where the trainer runs and
+# writes its checkpoints. GRAD_TOKENIZER=v1|v2 picks the tokenizer lineage;
+# unset, it is the one that already has a run for this corpus and preset,
+# else the one whose tokenizer file exists, else v2.
 set -uo pipefail
 
 CORPUS="${1:?usage: train_supervised.sh <corpus.txt> <preset> [max_restarts]}"
@@ -16,13 +21,40 @@ MAX_RESTARTS="${3:-500}"
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$REPO/build/grad"
+cd "$REPO" || exit 1
 # Checkpoint prefix, derived exactly as src/cli/train.cpp does: the corpus
 # filename minus its last extension, then "_modern" for the modern-architecture
 # presets and "_fast" for the fast ones, so lineages coexist on one corpus.
+# v2 runs add "_v2" after the corpus name.
 BASE="$(basename "$CORPUS")"; BASE="${BASE%.*}"
-PREFIX="$BASE"
-case "$PRESET" in modern|fast-modern) PREFIX="${PREFIX}_modern" ;; esac
-case "$PRESET" in fast*) PREFIX="${PREFIX}_fast" ;; esac
+SUFFIX=""
+case "$PRESET" in modern|fast-modern) SUFFIX="${SUFFIX}_modern" ;; esac
+case "$PRESET" in fast*) SUFFIX="${SUFFIX}_fast" ;; esac
+
+has_run() { [ -f "${BASE}$1${SUFFIX}_resume_state.bin" ] || [ -f "${BASE}$1${SUFFIX}_final.bin" ]; }
+has_v1_tokenizer() {
+    compgen -G "${CORPUS}.tokenizer_*.cache" >/dev/null \
+        || { [ "$CORPUS" = data/shakespeare.txt ] && compgen -G "tokenizer_*.cache" >/dev/null; }
+}
+has_v2_tokenizer() { compgen -G "${CORPUS}.bytebpe_*.tok" >/dev/null; }
+
+TOKENIZER="${GRAD_TOKENIZER:-}"
+if [ -z "$TOKENIZER" ]; then
+    if has_run "" && has_run "_v2"; then
+        echo "FATAL: both a v1 and a v2 run exist for ${BASE}${SUFFIX}; set GRAD_TOKENIZER" >&2; exit 1
+    elif has_run ""; then TOKENIZER=v1
+    elif has_run "_v2"; then TOKENIZER=v2
+    elif has_v1_tokenizer && has_v2_tokenizer; then
+        echo "FATAL: v1 and v2 tokenizers both exist for $CORPUS; set GRAD_TOKENIZER" >&2; exit 1
+    elif has_v1_tokenizer; then TOKENIZER=v1
+    else TOKENIZER=v2
+    fi
+fi
+case "$TOKENIZER" in
+    v1) PREFIX="${BASE}${SUFFIX}" ;;
+    v2) PREFIX="${BASE}_v2${SUFFIX}" ;;
+    *) echo "FATAL: GRAD_TOKENIZER must be v1 or v2, got '$TOKENIZER'" >&2; exit 1 ;;
+esac
 LOG="$REPO/${PREFIX}_supervisor.log"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
@@ -45,7 +77,7 @@ trap 'rm -rf "$LOCKDIR"' EXIT
 [ -x "$BIN" ] || { log "FATAL: $BIN missing. Build first."; exit 1; }
 [ -f "$CORPUS" ] || { log "FATAL: corpus $CORPUS missing."; exit 1; }
 
-log "supervising: preset=$PRESET prefix=$PREFIX corpus=$CORPUS"
+log "supervising: preset=$PRESET tokenizer=$TOKENIZER prefix=$PREFIX corpus=$CORPUS"
 
 for (( attempt = 1; attempt <= MAX_RESTARTS; attempt++ )); do
     # Resume only if the trainer actually left state behind; otherwise cold start.
@@ -56,7 +88,7 @@ for (( attempt = 1; attempt <= MAX_RESTARTS; attempt++ )); do
     fi
     log "attempt $attempt/$MAX_RESTARTS (init='${INIT:-scratch}')"
 
-    "$BIN" train "$CORPUS" "$PRESET" $INIT >>"$LOG" 2>&1
+    "$BIN" train "$CORPUS" "$PRESET" $INIT --tokenizer "$TOKENIZER" >>"$LOG" 2>&1
     rc=$?
 
     # The trainer exits 0 both on completion and on a SIGINT pause (it saves
@@ -69,6 +101,13 @@ for (( attempt = 1; attempt <= MAX_RESTARTS; attempt++ )); do
             log "paused by SIGINT; resume state saved. Re-run this script to continue."
         fi
         exit 0
+    fi
+
+    # 2 = the command line was rejected (unknown preset, bad flag). Retrying
+    # the same arguments cannot succeed, so stop instead of crashlooping.
+    if [ $rc -eq 2 ]; then
+        log "FATAL: grad rejected the command line (see above); not restarting"
+        exit 2
     fi
 
     # 130 = SIGINT. A human pressed Ctrl-C; respect it rather than fighting them.

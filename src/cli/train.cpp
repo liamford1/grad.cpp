@@ -42,53 +42,84 @@ std::string checkpoint_stem(const std::string& corpus_path) {
     return (dot == std::string::npos) ? base : base.substr(0, dot);
 }
 
-std::string checkpoint_prefix(const std::string& corpus_path, const Preset& preset) {
-    return checkpoint_stem(corpus_path) + (preset.modern ? "_modern" : "")
-           + (preset.is_smoke_test() ? "_fast" : "");
+// v2 runs carry "_v2" so they can never overwrite a v1 lineage's
+// checkpoints on the same corpus; v1 keeps its historical names so
+// existing runs resume in place.
+std::string checkpoint_prefix(const std::string& corpus_path, const Preset& preset,
+                              TokenizerKind kind) {
+    return checkpoint_stem(corpus_path) + (kind == TokenizerKind::ByteBpe ? "_v2" : "")
+           + (preset.modern ? "_modern" : "") + (preset.is_smoke_test() ? "_fast" : "");
+}
+
+// Which tokenizer lineage `resume` continues when --tokenizer is not given:
+// the one that left resume state behind. Both existing is ambiguous.
+TokenizerKind resumable_kind(const std::string& corpus_path, const Preset& preset) {
+    const auto has_state = [&](TokenizerKind kind) {
+        return training::peek_resume_step(checkpoint_prefix(corpus_path, preset, kind)
+                                          + "_resume_state.bin")
+            .has_value();
+    };
+    const bool v1 = has_state(TokenizerKind::BpeV1);
+    const bool v2 = has_state(TokenizerKind::ByteBpe);
+    if (v1 && v2) {
+        throw std::runtime_error(
+            "Both a v1 and a v2 run have resume state for this corpus and preset; "
+            "pass --tokenizer v1 or --tokenizer v2");
+    }
+    if (!v1 && !v2) {
+        throw std::runtime_error("No resume state found ("
+                                 + checkpoint_prefix(corpus_path, preset, TokenizerKind::BpeV1)
+                                 + "_resume_state.bin or the _v2 equivalent); start a run first");
+    }
+    return v1 ? TokenizerKind::BpeV1 : TokenizerKind::ByteBpe;
 }
 
 struct TrainingData {
+    std::unique_ptr<Tokenizer> tokenizer;
     std::shared_ptr<Dataset> train;
     std::shared_ptr<Dataset> val;
 };
 
-// Memory-maps the corpus's prepared token files, whose tokenizer cache
+// Memory-maps the corpus's prepared token files, whose tokenizer file
 // must also exist. The corpus text is never loaded and nothing is
 // re-encoded, so startup cost and memory use are independent of corpus
 // size.
 TrainingData map_prepared(const std::string& corpus_path, int vocab_size, int seq_length,
-                          BPETokenizer& tokenizer) {
+                          TokenizerKind kind) {
     utils::print_section("Loading Data (pre-tokenized)");
-    const std::string cache_file = tokenizer_cache_path(corpus_path, vocab_size);
+    const std::string cache_file = tokenizer_path(corpus_path, vocab_size, kind);
     if (!std::ifstream(cache_file).good()) {
-        throw std::runtime_error("Found token files but no tokenizer cache (" + cache_file
-                                 + "); run: ./build/grad prepare " + corpus_path);
+        throw std::runtime_error("Found token files but no tokenizer file (" + cache_file
+                                 + "); run: ./build/grad prepare " + corpus_path + " "
+                                 + std::to_string(vocab_size) + " --tokenizer "
+                                 + tokenizer_kind_flag(kind));
     }
-    tokenizer.load(cache_file);
+    std::unique_ptr<Tokenizer> tokenizer = load_existing_tokenizer(corpus_path, vocab_size, kind);
 
-    const std::string train_bin = token_bin_path(corpus_path, vocab_size, "train");
+    const std::string train_bin = token_bin_path(corpus_path, vocab_size, "train", kind);
     auto train = std::make_shared<MappedTokenDataset>(train_bin, seq_length);
-    auto val = std::make_shared<MappedTokenDataset>(token_bin_path(corpus_path, vocab_size, "val"),
-                                                    seq_length, seq_length);
-    if (train->vocabSize() != tokenizer.getCurrentVocabSize()) {
+    auto val = std::make_shared<MappedTokenDataset>(
+        token_bin_path(corpus_path, vocab_size, "val", kind), seq_length, seq_length);
+    if (train->vocabSize() != tokenizer->vocab_size()) {
         throw std::runtime_error("Token file vocab does not match tokenizer cache; re-run prepare");
     }
     std::cout << "Mapped " << train->tokenCount() << " train / " << val->tokenCount()
               << " val tokens from " << train_bin << std::endl;
-    return {train, val};
+    return {std::move(tokenizer), train, val};
 }
 
 // Reads and encodes the corpus now. Fine for small corpora; for anything
 // large, run `prepare` first.
 TrainingData encode_in_memory(const std::string& corpus_path, int vocab_size, int seq_length,
-                              BPETokenizer& tokenizer) {
+                              TokenizerKind kind) {
     utils::print_section("Loading Data");
     const std::string text = read_text_file(corpus_path);
-    load_tokenizer(text, tokenizer_cache_prefix(corpus_path), vocab_size, tokenizer);
+    std::unique_ptr<Tokenizer> tokenizer =
+        load_or_train_tokenizer(corpus_path, vocab_size, kind, tokenizer_training_text(text, kind));
 
     std::cout << "Encoding text..." << std::flush;
     const Stopwatch timer;
-    const std::vector<int> tokens = tokenizer.encode(text);
+    const std::vector<int> tokens = tokenizer->encode(text);
     std::cout << " " << tokens.size() << " tokens (" << timer.ms() << "ms)" << std::endl;
 
     // Hold out the last 5% of the corpus for validation. The split is
@@ -100,7 +131,7 @@ TrainingData encode_in_memory(const std::string& corpus_path, int vocab_size, in
     const std::vector<int> val_tokens(all.subspan(split).begin(), all.subspan(split).end());
     // Non-overlapping val windows: evaluation covers the whole held-out
     // slice once, deterministically.
-    return {std::make_shared<TextDataset>(train_tokens, seq_length),
+    return {std::move(tokenizer), std::make_shared<TextDataset>(train_tokens, seq_length),
             std::make_shared<TextDataset>(val_tokens, seq_length, seq_length)};
 }
 
@@ -125,7 +156,7 @@ training::TrainingConfig make_config(const Preset& preset, int vocab_size, std::
     return config;
 }
 
-void generate_samples(GPTModel& model, const BPETokenizer& tokenizer,
+void generate_samples(GPTModel& model, const Tokenizer& tokenizer,
                       const std::vector<Prompt>& prompts) {
     utils::print_section("Generating Samples");
 
@@ -194,7 +225,8 @@ struct TrainRequest {
     // warm-start from - weights only, fresh optimizer and schedule.
     std::string init;
     std::uint32_t seed;
-    bool via_train_fast;  // which command the resume hint should name
+    std::optional<TokenizerKind> tokenizer;  // --tokenizer, if given
+    bool via_train_fast;                     // which command the resume hint should name
 };
 
 int train(const TrainRequest& request) {
@@ -202,12 +234,17 @@ int train(const TrainRequest& request) {
     const std::string& corpus_path = request.corpus_path;
     std::cout << "\ngrad.cpp Training (" << preset.name << ")\n" << std::endl;
 
-    const std::string prefix = checkpoint_prefix(corpus_path, preset);
     const bool resume = (request.init == "resume");
     const std::string warm_start_path = resume ? "" : request.init;
 
+    // A resume knows its lineage (and so its prefix) up front; a new run
+    // learns it once the tokenizer is chosen below.
+    std::optional<TokenizerKind> requested = request.tokenizer;
+    std::string prefix;
     std::optional<int> resume_next_step;
     if (resume) {
+        if (!requested) requested = resumable_kind(corpus_path, preset);
+        prefix = checkpoint_prefix(corpus_path, preset, *requested);
         resume_next_step = training::peek_resume_step(prefix + "_resume_state.bin");
         if (!resume_next_step) {
             throw std::runtime_error("No resume state found (" + prefix
@@ -220,33 +257,42 @@ int train(const TrainRequest& request) {
         }
     }
 
-    BPETokenizer tokenizer(preset.vocab_size);
-    const bool prepared =
-        tokenfile::exists(token_bin_path(corpus_path, preset.vocab_size, "train"))
-        && tokenfile::exists(token_bin_path(corpus_path, preset.vocab_size, "val"));
-    const TrainingData data =
-        prepared ? map_prepared(corpus_path, preset.vocab_size, preset.seq_length, tokenizer)
-                 : encode_in_memory(corpus_path, preset.vocab_size, preset.seq_length, tokenizer);
-
-    utils::print_section("Initializing Model");
-    const training::TrainingConfig config =
-        make_config(preset, tokenizer.getCurrentVocabSize(), prefix);
-
     const RunSeeds seeds = derive_seeds(request.seed, resume_next_step, warm_start_path);
     Tensor::set_init_seed(seeds.init);
 
+    // A resumed or warm-started model is loaded first: the tokenizer it
+    // records decides which tokenizer and token files this run uses.
     const Stopwatch timer;
-    GPTModel model = [&]() -> GPTModel {
-        if (resume) return GPTModel::load(prefix + "_resume_model.bin");
-        if (!warm_start_path.empty()) {
-            std::cout << "Warm start from " << warm_start_path << " (weights only, fresh optimizer)"
-                      << std::endl;
-            return GPTModel::load(warm_start_path);
-        }
-        return GPTModel(config.vocab_size, config.d_model, config.num_layers, config.num_heads,
-                        config.max_len, config.dropout, preset.arch());
-    }();
-    const long long init_ms = timer.ms();
+    std::optional<GPTModel> start;
+    if (resume) {
+        start.emplace(GPTModel::load(prefix + "_resume_model.bin"));
+    } else if (!warm_start_path.empty()) {
+        std::cout << "Warm start from " << warm_start_path << " (weights only, fresh optimizer)"
+                  << std::endl;
+        start.emplace(GPTModel::load(warm_start_path));
+    }
+    const long long load_ms = timer.ms();
+    const std::string start_path = resume ? prefix + "_resume_model.bin" : warm_start_path;
+
+    const TokenizerKind kind =
+        choose_tokenizer(corpus_path, preset.vocab_size, requested, start ? &*start : nullptr);
+    if (!resume) prefix = checkpoint_prefix(corpus_path, preset, kind);
+    TrainingData data =
+        is_prepared(corpus_path, preset.vocab_size, kind)
+            ? map_prepared(corpus_path, preset.vocab_size, preset.seq_length, kind)
+            : encode_in_memory(corpus_path, preset.vocab_size, preset.seq_length, kind);
+    const Tokenizer& tokenizer = *data.tokenizer;
+    if (start) check_tokenizer_matches(*start, tokenizer, start_path);
+
+    utils::print_section("Initializing Model");
+    const training::TrainingConfig config = make_config(preset, tokenizer.vocab_size(), prefix);
+
+    const Stopwatch init_timer;
+    GPTModel model =
+        start ? std::move(*start)
+              : GPTModel(config.vocab_size, config.d_model, config.num_layers, config.num_heads,
+                         config.max_len, config.dropout, preset.arch());
+    const long long init_ms = start ? load_ms : init_timer.ms();
 
     if (model.getVocabSize() != config.vocab_size || model.getDModel() != config.d_model
         || model.getNumLayers() != config.num_layers || model.getNumHeads() != config.num_heads
@@ -254,6 +300,8 @@ int train(const TrainRequest& request) {
         throw std::runtime_error("Checkpoint architecture does not match preset '"
                                  + std::string(preset.name) + "'");
     }
+    // Every checkpoint of this run records its tokenizer.
+    model.setTokenizerFingerprint(tokenizer.identity());
 
     size_t total_params = 0;
     for (const auto& p : model.getAllParameters()) total_params += p->getData().numel();
@@ -284,6 +332,9 @@ int train(const TrainRequest& request) {
                           : "train " + corpus_path + " " + std::string(preset.name))
                   << " resume"
                   << (request.seed != kDefaultSeed ? " --seed " + std::to_string(request.seed) : "")
+                  << (request.tokenizer
+                          ? std::string(" --tokenizer ") + tokenizer_kind_flag(*request.tokenizer)
+                          : "")
                   << "\n"
                   << std::endl;
         return 0;
@@ -309,6 +360,10 @@ std::string train_preset_names() {
 constexpr const char* kSeedHelp =
     "run seed for weight init, window sampling and dropout; pass the same seed to resume";
 
+constexpr const char* kTokenizerHelp =
+    "v1 or v2; by default the one a resumed or warm-start checkpoint records, else the one "
+    "whose files exist for the corpus and vocab, else v2";
+
 constexpr const char* kInitHelp =
     "'resume' continues an interrupted run from its resume pair; a checkpoint path "
     "warm-starts from those weights with a fresh optimizer and schedule";
@@ -320,6 +375,7 @@ int run_train(const Invocation& invocation) {
     std::string preset_name = "small";
     std::string init;
     std::uint32_t seed = kDefaultSeed;
+    std::optional<std::string> tokenizer;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe(
@@ -331,6 +387,7 @@ int run_train(const Invocation& invocation) {
     cmd.optional("preset", preset_name, "one of " + train_preset_names() + "; see grad presets");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
     cmd.option("--seed", seed, kSeedHelp);
+    add_tokenizer_option(cmd, tokenizer, kTokenizerHelp);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     const Preset* preset = find_preset(preset_name);
@@ -342,6 +399,7 @@ int run_train(const Invocation& invocation) {
                   .corpus_path = corpus,
                   .init = init,
                   .seed = seed,
+                  .tokenizer = parse_tokenizer_flag(tokenizer),
                   .via_train_fast = false});
 }
 
@@ -349,6 +407,7 @@ int run_train_fast(const Invocation& invocation) {
     std::string corpus = kDefaultCorpus;
     std::string init;
     std::uint32_t seed = kDefaultSeed;
+    std::optional<std::string> tokenizer;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe(
@@ -357,12 +416,14 @@ int run_train_fast(const Invocation& invocation) {
     cmd.optional("corpus", corpus, "plain-text corpus");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
     cmd.option("--seed", seed, kSeedHelp);
+    add_tokenizer_option(cmd, tokenizer, kTokenizerHelp);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     return train({.preset = *find_preset("fast"),
                   .corpus_path = corpus,
                   .init = init,
                   .seed = seed,
+                  .tokenizer = parse_tokenizer_flag(tokenizer),
                   .via_train_fast = true});
 }
 

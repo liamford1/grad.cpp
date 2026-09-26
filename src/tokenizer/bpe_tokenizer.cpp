@@ -172,9 +172,10 @@ void BPETokenizer::train(const std::string& training_text) {
     std::cout << std::endl;
 }
 
-std::vector<int> BPETokenizer::encode(const std::string& text) const {
+std::vector<int> BPETokenizer::encode(std::string_view text) const {
     std::vector<std::string> words;
-    std::istringstream iss(text);
+    // istringstream copies its string either way; this is that one copy.
+    std::istringstream iss{std::string(text)};
     std::string raw_word;
     bool first = true;
     while (iss >> raw_word) {
@@ -294,6 +295,11 @@ int BPETokenizer::getCurrentVocabSize() const {
 
 int BPETokenizer::getVocabSize() const {
     return vocab_size_;
+}
+
+int BPETokenizer::findToken(const std::string& token) const {
+    const auto it = vocab.find(token);
+    return it == vocab.end() ? -1 : it->second;
 }
 
 void BPETokenizer::save(const std::string& filepath) const {

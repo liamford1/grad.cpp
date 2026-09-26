@@ -7,7 +7,7 @@
 
 namespace grad {
 
-TextGen::TextGen(const GPTModel& model, const BPETokenizer* tok) : model_(model), tokenizer_(tok) {}
+TextGen::TextGen(const GPTModel& model, const Tokenizer* tok) : model_(model), tokenizer_(tok) {}
 
 namespace {
 

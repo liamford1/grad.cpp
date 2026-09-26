@@ -2,7 +2,7 @@
 
 #include "grad/transformer/tensor.h"
 #include "grad/transformer/gpt_model.h"
-#include "grad/tokenizer/bpe_tokenizer.h"
+#include "grad/tokenizer/tokenizer.h"
 #include <functional>
 #include <string>
 #include <vector>
@@ -12,14 +12,15 @@ namespace grad {
 class TextGen {
 private:
     const GPTModel& model_;
-    const BPETokenizer* tokenizer_;
+    const Tokenizer* tokenizer_;
 
     int sample_from_logits(const Tensor& logits, float temperature = 1.0f, int top_k = 0,
                            float top_p = 1.0f);
     std::string tokens_to_string(const std::vector<int>& tokens);
 
 public:
-    TextGen(const GPTModel& model, const BPETokenizer* tok = nullptr);
+    // Without a tokenizer, each token id is printed as the byte it equals.
+    TextGen(const GPTModel& model, const Tokenizer* tok = nullptr);
 
     std::string generate_greedy(const std::vector<int>& prompt_tokens, int max_tokens = 50,
                                 float repetition_penalty = 1.2f);
