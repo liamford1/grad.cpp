@@ -333,6 +333,17 @@ if(BUILD_TESTS)
         FIXTURES_REQUIRED determinism_reference
         LABELS "integration" TIMEOUT 120)
 
+    # Metal-resident training against the CPU, end to end; skipped (77)
+    # without a Metal device.
+    add_executable(metal_parity tests/integration/metal_parity.cpp)
+    target_link_libraries(metal_parity PRIVATE grad::core)
+    grad_enable_warnings(metal_parity)
+    add_test(NAME MetalTrainingParity COMMAND metal_parity parity)
+    add_test(NAME MetalTrainerParity COMMAND metal_parity trainer ${CMAKE_CURRENT_BINARY_DIR})
+    add_test(NAME MetalGradientChecking COMMAND metal_parity gradcheck)
+    set_tests_properties(MetalTrainingParity MetalTrainerParity MetalGradientChecking PROPERTIES
+        SKIP_RETURN_CODE 77 LABELS "integration;hardware" TIMEOUT 120)
+
     add_grad_test(test_grad_mode tests/unit/test_grad_mode.cpp GradMode)
 
     # The argument parser belongs to the grad executable, not grad::core,
