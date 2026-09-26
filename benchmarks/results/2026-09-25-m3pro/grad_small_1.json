@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-09-26T01:40:10Z",
+  "engine": "grad.cpp",
+  "version": "0.1.0",
+  "git_sha": "e11ec3e",
+  "build_type": "Release",
+  "compiler": "AppleClang 21.0.0.21000101",
+  "system": "Darwin arm64",
+  "metal_available": true,
+  "metal_fp16": false,
+  "parameters": 21999616,
+  "config": {"vocab": 5000, "d_model": 512, "layers": 6, "heads": 8, "sequence": 96, "batch": 8},
+  "protocol": {"warmup_steps": 3, "steps_per_trial": 20, "trials": 5},
+  "training_steps_per_second": [8.495951, 8.578662, 8.549041, 8.616705, 8.534056],
+  "training_tokens_per_second": [6524.890019, 6588.412469, 6565.663545, 6617.629715, 6554.155325],
+  "generation_tokens_per_second": [828.902805, 843.463406, 858.619568, 824.239068, 852.059981],
+  "median_training_steps_per_second": 8.549041,
+  "median_training_tokens_per_second": 6565.663545,
+  "median_generation_tokens_per_second": 843.463406,
+  "peak_rss_mb": 904
+}

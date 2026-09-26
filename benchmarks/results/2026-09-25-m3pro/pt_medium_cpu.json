@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-09-26T01:46:47.516371+00:00",
+  "engine": "pytorch",
+  "torch_version": "2.14.0",
+  "python_version": "3.14.7",
+  "system": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "device": "cpu",
+  "amp": null,
+  "compiled": false,
+  "threads": 6,
+  "parameters": 69778944,
+  "config": {
+    "vocab": 16000,
+    "d": 768,
+    "layers": 8,
+    "heads": 12,
+    "max_len": 1024,
+    "seq": 256,
+    "batch": 8,
+    "accum": 4,
+    "dropout": 0.0,
+    "modern": false
+  },
+  "protocol": {
+    "warmup_steps": 1,
+    "steps_per_trial": 3,
+    "trials": 5
+  },
+  "training_steps_per_second": [
+    0.29969189173963146,
+    0.30097841560993654,
+    0.29998791798715113,
+    0.3015513712208893,
+    0.3001077211712413
+  ],
+  "training_tokens_per_second": [
+    2455.075977131061,
+    2465.6151806766,
+    2457.501024150742,
+    2470.3088330415253,
+    2458.4824518348087
+  ],
+  "median_training_steps_per_second": 0.3001077211712413,
+  "median_training_tokens_per_second": 2458.4824518348087,
+  "peak_rss_mb": 2842.859375,
+  "mps_driver_mb": null
+}
