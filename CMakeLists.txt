@@ -267,6 +267,7 @@ if(BUILD_TESTS)
     add_grad_test(test_model_gradients tests/unit/test_model_gradients.cpp ModelGradientChecking)
     add_grad_test(test_metal_matmul tests/unit/test_metal_matmul.cpp MetalMatmulVsCPU)
     add_grad_test(test_metal_stream tests/unit/test_metal_stream.cpp MetalStream)
+    add_grad_test(test_metal_kernels tests/unit/test_metal_kernels.cpp MetalKernelsVsCPU)
     add_grad_test(test_dropout tests/unit/test_dropout.cpp DropoutVerification)
     add_grad_test(test_attention_bias tests/unit/test_attention_bias.cpp AttentionBiasVerification)
     add_grad_test(test_weight_tying tests/unit/test_weight_tying.cpp WeightTyingVerification)
@@ -288,7 +289,7 @@ if(BUILD_TESTS)
     else()
         target_compile_options(test_subtract PRIVATE -UNDEBUG)
     endif()
-    set_tests_properties(MetalMatmulVsCPU MetalStream
+    set_tests_properties(MetalMatmulVsCPU MetalStream MetalKernelsVsCPU
                          PROPERTIES SKIP_RETURN_CODE 77 LABELS "unit;hardware")
 
     add_executable(sanity_tests tests/integration/sanity_tests.cpp)
