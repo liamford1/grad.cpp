@@ -72,15 +72,40 @@ function(grad_enable_warnings target)
     endif()
 endfunction()
 
+# The Metal backend: the threshold GEMM offload in CPU mode and the
+# device-resident execution mode (docs/design/metal-resident.md). Off, the
+# library links stubs and metal_mode() can never become true, which is how
+# every non-Apple build works.
 if(APPLE)
+    option(GRAD_METAL_BACKEND "Build the Metal GPU backend" ON)
+else()
+    set(GRAD_METAL_BACKEND OFF)
+endif()
+
+if(GRAD_METAL_BACKEND)
     enable_language(OBJCXX)
     set(CMAKE_OBJCXX_STANDARD 20)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
-    set(METAL_BACKEND_SRC src/transformer/metal_backend.mm)
-    # ARC owns the Objective-C buffers and kernels allocated by every GPU GEMM.
+    set(METAL_BACKEND_SRC src/transformer/metal_backend.mm src/transformer/metal_ops.mm)
+    # ARC owns the Objective-C buffers, encoders and kernels the backend creates.
     set_source_files_properties(${METAL_BACKEND_SRC} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+
+    # The kernels are compiled at runtime (newLibraryWithSource), so the
+    # build needs no offline Metal toolchain. The source is embedded as a
+    # byte array rather than a string literal, which -Wpedantic would cap
+    # at 65,536 characters. Editing the .metal file reruns this step.
+    set(GRAD_METAL_KERNELS ${CMAKE_CURRENT_SOURCE_DIR}/src/transformer/metal_kernels.metal)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${GRAD_METAL_KERNELS})
+    file(READ ${GRAD_METAL_KERNELS} grad_metal_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," grad_metal_bytes "${grad_metal_hex}")
+    set(GRAD_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    file(WRITE ${GRAD_GENERATED_DIR}/metal_kernels.inc.tmp
+        "// Generated from src/transformer/metal_kernels.metal; do not edit.\n"
+        "static const unsigned char kMetalKernelSource[] = {${grad_metal_bytes} 0x00};\n")
+    configure_file(${GRAD_GENERATED_DIR}/metal_kernels.inc.tmp
+                   ${GRAD_GENERATED_DIR}/metal_kernels.inc COPYONLY)
 else()
-    set(METAL_BACKEND_SRC "")
+    set(METAL_BACKEND_SRC src/transformer/metal_stubs.cpp)
 endif()
 
 set(GRAD_CORE_SOURCES
@@ -99,6 +124,7 @@ set(GRAD_CORE_SOURCES
     src/transformer/inference.cpp
     src/transformer/variable.cpp
     src/transformer/optimizer.cpp
+    src/transformer/device.cpp
     src/tokenizer/bpe_tokenizer.cpp
     src/tokenizer/pretokenize.cpp
     src/tokenizer/byte_bpe.cpp
@@ -124,6 +150,12 @@ target_include_directories(grad_core PUBLIC
 )
 find_package(Threads REQUIRED)
 target_link_libraries(grad_core PUBLIC Threads::Threads)
+if(GRAD_METAL_BACKEND)
+    # Public: metal_backend.h declares the real API or inline stubs on it,
+    # so a consumer of the installed package must see the same choice.
+    target_compile_definitions(grad_core PUBLIC GRAD_HAS_METAL=1)
+    target_include_directories(grad_core PRIVATE ${GRAD_GENERATED_DIR})
+endif()
 
 if(APPLE)
     find_library(ACCELERATE_LIBRARY Accelerate)
