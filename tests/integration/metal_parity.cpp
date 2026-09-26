@@ -7,6 +7,9 @@
 //   metal_parity trainer DIR training::Trainer for a few steps in both modes,
 //                            writing its files under DIR; logged losses agree
 //   metal_parity gradcheck   numerical vs analytical gradients through GPU ops
+//   metal_parity inference   the Metal forward (3D and 2D input) against the
+//                            KV-cached CPU decoder reading the same Metal-mode
+//                            weights through the fenced accessors
 //
 // Exits 77 (skipped) without a Metal device.
 //
@@ -26,6 +29,7 @@
 #include "grad/transformer/activations.h"
 #include "grad/transformer/device.h"
 #include "grad/transformer/gpt_model.h"
+#include "grad/transformer/inference.h"
 #include "grad/transformer/layer_norm.h"
 #include "grad/transformer/metal_backend.h"
 #include "grad/transformer/optimizer.h"
@@ -334,11 +338,51 @@ int run_gradcheck() {
     return test_util::exit_code();
 }
 
+// Generation stays on the CPU in Metal mode (docs/design/metal-resident.md);
+// it must read the GPU-written weights correctly and agree with the GPU
+// forward, as the CPU decoder agrees with the CPU forward (sanity_tests
+// parity-*), within the same tolerance.
+int run_inference_parity() {
+    for (const GPTArch arch : {GPTArch::GPT2, GPTArch::Modern}) {
+        set_device(Device::Metal);
+        Tensor::set_init_seed(77);
+        GPTModel model(kVocab, kDModel, kLayers, kHeads, static_cast<int>(kSeq), 0.0f, arch);
+        const std::vector<int> sequence = {3, 11, 7, 0, 19, 5, 96, 42};
+        const size_t S = sequence.size();
+        Tensor ids3(1, S, 1);
+        Tensor ids2(S, 1);
+        for (size_t i = 0; i < S; i++) {
+            ids3.setValue(0, i, 0, static_cast<float>(sequence[i]));
+            ids2.setValue(i, 0, static_cast<float>(sequence[i]));
+        }
+        auto logits3 = model.forward(Variable::create(ids3), false);
+        auto logits2 = model.forward(Variable::create(ids2), false);
+
+        InferenceSession session(model);
+        float worst = 0.0f;
+        for (size_t i = 0; i < S; i++) {
+            const float* step = session.step(sequence[i]);
+            for (size_t v = 0; v < static_cast<size_t>(kVocab); v++) {
+                for (const float a :
+                     {logits3->getData().getValue(0, i, v), logits2->getData().getValue(i, v)}) {
+                    const float tol = 1e-3f + 1e-3f * (std::abs(a) + std::abs(step[v]));
+                    worst = std::max(worst, std::abs(a - step[v]) / tol);
+                }
+            }
+        }
+        std::cout << (arch == GPTArch::GPT2 ? "gpt2" : "modern") << ": worst logit disagreement "
+                  << worst << " of tolerance" << std::endl;
+        CHECK(worst < 1.0f);
+        set_device(Device::CPU);
+    }
+    return test_util::exit_code();
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "usage: metal_parity parity|trainer DIR|gradcheck" << std::endl;
+        std::cerr << "usage: metal_parity parity|trainer DIR|gradcheck|inference" << std::endl;
         return 2;
     }
     if (!metal::resident_available()) {
@@ -351,10 +395,11 @@ int main(int argc, char* argv[]) {
         if (mode == "parity") return run_parity();
         if (mode == "trainer" && argc == 3) return run_trainer_parity(argv[2]);
         if (mode == "gradcheck") return run_gradcheck();
+        if (mode == "inference") return run_inference_parity();
     } catch (const std::exception& e) {
         std::cerr << "metal_parity: " << e.what() << std::endl;
         return 1;
     }
-    std::cerr << "usage: metal_parity parity|trainer DIR|gradcheck" << std::endl;
+    std::cerr << "usage: metal_parity parity|trainer DIR|gradcheck|inference" << std::endl;
     return 2;
 }
