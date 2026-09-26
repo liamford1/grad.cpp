@@ -1,14 +1,56 @@
 #include "grad/transformer/tensor.h"
+#include "grad/transformer/device.h"
 #include "grad/transformer/layer_norm.h"
+#include "grad/transformer/metal_ops.h"
 #include "grad/transformer/parallel.h"
 #include "grad/utils/narrow.h"
+#include "metal_graph.h"
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace grad {
+
+namespace {
+
+// Metal mode: the same node, its statistics kept as GPU tensors, and a
+// backward that writes only the gradients whose targets require them.
+std::shared_ptr<Variable> layer_norm_metal(const std::shared_ptr<Variable>& input,
+                                           const std::shared_ptr<Variable>& gamma,
+                                           const std::shared_ptr<Variable>& beta, float eps,
+                                           bool rms) {
+    const Tensor& x = input->getData();
+    const size_t rows = x.getFlatRows();
+    const size_t d = x.getCols();
+    Tensor y = Tensor::empty_like(x);
+    auto mean = std::make_shared<Tensor>(Tensor::uninitialized(Shape{rows}));
+    auto rstd = std::make_shared<Tensor>(Tensor::uninitialized(Shape{rows}));
+    metal::ops::layer_norm(x.device_data(), gamma->getData().device_data(),
+                           beta->getData().device_data(), y.device_data(), mean->device_data(),
+                           rstd->device_data(), rows, d, eps, rms);
+
+    const bool needs_grad = compute_requires_grad(input, gamma, beta);
+    auto output = Variable::create(std::move(y), needs_grad);
+    if (needs_grad) {
+        output->setBackward({input, gamma, beta},
+                            [input, gamma, beta, mean, rstd, rows, d, rms](Variable& node) {
+            float* dx = input->requiresGrad() ? metal_graph::grad_for_write(*input) : nullptr;
+            float* dgamma = gamma->requiresGrad() ? metal_graph::grad_for_write(*gamma) : nullptr;
+            float* dbeta =
+                !rms && beta->requiresGrad() ? metal_graph::grad_for_write(*beta) : nullptr;
+            metal::ops::layer_norm_backward(input->getData().device_data(),
+                                            gamma->getData().device_data(),
+                                            node.getGrad().device_data(), mean->device_data(),
+                                            rstd->device_data(), dx, dgamma, dbeta, rows, d, rms);
+        });
+    }
+    return output;
+}
+
+}  // namespace
 
 LayerNorm::LayerNorm(int d_model, bool rms) : d_model_(d_model), rms_(rms) {
     const size_t d = narrow<size_t>(d_model);
@@ -29,6 +71,7 @@ std::shared_ptr<Variable> LayerNorm::forward(const std::shared_ptr<Variable>& in
         throw std::invalid_argument("LayerNorm: input " + input_tensor.shape().to_string()
                                     + " does not end in d_model " + std::to_string(d_model_));
     }
+    if (metal_mode()) return layer_norm_metal(input, gamma, beta, epsilon, rms_);
 
     const size_t total_rows = input_tensor.getFlatRows();
     Tensor result = Tensor::empty_like(input_tensor);
