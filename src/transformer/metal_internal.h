@@ -27,6 +27,43 @@ namespace grad::metal {
 enum class Kernel : size_t {
     Fill,
     Copy,
+    Add,
+    Acc,
+    AccScaled,
+    Mul,
+    MulAcc,
+    Scale,
+    ScaleBy,
+    AddRows,
+    BroadcastAdd,
+    BroadcastReduce,
+    ColPartial,
+    ColFinish,
+    GeluFwd,
+    GeluBwd,
+    SiluFwd,
+    SiluBwd,
+    LayerNormFwd,
+    LayerNormBwdDx,
+    LayerNormBwdParams,
+    SoftmaxFwd,
+    SoftmaxBwd,
+    LogSoftmaxFwd,
+    LogSoftmaxBwd,
+    AttnSoftmaxFwd,
+    AttnSoftmaxBwd,
+    NllFwd,
+    NllBwd,
+    CeFwd,
+    MeanReduce,
+    CeBwd,
+    EmbeddingFwd,
+    EmbeddingBwd,
+    Rope,
+    DropoutFwd,
+    AdamW,
+    SumsqPartial,
+    NormFinish,
     GemmBatched,
     Count,
 };
@@ -36,9 +73,49 @@ struct KernelInfo {
     size_t threads;
 };
 
+// Row kernels reduce over a fixed 256-wide tree (kRow in the .metal).
+inline constexpr size_t kRowThreads = 256;
+
 inline constexpr std::array<KernelInfo, static_cast<size_t>(Kernel::Count)> kKernels = {{
     {"ew_fill", 0},
     {"ew_copy", 0},
+    {"ew_add", 0},
+    {"ew_acc", 0},
+    {"ew_acc_scaled", 0},
+    {"ew_mul", 0},
+    {"ew_mul_acc", 0},
+    {"ew_scale", 0},
+    {"ew_scale_by", 0},
+    {"add_rows", 0},
+    {"broadcast_add", 0},
+    {"broadcast_reduce", 0},
+    {"col_partial", 0},
+    {"col_finish", 0},
+    {"gelu_fwd", 0},
+    {"gelu_bwd", 0},
+    {"silu_fwd", 0},
+    {"silu_bwd", 0},
+    {"layer_norm_fwd", kRowThreads},
+    {"layer_norm_bwd_dx", kRowThreads},
+    {"layer_norm_bwd_params", 0},
+    {"softmax_fwd", kRowThreads},
+    {"softmax_bwd", kRowThreads},
+    {"log_softmax_fwd", kRowThreads},
+    {"log_softmax_bwd", kRowThreads},
+    {"attn_softmax_fwd", kRowThreads},
+    {"attn_softmax_bwd", kRowThreads},
+    {"nll_fwd", kRowThreads},
+    {"nll_bwd", 0},
+    {"ce_fwd", kRowThreads},
+    {"mean_reduce", kRowThreads},
+    {"ce_bwd", 0},
+    {"embedding_fwd", 0},
+    {"embedding_bwd", 0},
+    {"rope", 0},
+    {"dropout_fwd", 0},
+    {"adamw", 0},
+    {"sumsq_partial", kRowThreads},
+    {"norm_finish", kRowThreads},
     {"gemm_batched", 128},
 }};
 
@@ -59,6 +136,8 @@ struct Context {
     bool resident_ok = false;
     std::string resident_status = "not initialized";
     std::array<id<MTLComputePipelineState>, static_cast<size_t>(Kernel::Count)> pipelines{};
+    // Dropout jump-ahead matrices (metal_kernels.metal, dropout_fwd).
+    id<MTLBuffer> dropout_jumps = nil;
 
     Context();
     void init_resident();

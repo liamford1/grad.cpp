@@ -9,6 +9,7 @@
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace grad::metal {
 namespace {
@@ -75,6 +76,63 @@ id<MTLBuffer> scratch_fp16(Context& c, int slot, size_t elements) {
         c.scratch_cap[slot] = c.scratch[slot] ? bytes : 0;
     }
     return c.scratch[slot];
+}
+
+// The xorshift128+ state (s0, s1) as 128 bits over GF(2), s0 in bits 0-63.
+// Row r of a matrix is two words, the masks of s0 and s1 bits whose parity
+// is output bit r, so one step of the generator is a matrix-vector product
+// and T^k jumps k steps ahead.
+using Gf2Matrix = std::array<uint64_t, 256>;
+
+bool gf2_bit(const Gf2Matrix& m, size_t row, size_t col) {
+    return ((m[2 * row + col / 64] >> (col % 64)) & 1u) != 0;
+}
+
+Gf2Matrix gf2_multiply(const Gf2Matrix& a, const Gf2Matrix& b) {
+    Gf2Matrix c{};
+    for (size_t r = 0; r < 128; r++) {
+        for (size_t k = 0; k < 128; k++) {
+            if (gf2_bit(a, r, k)) {
+                c[2 * r] ^= b[2 * k];
+                c[2 * r + 1] ^= b[2 * k + 1];
+            }
+        }
+    }
+    return c;
+}
+
+// The matrix of one xorshift128+ step as activations.cpp takes it: s0' = s1,
+// s1' = x ^ s1 ^ (x >> 17) ^ (s1 >> 26) with x = s0 ^ (s0 << 23). Column c
+// is the step applied to the unit state with only bit c set.
+Gf2Matrix xorshift_step_matrix() {
+    Gf2Matrix t{};
+    for (size_t c = 0; c < 128; c++) {
+        const uint64_t s0 = c < 64 ? uint64_t{1} << c : 0;
+        const uint64_t s1 = c >= 64 ? uint64_t{1} << (c - 64) : 0;
+        uint64_t x = s0;
+        x ^= x << 23;
+        const uint64_t out[2] = {s1, x ^ s1 ^ (x >> 17) ^ (s1 >> 26)};
+        for (size_t r = 0; r < 128; r++) {
+            if ((out[r / 64] >> (r % 64)) & 1u) t[2 * r + c / 64] |= uint64_t{1} << (c % 64);
+        }
+    }
+    return t;
+}
+
+// jump[k] = T^(64k) for the 256 threads that share a 65,536-element dropout
+// block (4 lanes per step, so 16,384 steps, 64 per thread).
+std::vector<uint64_t> dropout_jump_matrices() {
+    Gf2Matrix step = xorshift_step_matrix();
+    for (int i = 0; i < 6; i++) step = gf2_multiply(step, step);  // T^64
+    Gf2Matrix jump{};
+    for (size_t r = 0; r < 128; r++) jump[2 * r + r / 64] = uint64_t{1} << (r % 64);  // identity
+    std::vector<uint64_t> all;
+    all.reserve(256 * jump.size());
+    for (int k = 0; k < 256; k++) {
+        all.insert(all.end(), jump.begin(), jump.end());
+        jump = gf2_multiply(step, jump);
+    }
+    return all;
 }
 
 // Safe math: IEEE semantics for NaN and infinity, no reassociation, and
@@ -170,6 +228,14 @@ void Context::init_resident() {
                     return;
                 }
                 pipelines[k] = pso;
+            }
+            const std::vector<uint64_t> jumps = dropout_jump_matrices();
+            dropout_jumps = [device newBufferWithBytes:jumps.data()
+                                                length:jumps.size() * sizeof(uint64_t)
+                                               options:MTLResourceStorageModeShared];
+            if (!dropout_jumps) {
+                resident_status = "cannot allocate the dropout jump table";
+                return;
             }
         }
         resident_ok = true;
