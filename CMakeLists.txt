@@ -125,6 +125,7 @@ set(GRAD_CORE_SOURCES
     src/transformer/variable.cpp
     src/transformer/optimizer.cpp
     src/transformer/device.cpp
+    src/transformer/metal_graph.cpp
     src/tokenizer/bpe_tokenizer.cpp
     src/tokenizer/pretokenize.cpp
     src/tokenizer/byte_bpe.cpp
