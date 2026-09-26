@@ -42,9 +42,36 @@ std::string checkpoint_stem(const std::string& corpus_path) {
     return (dot == std::string::npos) ? base : base.substr(0, dot);
 }
 
-std::string checkpoint_prefix(const std::string& corpus_path, const Preset& preset) {
-    return checkpoint_stem(corpus_path) + (preset.modern ? "_modern" : "")
-           + (preset.is_smoke_test() ? "_fast" : "");
+// v2 runs carry "_v2" so they can never overwrite a v1 lineage's
+// checkpoints on the same corpus; v1 keeps its historical names so
+// existing runs resume in place.
+std::string checkpoint_prefix(const std::string& corpus_path, const Preset& preset,
+                              TokenizerKind kind) {
+    return checkpoint_stem(corpus_path) + (kind == TokenizerKind::ByteBpe ? "_v2" : "")
+           + (preset.modern ? "_modern" : "") + (preset.is_smoke_test() ? "_fast" : "");
+}
+
+// Which tokenizer lineage `resume` continues when --tokenizer is not given:
+// the one that left resume state behind. Both existing is ambiguous.
+TokenizerKind resumable_kind(const std::string& corpus_path, const Preset& preset) {
+    const auto has_state = [&](TokenizerKind kind) {
+        return training::peek_resume_step(checkpoint_prefix(corpus_path, preset, kind)
+                                          + "_resume_state.bin")
+            .has_value();
+    };
+    const bool v1 = has_state(TokenizerKind::BpeV1);
+    const bool v2 = has_state(TokenizerKind::ByteBpe);
+    if (v1 && v2) {
+        throw std::runtime_error(
+            "Both a v1 and a v2 run have resume state for this corpus and preset; "
+            "pass --tokenizer v1 or --tokenizer v2");
+    }
+    if (!v1 && !v2) {
+        throw std::runtime_error("No resume state found ("
+                                 + checkpoint_prefix(corpus_path, preset, TokenizerKind::BpeV1)
+                                 + "_resume_state.bin or the _v2 equivalent); start a run first");
+    }
+    return v1 ? TokenizerKind::BpeV1 : TokenizerKind::ByteBpe;
 }
 
 struct TrainingData {
@@ -207,12 +234,17 @@ int train(const TrainRequest& request) {
     const std::string& corpus_path = request.corpus_path;
     std::cout << "\ngrad.cpp Training (" << preset.name << ")\n" << std::endl;
 
-    const std::string prefix = checkpoint_prefix(corpus_path, preset);
     const bool resume = (request.init == "resume");
     const std::string warm_start_path = resume ? "" : request.init;
 
+    // A resume knows its lineage (and so its prefix) up front; a new run
+    // learns it once the tokenizer is chosen below.
+    std::optional<TokenizerKind> requested = request.tokenizer;
+    std::string prefix;
     std::optional<int> resume_next_step;
     if (resume) {
+        if (!requested) requested = resumable_kind(corpus_path, preset);
+        prefix = checkpoint_prefix(corpus_path, preset, *requested);
         resume_next_step = training::peek_resume_step(prefix + "_resume_state.bin");
         if (!resume_next_step) {
             throw std::runtime_error("No resume state found (" + prefix
@@ -242,8 +274,9 @@ int train(const TrainRequest& request) {
     const long long load_ms = timer.ms();
     const std::string start_path = resume ? prefix + "_resume_model.bin" : warm_start_path;
 
-    const TokenizerKind kind = choose_tokenizer(corpus_path, preset.vocab_size, request.tokenizer,
-                                                start ? &*start : nullptr);
+    const TokenizerKind kind =
+        choose_tokenizer(corpus_path, preset.vocab_size, requested, start ? &*start : nullptr);
+    if (!resume) prefix = checkpoint_prefix(corpus_path, preset, kind);
     TrainingData data =
         is_prepared(corpus_path, preset.vocab_size, kind)
             ? map_prepared(corpus_path, preset.vocab_size, preset.seq_length, kind)
