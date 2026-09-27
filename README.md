@@ -8,7 +8,7 @@ The largest model trained with it so far is a **70M-parameter GPT trained from s
 
 > **Once upon a time, there was a little dragon who** wanted to meet someone else. He flew around and saw an old lady. She smiled at the dragon, and said, "Hello! My name is Frank." The big queen thought this sounded like fun, so she asked Frank if he would join her for some fun. Then, they became best friends. They went on adventures together, learning to be as friendly with one another.
 
-Every gradient that trained it was derived and implemented by hand. The [run report](docs/runs/2026-09-tinystories-70m/README.md) has the full configuration, loss curves, a checkpoint evaluation, more samples, and an audit finding: the trainer's in-loop validation read 0.25 nats optimistic, and that has since been fixed. The weights are published as a [GitHub Release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m); after building, two downloads and `./build/grad chat grad-tinystories-70m.bin data/tinystories.txt` let you talk to it.
+Every gradient that trained it was derived and implemented by hand. A second 70M run with the Llama-style block, on the same budget, [beat it by 0.046 nats](docs/runs/2026-09-tinystories-modern-ab/README.md) (held-out loss 1.647); its weights are the [`tinystories-70m-llama` release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m-llama). The [run report](docs/runs/2026-09-tinystories-70m/README.md) has the full configuration, loss curves, a checkpoint evaluation, more samples, and an audit finding: the trainer's in-loop validation read 0.25 nats optimistic, and that has since been fixed. The weights are published as a [GitHub Release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m); after building, two downloads and `./build/grad chat grad-tinystories-70m.bin data/tinystories.txt` let you talk to it.
 
 ![70M TinyStories training run](docs/runs/2026-09-tinystories-70m/loss.svg)
 
@@ -26,18 +26,19 @@ About 9,900 lines of implementation and 2,800 lines of tests.
 
 ## Trained models
 
-| | Tiny Shakespeare | TinyStories |
-|---|---|---|
-| Preset | `small` | `medium` |
-| Parameters | ~22M | 69.8M |
-| Shape | d512 × 6 layers × 8 heads, FFN 2048 | d768 × 8 layers × 12 heads, FFN 3072 |
-| Vocabulary | 5,000 BPE tokens | 16,000 BPE tokens |
-| Context at training time | 96 tokens | 256 tokens |
-| Batch | 8 sequences | 8 × 4 accumulation = 32 sequences |
-| Optimizer | AdamW, lr 3e-4, 500 warmup, dropout 0.1 | AdamW, lr 3e-4, 1,000 warmup, no dropout |
-| Held-out loss | n/a | 1.693 (perplexity 5.44), [run report](docs/runs/2026-09-tinystories-70m/README.md) |
+| | Tiny Shakespeare | TinyStories (GPT-2 block) | TinyStories (Llama block) |
+|---|---|---|---|
+| Preset | `small` | `medium` | `modern` |
+| Parameters | ~22M | 69.8M | 69.0M |
+| Shape | d512 × 6 layers × 8 heads, FFN 2048 | d768 × 8 layers × 12 heads, GELU FFN 3072 | d768 × 8 layers × 12 heads, SwiGLU FFN 2048 |
+| Norm / positions | LayerNorm / learned | LayerNorm / learned | RMSNorm / RoPE |
+| Vocabulary | 5,000 BPE tokens | 16,000 BPE tokens | 16,000 BPE tokens |
+| Context at training time | 96 tokens | 256 tokens | 256 tokens |
+| Batch | 8 sequences | 8 × 4 accumulation = 32 sequences | same |
+| Optimizer | AdamW, lr 3e-4, 500 warmup, dropout 0.1 | AdamW, lr 3e-4, 1,000 warmup, no dropout | same |
+| Held-out loss | n/a | 1.693 (perplexity 5.44), [report](docs/runs/2026-09-tinystories-70m/README.md) | **1.647 (perplexity 5.19)**, [A/B report](docs/runs/2026-09-tinystories-modern-ab/README.md) |
 
-Both are standard GPT-2-style decoder-only transformers: pre-LayerNorm residual blocks, GELU feed-forward, learned positional embeddings, and weight tying between the token embedding and the output projection. A `modern` preset swaps in the Llama-style block (see below).
+The two TinyStories models are a controlled A/B: same data, tokenizer, optimizer, schedule and 40,000-step budget, differing only in the block. The Llama-style block (RMSNorm, rotary positions, bias-free SwiGLU) wins by 0.046 nats on held-out data with 0.8M fewer parameters, and reaches the GPT-2 block's final training loss about 9,800 steps early. All models tie the token embedding and the output projection.
 
 ## Build and run
 
