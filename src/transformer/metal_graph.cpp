@@ -52,9 +52,11 @@ void accumulate_add_grad(const Tensor& dO, const Tensor& x, Variable& target) {
 }
 
 // A unary elementwise op y = f(x) with dx += f'(x) * dy, where the backward
-// reads the input (GELU, SiLU).
-template <typename Forward, typename Backward>
-VarPtr unary(const VarPtr& a, Forward forward, Backward backward) {
+// reads the input (GELU, SiLU). The kernels are template arguments so each
+// op's closure has its own type, which names it in GRAD_METAL_CHECK
+// reports (op_check.h).
+template <auto forward, auto backward>
+VarPtr unary(const VarPtr& a) {
     const Tensor& x = a->getData();
     x.assertValid("Variable (metal) unary op");
     Tensor out = Tensor::empty_like(x);
@@ -62,7 +64,7 @@ VarPtr unary(const VarPtr& a, Forward forward, Backward backward) {
     const bool needs_grad = compute_requires_grad(a);
     auto node = Variable::create(std::move(out), needs_grad);
     if (needs_grad) {
-        node->setBackward({a}, [a, backward](Variable& output) {
+        node->setBackward({a}, [a](Variable& output) {
             if (!a->requiresGrad()) return;
             const Tensor& in = a->getData();
             backward(in.device_data(), output.getGrad().device_data(), grad_for_write(*a),
@@ -245,11 +247,11 @@ VarPtr softmax(const VarPtr& a) {
 }
 
 VarPtr gelu(const VarPtr& a) {
-    return unary(a, ops::gelu, ops::gelu_backward);
+    return unary<ops::gelu, ops::gelu_backward>(a);
 }
 
 VarPtr silu(const VarPtr& a) {
-    return unary(a, ops::silu, ops::silu_backward);
+    return unary<ops::silu, ops::silu_backward>(a);
 }
 
 VarPtr mul(const VarPtr& a, const VarPtr& b) {
