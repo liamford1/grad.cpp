@@ -48,6 +48,15 @@ inline constexpr const char* kInferenceTokenizerHelp =
     "v1 or v2; by default the one the checkpoint records (v1 for checkpoints that record "
     "none, which all predate v2)";
 
+// Declares --device cpu|metal on cmd, for the commands that train or score
+// a model.
+void add_device_option(Command& cmd, std::optional<std::string>& flag);
+// Switches the process to the device --device names, else the one
+// GRAD_DEVICE names, else the CPU; call it before any tensor is allocated.
+// Throws UsageError for an unknown name and std::runtime_error when Metal
+// is requested but unavailable.
+void apply_device(const std::optional<std::string>& flag);
+
 // Declares --tokenizer v1|v2 on cmd.
 void add_tokenizer_option(Command& cmd, std::optional<std::string>& flag, const std::string& help);
 // The kind a --tokenizer value names; throws UsageError for anything but

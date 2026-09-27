@@ -22,8 +22,11 @@ float compute_grad_norm(const std::vector<std::shared_ptr<Variable>>& params) {
     float grad_norm = 0.0f;
     for (const auto& param : params) {
         const Tensor& grad = param->getGrad();
+        // raw() once per tensor: it fences on the GPU stream, which is not
+        // free per element. Same summation order as ever.
+        const float* g_ptr = grad.raw();
         for (size_t i = 0; i < grad.numel(); i++) {
-            float g = grad.raw()[i];
+            float g = g_ptr[i];
             grad_norm += g * g;
         }
     }

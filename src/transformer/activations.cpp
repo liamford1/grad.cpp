@@ -61,6 +61,10 @@ void set_dropout_seed(uint64_t seed) {
     g_next_stream.store(0, std::memory_order_relaxed);
 }
 
+uint64_t current_dropout_seed() {
+    return g_seed.load(std::memory_order_relaxed);
+}
+
 uint64_t reserve_dropout_streams(uint64_t count) {
     return g_next_stream.fetch_add(count, std::memory_order_relaxed);
 }

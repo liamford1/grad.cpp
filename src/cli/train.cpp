@@ -376,6 +376,7 @@ int run_train(const Invocation& invocation) {
     std::string init;
     std::uint32_t seed = kDefaultSeed;
     std::optional<std::string> tokenizer;
+    std::optional<std::string> device;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe(
@@ -388,6 +389,7 @@ int run_train(const Invocation& invocation) {
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
     cmd.option("--seed", seed, kSeedHelp);
     add_tokenizer_option(cmd, tokenizer, kTokenizerHelp);
+    add_device_option(cmd, device);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
     const Preset* preset = find_preset(preset_name);
@@ -395,11 +397,13 @@ int run_train(const Invocation& invocation) {
         throw UsageError("unknown preset '" + preset_name + "' (available: " + train_preset_names()
                          + ")");
     }
+    const std::optional<TokenizerKind> kind = parse_tokenizer_flag(tokenizer);
+    apply_device(device);
     return train({.preset = *preset,
                   .corpus_path = corpus,
                   .init = init,
                   .seed = seed,
-                  .tokenizer = parse_tokenizer_flag(tokenizer),
+                  .tokenizer = kind,
                   .via_train_fast = false});
 }
 
@@ -408,6 +412,7 @@ int run_train_fast(const Invocation& invocation) {
     std::string init;
     std::uint32_t seed = kDefaultSeed;
     std::optional<std::string> tokenizer;
+    std::optional<std::string> device;
 
     Command cmd(invocation.usage_name(), std::string(invocation.summary));
     cmd.describe(
@@ -417,13 +422,16 @@ int run_train_fast(const Invocation& invocation) {
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
     cmd.option("--seed", seed, kSeedHelp);
     add_tokenizer_option(cmd, tokenizer, kTokenizerHelp);
+    add_device_option(cmd, device);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
+    const std::optional<TokenizerKind> kind = parse_tokenizer_flag(tokenizer);
+    apply_device(device);
     return train({.preset = *find_preset("fast"),
                   .corpus_path = corpus,
                   .init = init,
                   .seed = seed,
-                  .tokenizer = parse_tokenizer_flag(tokenizer),
+                  .tokenizer = kind,
                   .via_train_fast = true});
 }
 

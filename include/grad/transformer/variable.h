@@ -43,7 +43,9 @@ private:
 // A node in the autograd graph: a value, its (lazily allocated) gradient,
 // the nodes it was computed from, and a closure that propagates gradient
 // to them. Every op below builds one output node and wires its backward
-// closure; backward() walks the graph in reverse topological order.
+// closure; backward() walks the graph in reverse topological order. In
+// Metal mode (device.h) the ops encode GPU work and their closures do too;
+// the graph and its traversal are the same.
 class Variable : public std::enable_shared_from_this<Variable> {
     // Passkey: constructors are public so std::make_shared can reach them,
     // but they require a token only this class can mint. A Variable can
@@ -112,6 +114,11 @@ public:
 
     [[nodiscard]] std::shared_ptr<Variable> log_softmax();
     [[nodiscard]] std::shared_ptr<Variable> nll_loss(const std::shared_ptr<Variable>& targets);
+    // Mean next-token cross-entropy of these logits: exactly
+    // log_softmax()->nll_loss(targets) in CPU mode (the same two nodes),
+    // and one fused node in Metal mode that never materializes the
+    // log-probabilities or their dense gradient.
+    [[nodiscard]] std::shared_ptr<Variable> cross_entropy(const std::shared_ptr<Variable>& targets);
 
     void backward();
     void zeroGrad();

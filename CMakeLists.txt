@@ -72,15 +72,40 @@ function(grad_enable_warnings target)
     endif()
 endfunction()
 
+# The Metal backend: the threshold GEMM offload in CPU mode and the
+# device-resident execution mode (docs/design/metal-resident.md). Off, the
+# library links stubs and metal_mode() can never become true, which is how
+# every non-Apple build works.
 if(APPLE)
+    option(GRAD_METAL_BACKEND "Build the Metal GPU backend" ON)
+else()
+    set(GRAD_METAL_BACKEND OFF)
+endif()
+
+if(GRAD_METAL_BACKEND)
     enable_language(OBJCXX)
     set(CMAKE_OBJCXX_STANDARD 20)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
-    set(METAL_BACKEND_SRC src/transformer/metal_backend.mm)
-    # ARC owns the Objective-C buffers and kernels allocated by every GPU GEMM.
+    set(METAL_BACKEND_SRC src/transformer/metal_backend.mm src/transformer/metal_ops.mm)
+    # ARC owns the Objective-C buffers, encoders and kernels the backend creates.
     set_source_files_properties(${METAL_BACKEND_SRC} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+
+    # The kernels are compiled at runtime (newLibraryWithSource), so the
+    # build needs no offline Metal toolchain. The source is embedded as a
+    # byte array rather than a string literal, which -Wpedantic would cap
+    # at 65,536 characters. Editing the .metal file reruns this step.
+    set(GRAD_METAL_KERNELS ${CMAKE_CURRENT_SOURCE_DIR}/src/transformer/metal_kernels.metal)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${GRAD_METAL_KERNELS})
+    file(READ ${GRAD_METAL_KERNELS} grad_metal_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," grad_metal_bytes "${grad_metal_hex}")
+    set(GRAD_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    file(WRITE ${GRAD_GENERATED_DIR}/metal_kernels.inc.tmp
+        "// Generated from src/transformer/metal_kernels.metal; do not edit.\n"
+        "static const unsigned char kMetalKernelSource[] = {${grad_metal_bytes} 0x00};\n")
+    configure_file(${GRAD_GENERATED_DIR}/metal_kernels.inc.tmp
+                   ${GRAD_GENERATED_DIR}/metal_kernels.inc COPYONLY)
 else()
-    set(METAL_BACKEND_SRC "")
+    set(METAL_BACKEND_SRC src/transformer/metal_stubs.cpp)
 endif()
 
 set(GRAD_CORE_SOURCES
@@ -99,6 +124,8 @@ set(GRAD_CORE_SOURCES
     src/transformer/inference.cpp
     src/transformer/variable.cpp
     src/transformer/optimizer.cpp
+    src/transformer/device.cpp
+    src/transformer/metal_graph.cpp
     src/tokenizer/bpe_tokenizer.cpp
     src/tokenizer/pretokenize.cpp
     src/tokenizer/byte_bpe.cpp
@@ -124,6 +151,12 @@ target_include_directories(grad_core PUBLIC
 )
 find_package(Threads REQUIRED)
 target_link_libraries(grad_core PUBLIC Threads::Threads)
+if(GRAD_METAL_BACKEND)
+    # Public: metal_backend.h declares the real API or inline stubs on it,
+    # so a consumer of the installed package must see the same choice.
+    target_compile_definitions(grad_core PUBLIC GRAD_HAS_METAL=1)
+    target_include_directories(grad_core PRIVATE ${GRAD_GENERATED_DIR})
+endif()
 
 if(APPLE)
     find_library(ACCELERATE_LIBRARY Accelerate)
@@ -234,6 +267,8 @@ if(BUILD_TESTS)
     add_grad_test(test_gradients tests/unit/test_gradients.cpp GradientChecking)
     add_grad_test(test_model_gradients tests/unit/test_model_gradients.cpp ModelGradientChecking)
     add_grad_test(test_metal_matmul tests/unit/test_metal_matmul.cpp MetalMatmulVsCPU)
+    add_grad_test(test_metal_stream tests/unit/test_metal_stream.cpp MetalStream)
+    add_grad_test(test_metal_kernels tests/unit/test_metal_kernels.cpp MetalKernelsVsCPU)
     add_grad_test(test_dropout tests/unit/test_dropout.cpp DropoutVerification)
     add_grad_test(test_attention_bias tests/unit/test_attention_bias.cpp AttentionBiasVerification)
     add_grad_test(test_weight_tying tests/unit/test_weight_tying.cpp WeightTyingVerification)
@@ -255,7 +290,8 @@ if(BUILD_TESTS)
     else()
         target_compile_options(test_subtract PRIVATE -UNDEBUG)
     endif()
-    set_tests_properties(MetalMatmulVsCPU PROPERTIES SKIP_RETURN_CODE 77 LABELS "unit;hardware")
+    set_tests_properties(MetalMatmulVsCPU MetalStream MetalKernelsVsCPU
+                         PROPERTIES SKIP_RETURN_CODE 77 LABELS "unit;hardware")
 
     add_executable(sanity_tests tests/integration/sanity_tests.cpp)
     target_link_libraries(sanity_tests PRIVATE grad::core)
@@ -296,6 +332,24 @@ if(BUILD_TESTS)
         ENVIRONMENT GRAD_THREADS=4
         FIXTURES_REQUIRED determinism_reference
         LABELS "integration" TIMEOUT 120)
+
+    # Metal-resident training against the CPU, end to end; skipped (77)
+    # without a Metal device.
+    add_executable(metal_parity tests/integration/metal_parity.cpp)
+    target_link_libraries(metal_parity PRIVATE grad::core)
+    grad_enable_warnings(metal_parity)
+    add_test(NAME MetalTrainingParity COMMAND metal_parity parity)
+    add_test(NAME MetalTrainerParity COMMAND metal_parity trainer ${CMAKE_CURRENT_BINARY_DIR})
+    add_test(NAME MetalGradientChecking COMMAND metal_parity gradcheck)
+    add_test(NAME MetalInferenceParity COMMAND metal_parity inference)
+    # The same parity run with tiny command buffers and a lead of two, so
+    # commit batching and the run-ahead throttle cannot change results.
+    add_test(NAME MetalTrainingParityThrottled COMMAND metal_parity parity)
+    set_tests_properties(MetalTrainingParityThrottled PROPERTIES
+        ENVIRONMENT "GRAD_METAL_COMMIT=3;GRAD_METAL_MAX_IN_FLIGHT=2")
+    set_tests_properties(MetalTrainingParity MetalTrainerParity MetalGradientChecking
+                         MetalInferenceParity MetalTrainingParityThrottled PROPERTIES
+        SKIP_RETURN_CODE 77 LABELS "integration;hardware" TIMEOUT 120)
 
     add_grad_test(test_grad_mode tests/unit/test_grad_mode.cpp GradMode)
 

@@ -58,6 +58,27 @@ Readings:
 - **The GPU gap widens with scale: PyTorch MPS is 1.44× faster at 22M and 2.3 to 2.7× faster at 70M.** grad.cpp sends only matmuls above ~10 GFLOP to the GPU, one synchronous dispatch at a time (#7, #11). PyTorch keeps the whole step on the device. Closing this gap takes a device-resident Metal execution path, not more CPU tuning.
 - These records replace the 70M comparison withdrawn below.
 
+## Metal-resident mode (2026-09-27, M3 Pro)
+
+`--device metal` runs the whole step on the GPU ([design](docs/design/metal-resident.md)): forward, backward, clipping and AdamW encoded into one command stream, with the CPU waiting once per `grad train` step and never inside a bench trial. Measured on an idle M3 Pro under the repeated-trial protocol, each measurement gated on a quiet machine; the PyTorch column is the 2026-09-25 head-to-head above. Raw JSON: [`benchmarks/results/2026-09-27-m3pro-metal/`](benchmarks/results/2026-09-27-m3pro-metal/).
+
+| training config | grad.cpp CPU | **grad.cpp Metal** | PyTorch MPS | Metal vs CPU | Metal vs PyTorch MPS |
+|---|---:|---:|---:|---:|---:|
+| 22M `small` | 6,380 tok/s | **14,760 tok/s** | 9,464 | 2.3× | **1.56×** |
+| 70M `medium` (GPT-2 block) | 2,542 | **7,282** | 6,794 | 2.9× | **1.07×** |
+| 69M `modern` (Llama block) | 2,602 | **7,509** | 6,008 | 2.9× | **1.25×** |
+
+(22M: `grad bench --device metal --steps 20 --trials 5`, two rounds, 14,830 and 14,687. 70M: `benchmarks/time_train_steps.sh`, median of steps 5 to 60.)
+
+Readings:
+
+- **grad.cpp's GPU path is faster than PyTorch's at every size measured**, by the widest margin at 22M, where PyTorch's per-op overhead is the largest share of the step. At 70M, where both are dominated by the same MPS GEMMs, the lead narrows to 7 to 25%. The Llama block's larger margin comes mostly from PyTorch being slower on it (6,008 vs 6,794 tok/s); which of its ops costs PyTorch the difference has not been profiled.
+- **The same model, not an approximation.** At 70M, from the same seed, Metal and CPU training losses agree to the 6 significant digits the metrics log records: 16 steps of `medium` and 226 of `modern`. Repeated Metal runs are bitwise identical, and dropout masks are bit-identical to the CPU's.
+- **Zero waits inside a bench trial**: per 22M step, 935 kernel dispatches in 29 command buffers, and no CPU/GPU syncs.
+- **The stream's tuning knobs do not matter here (a null result).** Sweeping `GRAD_METAL_COMMIT` over 8 to 128 and `GRAD_METAL_MAX_IN_FLIGHT` over 4 to 64 at 22M moved throughput by less than 3% (14,519 to 14,934 tok/s), within noise. The GPU is compute-bound, not dispatch-bound, and the defaults (32, 16) stay.
+- **Memory is the cost**: at 70M, the Metal process held a flat 5.1GB `phys_footprint`, because the buffer pool keeps its high-water mark. The CPU mode swung between 1.3 and 3.1GB within each step (0.5s sampling, so the CPU peak is if anything higher; #9 measured 4.1GB). That is about 2GB more for 2.9× the throughput, and still fits comfortably in 16GB.
+- Not yet done: a per-kernel GPU time breakdown (Xcode Metal capture). Attention's per-head GEMMs, which use a simple tiled kernel with full S×S scores, and the per-parameter AdamW launches remain the first optimization candidates.
+
 ## Head-to-head: PyTorch (2026-07-19, M2 Pro, superseded)
 
 Same machine, same session, runs interleaved minutes apart. The PyTorch side is [`benchmarks/pytorch_baseline.py`](benchmarks/pytorch_baseline.py): the identical 22.0M-parameter config, optimizer settings, dropout placement, and loss, but written as idiomatic PyTorch with fused QKV and `scaled_dot_product_attention`. Training throughput is fp32.

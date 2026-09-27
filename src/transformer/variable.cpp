@@ -1,7 +1,10 @@
 #include "grad/transformer/variable.h"
 #include "grad/transformer/activations.h"
 #include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/device.h"
+#include "grad/transformer/metal_ops.h"
 #include "grad/transformer/parallel.h"
+#include "metal_graph.h"
 #include <cmath>
 #include <algorithm>
 #include <ranges>
@@ -135,6 +138,7 @@ std::shared_ptr<Variable> Variable::createOutput(Tensor&& result, bool needs_gra
 }
 
 std::shared_ptr<Variable> Variable::matmul(const std::shared_ptr<Variable>& other) {
+    if (metal_mode()) return metal_graph::matmul(shared_from_this(), other);
     data.assertValid("Variable::matmul(lhs)");
     other->data.assertValid("Variable::matmul(rhs)");
 
@@ -192,6 +196,7 @@ std::shared_ptr<Variable> Variable::matmul(const std::shared_ptr<Variable>& othe
 }
 
 std::shared_ptr<Variable> Variable::add(const std::shared_ptr<Variable>& other) {
+    if (metal_mode()) return metal_graph::add(shared_from_this(), other);
     data.assertValid("Variable::add(lhs)");
     other->data.assertValid("Variable::add(rhs)");
 
@@ -216,6 +221,7 @@ std::shared_ptr<Variable> Variable::add(const std::shared_ptr<Variable>& other) 
 }
 
 std::shared_ptr<Variable> Variable::scale(float factor) {
+    if (metal_mode()) return metal_graph::scale(shared_from_this(), factor);
     data.assertValid("Variable::scale(x)");
 
     Tensor result = this->data.scale(factor);
@@ -236,6 +242,7 @@ std::shared_ptr<Variable> Variable::scale(float factor) {
 }
 
 std::shared_ptr<Variable> Variable::softmax() {
+    if (metal_mode()) return metal_graph::softmax(shared_from_this());
     data.assertValid("Variable::softmax(x)");
 
     Tensor result = this->data.softmax();
@@ -282,6 +289,7 @@ std::shared_ptr<Variable> Variable::softmax() {
 }
 
 std::shared_ptr<Variable> Variable::gelu() {
+    if (metal_mode()) return metal_graph::gelu(shared_from_this());
     data.assertValid("Variable::gelu(x)");
 
     // tanh approximation: gelu(x) = 0.5x(1 + tanh(k(x + a*x^3))).
@@ -342,6 +350,7 @@ std::shared_ptr<Variable> Variable::gelu() {
 }
 
 std::shared_ptr<Variable> Variable::silu() {
+    if (metal_mode()) return metal_graph::silu(shared_from_this());
     data.assertValid("Variable::silu(x)");
 
     // silu(x) = x * sigmoid(x), with sigmoid computed as 1/(1 + e^-x)
@@ -397,6 +406,7 @@ std::shared_ptr<Variable> Variable::silu() {
 }
 
 std::shared_ptr<Variable> Variable::mul(const std::shared_ptr<Variable>& other) {
+    if (metal_mode()) return metal_graph::mul(shared_from_this(), other);
     data.assertValid("Variable::mul(lhs)");
     other->data.assertValid("Variable::mul(rhs)");
 
@@ -426,6 +436,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
     if (!training || dropout_rate == 0.0f) {
         return shared_from_this();
     }
+    if (metal_mode()) return metal_graph::dropout(shared_from_this(), dropout_rate);
 
     data.assertValid("Variable::dropout(x)");
     float scale = 1.0f / (1.0f - dropout_rate);
@@ -452,6 +463,7 @@ std::shared_ptr<Variable> Variable::dropout(float dropout_rate, bool training) {
 }
 
 std::shared_ptr<Variable> Variable::log_softmax() {
+    if (metal_mode()) return metal_graph::log_softmax(shared_from_this());
     // Rows are contiguous at any rank, so every batch is one loop over the
     // flat rows. The exp goes through vec_exp (SIMD).
     const size_t cols = data.getCols();
@@ -524,6 +536,7 @@ std::shared_ptr<Variable> Variable::log_softmax() {
 // one loop serves both. targets holds one class index per row (any shape
 // with that many elements); an index outside [0, V) contributes nothing.
 std::shared_ptr<Variable> Variable::nll_loss(const std::shared_ptr<Variable>& targets) {
+    if (metal_mode()) return metal_graph::nll_loss(shared_from_this(), targets);
     data.assertValid("Variable::nll_loss(input)");
     targets->data.assertValid("Variable::nll_loss(targets)");
 
@@ -573,6 +586,11 @@ std::shared_ptr<Variable> Variable::nll_loss(const std::shared_ptr<Variable>& ta
     return node;
 }
 
+std::shared_ptr<Variable> Variable::cross_entropy(const std::shared_ptr<Variable>& targets) {
+    if (metal_mode()) return metal_graph::cross_entropy(shared_from_this(), targets);
+    return log_softmax()->nll_loss(targets);
+}
+
 void Variable::topologicalSort(std::vector<std::shared_ptr<Variable>>& sorted,
                                std::unordered_set<Variable*>& visited) {
     if (visited.find(this) != visited.end()) {
@@ -600,7 +618,11 @@ void Variable::backward() {
                                + std::to_string(data.numel()) + " elements");
     }
     ensureGrad();
-    grad.fill(1.0f);
+    if (metal_mode()) {
+        metal::ops::fill(grad.device_data(), grad.numel(), 1.0f);
+    } else {
+        grad.fill(1.0f);
+    }
 
     std::vector<std::shared_ptr<Variable>> sorted;
     std::unordered_set<Variable*> visited;
@@ -631,7 +653,11 @@ void Variable::backward() {
 
 void Variable::zeroGrad() {
     if (requires_grad && grad.numel() > 0) {
-        grad.fill(0.0f);
+        if (metal_mode()) {
+            metal::ops::fill(grad.device_data(), grad.numel(), 0.0f);
+        } else {
+            grad.fill(0.0f);
+        }
     }
 }
 

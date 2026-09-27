@@ -1,5 +1,6 @@
 #include "common.h"
 
+#include "grad/transformer/device.h"
 #include "grad/data/token_file.h"
 #include "grad/tokenizer/bpe_v1.h"
 #include "grad/tokenizer/byte_bpe.h"
@@ -123,6 +124,26 @@ std::string token_bin_path(const std::string& corpus_path, int vocab_size, const
 bool is_prepared(const std::string& corpus_path, int vocab_size, TokenizerKind kind) {
     return tokenfile::exists(token_bin_path(corpus_path, vocab_size, "train", kind))
            && tokenfile::exists(token_bin_path(corpus_path, vocab_size, "val", kind));
+}
+
+void add_device_option(Command& cmd, std::optional<std::string>& flag) {
+    cmd.option("--device", flag,
+               "cpu or metal; metal runs the whole step on the GPU (default: GRAD_DEVICE, "
+               "else cpu)")
+        .metavar("cpu|metal");
+}
+
+void apply_device(const std::optional<std::string>& flag) {
+    Device device = Device::CPU;
+    if (flag) {
+        const auto parsed = parse_device(*flag);
+        if (!parsed) throw UsageError("--device: expected cpu or metal, got '" + *flag + "'");
+        device = *parsed;
+    } else {
+        device = device_from_env();
+    }
+    set_device(device);
+    if (device == Device::Metal) std::cout << "Device: metal (resident GPU execution)" << std::endl;
 }
 
 void add_tokenizer_option(Command& cmd, std::optional<std::string>& flag, const std::string& help) {

@@ -5,9 +5,15 @@
 #include <stdexcept>
 #include <cstring>
 #include "grad/transformer/blas_wrapper.h"
+#include "grad/transformer/device.h"
+#include "grad/transformer/metal_ops.h"
 #include "grad/transformer/parallel.h"
+#include "metal_graph.h"
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace grad {
@@ -74,17 +80,248 @@ void rope_apply(float* buf, size_t seq_len, size_t d_model, size_t num_heads, si
 // the gradient passed straight back. Used to run 2D input through the
 // batched attention path.
 std::shared_ptr<Variable> relayout(const std::shared_ptr<Variable>& src, Tensor&& shaped) {
-    std::memcpy(shaped.raw(), src->getData().raw(), shaped.numel() * sizeof(float));
+    const bool metal = metal_mode();
+    if (metal) {
+        metal::ops::copy(src->getData().device_data(), shaped.device_data(), shaped.numel());
+    } else {
+        std::memcpy(shaped.raw(), src->getData().raw(), shaped.numel() * sizeof(float));
+    }
     const bool needs_grad = compute_requires_grad(src);
     auto out = Variable::create(std::move(shaped), needs_grad);
     if (needs_grad) {
-        out->setBackward({src}, [src](Variable& node) {
+        out->setBackward({src}, [src, metal](Variable& node) {
+            const Tensor& g = node.getGrad();
+            if (metal) {
+                metal::ops::accumulate(metal_graph::grad_for_write(*src), g.device_data(),
+                                       g.numel());
+                return;
+            }
             src->ensureGrad();
             float* dst = src->getGrad().raw();
-            blas_vadd(dst, node.getGrad().raw(), dst, node.getGrad().numel());
+            blas_vadd(dst, g.raw(), dst, g.numel());
         });
     }
     return out;
+}
+
+// RoPE tables for Metal mode, built once per (seq_len, head_size) by the
+// CPU builder above and kept on the GPU; rebuilding them per layer per
+// step would put S * head_size trigonometric calls on the encoding thread.
+struct RopeTables {
+    Tensor cos_t;
+    Tensor sin_t;
+};
+
+const RopeTables& metal_rope_tables(size_t seq_len, size_t head_size) {
+    static std::mutex mu;
+    static std::map<std::pair<size_t, size_t>, std::unique_ptr<RopeTables>> cache;
+    std::lock_guard<std::mutex> lk(mu);
+    auto& entry = cache[{seq_len, head_size}];
+    if (!entry) {
+        std::vector<float> cos_v;
+        std::vector<float> sin_v;
+        build_rope_tables(seq_len, head_size, cos_v, sin_v);
+        entry = std::make_unique<RopeTables>();
+        entry->cos_t = Tensor::uninitialized(Shape{cos_v.size()});
+        entry->sin_t = Tensor::uninitialized(Shape{sin_v.size()});
+        // Fresh tensors, never given to the GPU yet: these writes do not wait.
+        std::memcpy(entry->cos_t.raw(), cos_v.data(), cos_v.size() * sizeof(float));
+        std::memcpy(entry->sin_t.raw(), sin_v.data(), sin_v.size() * sizeof(float));
+    }
+    return *entry;
+}
+
+struct AttentionParams {
+    std::shared_ptr<Variable> input;
+    std::shared_ptr<Variable> Wq, Wk, Wv, Wo, bq, bk, bv, bo;
+    size_t batch, S, d, H, head_size;
+    float dropout_rate;
+    bool use_dropout;
+    bool rope;
+    bool needs_grad;
+};
+
+// Metal mode: the 3D attention path of forward() below, stage for stage.
+// Projections are MPS GEMMs over (B*S, d); the per-(batch, head) products
+// are one batched strided GEMM each, reading heads as column slices exactly
+// like the CPU's strided BLAS calls; the softmax output (and dropout mask)
+// are kept for backward when there is one.
+std::shared_ptr<Variable> attention_metal(const AttentionParams& a) {
+    namespace ops = metal::ops;
+    const size_t B = a.batch;
+    const size_t S = a.S;
+    const size_t d = a.d;
+    const size_t H = a.H;
+    const size_t hs = a.head_size;
+    const size_t flat = B * S;
+    const size_t units = B * H;
+    const float scale = 1.0f / std::sqrt(static_cast<float>(hs));
+    const float keep_scale = 1.0f / (1.0f - a.dropout_rate);
+    const float* x = a.input->getData().device_data();
+
+    auto Q = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
+    auto K = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
+    auto V = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
+    auto concat = std::make_shared<Tensor>(Tensor::uninitialized(flat, d));
+    const auto project = [&](const std::shared_ptr<Variable>& W, const std::shared_ptr<Variable>& b,
+                             Tensor& out) {
+        ops::gemm(x, W->getData().device_data(), out.device_data(), flat, d, d, false, false, 1.0f,
+                  0.0f);
+        ops::add_rows(out.device_data(), b->getData().device_data(), out.device_data(), flat * d, d,
+                      1);
+    };
+    project(a.Wq, a.bq, *Q);
+    project(a.Wk, a.bk, *K);
+    project(a.Wv, a.bv, *V);
+
+    const RopeTables* rope = a.rope ? &metal_rope_tables(S, hs) : nullptr;
+    if (rope) {
+        ops::rope(Q->device_data(), flat, S, d, hs, rope->cos_t.device_data(),
+                  rope->sin_t.device_data(), false);
+        ops::rope(K->device_data(), flat, S, d, hs, rope->cos_t.device_data(),
+                  rope->sin_t.device_data(), false);
+    }
+
+    // Head operands of a (B*S, d) projection: z = b * H + h starts at
+    // b * S * d + h * hs, rows d apart. Per-unit (S, S) matrices are
+    // contiguous, S * S apart. Captures by value: the backward closure
+    // keeps a copy after this frame is gone.
+    const auto head_gemm = [units, H, S, d, hs](const float* A, bool a_heads, const float* Bm,
+                                                bool b_heads, float* C, bool c_heads, size_t M,
+                                                size_t N, size_t Kd, bool tA, bool tB) {
+        ops::BatchedGemm g;
+        g.A = A, g.B = Bm, g.C = C;
+        g.M = M, g.N = N, g.K = Kd;
+        g.transA = tA, g.transB = tB;
+        g.batch = units, g.inner = H;
+        g.lda = a_heads ? d : S, g.a_outer = a_heads ? S * d : H * S * S;
+        g.a_inner = a_heads ? hs : S * S;
+        g.ldb = b_heads ? d : S, g.b_outer = b_heads ? S * d : H * S * S;
+        g.b_inner = b_heads ? hs : S * S;
+        g.ldc = c_heads ? d : S, g.c_outer = c_heads ? S * d : H * S * S;
+        g.c_inner = c_heads ? hs : S * S;
+        ops::gemm_batched(g);
+    };
+
+    // scores = Q K^T, softmax in place: P.
+    auto P = std::make_shared<Tensor>(Tensor::uninitialized(units, S, S));
+    head_gemm(Q->device_data(), true, K->device_data(), true, P->device_data(), false, S, S, hs,
+              false, true);
+    ops::attention_softmax(P->device_data(), units * S, S, scale);
+
+    std::shared_ptr<Tensor> mask;
+    Tensor dropped;
+    const float* weights = P->device_data();
+    if (a.use_dropout) {
+        mask = std::make_shared<Tensor>(Tensor::uninitialized(units, S, S));
+        dropped = Tensor::uninitialized(units, S, S);
+        // One stream per (batch, head) unit, reserved as the CPU path does.
+        const uint64_t stream_base = reserve_dropout_streams(static_cast<uint64_t>(units));
+        ops::dropout(P->device_data(), mask->device_data(), dropped.device_data(), S * S, units,
+                     current_dropout_seed(), stream_base, a.dropout_rate, keep_scale);
+        weights = dropped.device_data();
+    }
+    head_gemm(weights, false, V->device_data(), true, concat->device_data(), true, S, hs, S, false,
+              false);
+
+    Tensor out = Tensor::uninitialized(B, S, d);
+    ops::gemm(concat->device_data(), a.Wo->getData().device_data(), out.device_data(), flat, d, d,
+              false, false, 1.0f, 0.0f);
+    ops::add_rows(out.device_data(), a.bo->getData().device_data(), out.device_data(), flat * d, d,
+                  1);
+
+    auto output = Variable::create(std::move(out), a.needs_grad);
+    if (!a.needs_grad) return output;
+
+    const bool dropout_active = a.use_dropout;
+    output->setBackward({a.input, a.Wq, a.Wk, a.Wv, a.Wo, a.bq, a.bk, a.bv, a.bo},
+                        [a, Q, K, V, concat, P, mask, rope, head_gemm, flat, units, S, d, scale,
+                         dropout_active](Variable& node) {
+        namespace ops = metal::ops;
+        using metal_graph::grad_for_write;
+        const float* dOut = node.getGrad().device_data();
+
+        // Output projection: dWo += concat^T dOut ; dbo += column sums.
+        if (a.Wo->requiresGrad()) {
+            ops::gemm(concat->device_data(), dOut, grad_for_write(*a.Wo), d, d, flat, true, false,
+                      1.0f, 1.0f);
+        }
+        if (a.bo->requiresGrad()) ops::column_sums(dOut, flat, d, grad_for_write(*a.bo));
+
+        const bool grad_input = a.input->requiresGrad();
+        if (!grad_input && !a.Wq->requiresGrad() && !a.Wk->requiresGrad() && !a.Wv->requiresGrad()
+            && !a.bq->requiresGrad() && !a.bk->requiresGrad() && !a.bv->requiresGrad()) {
+            return;
+        }
+
+        Tensor dConcat = Tensor::uninitialized(flat, d);
+        ops::gemm(dOut, a.Wo->getData().device_data(), dConcat.device_data(), flat, d, d, false,
+                  true, 1.0f, 0.0f);
+
+        // The weights the forward multiplied V by: P, or P * mask.
+        Tensor effective;
+        const float* w_eff = P->device_data();
+        if (dropout_active) {
+            effective = Tensor::uninitialized(units, S, S);
+            ops::mul(P->device_data(), mask->device_data(), effective.device_data(), units * S * S);
+            w_eff = effective.device_data();
+        }
+
+        // attended = W_eff V: dW_eff = dAttended V^T ; dV = W_eff^T dAttended.
+        Tensor dP = Tensor::uninitialized(units, S, S);
+        Tensor dQ = Tensor::uninitialized(flat, d);
+        Tensor dK = Tensor::uninitialized(flat, d);
+        Tensor dV = Tensor::uninitialized(flat, d);
+        head_gemm(dConcat.device_data(), true, V->device_data(), true, dP.device_data(), false, S,
+                  S, a.head_size, false, true);
+        head_gemm(w_eff, false, dConcat.device_data(), true, dV.device_data(), true, S, a.head_size,
+                  S, true, false);
+        // Through the dropout and the softmax, in place: dP becomes dScores.
+        ops::attention_softmax_backward(P->device_data(), dP.device_data(),
+                                        dropout_active ? mask->device_data() : nullptr, units * S,
+                                        S, scale);
+        // dQ = dS K ; dK = dS^T Q
+        head_gemm(dP.device_data(), false, K->device_data(), true, dQ.device_data(), true, S,
+                  a.head_size, S, false, false);
+        head_gemm(dP.device_data(), false, Q->device_data(), true, dK.device_data(), true, S,
+                  a.head_size, S, true, false);
+
+        // Gradients w.r.t. the rotated Q and K, rotated back.
+        if (rope) {
+            ops::rope(dQ.device_data(), flat, S, d, a.head_size, rope->cos_t.device_data(),
+                      rope->sin_t.device_data(), true);
+            ops::rope(dK.device_data(), flat, S, d, a.head_size, rope->cos_t.device_data(),
+                      rope->sin_t.device_data(), true);
+        }
+
+        const float* x_in = a.input->getData().device_data();
+        const auto weight_grad = [&](const std::shared_ptr<Variable>& W, const Tensor& dProj) {
+            if (!W->requiresGrad()) return;
+            ops::gemm(x_in, dProj.device_data(), grad_for_write(*W), d, d, flat, true, false, 1.0f,
+                      1.0f);
+        };
+        const auto bias_grad = [&](const std::shared_ptr<Variable>& b, const Tensor& dProj) {
+            if (!b->requiresGrad()) return;
+            ops::column_sums(dProj.device_data(), flat, d, grad_for_write(*b));
+        };
+        weight_grad(a.Wq, dQ);
+        weight_grad(a.Wk, dK);
+        weight_grad(a.Wv, dV);
+        bias_grad(a.bq, dQ);
+        bias_grad(a.bk, dK);
+        bias_grad(a.bv, dV);
+
+        if (grad_input) {
+            float* dIn = grad_for_write(*a.input);
+            ops::gemm(dQ.device_data(), a.Wq->getData().device_data(), dIn, flat, d, d, false, true,
+                      1.0f, 1.0f);
+            ops::gemm(dK.device_data(), a.Wk->getData().device_data(), dIn, flat, d, d, false, true,
+                      1.0f, 1.0f);
+            ops::gemm(dV.device_data(), a.Wv->getData().device_data(), dIn, flat, d, d, false, true,
+                      1.0f, 1.0f);
+        }
+    });
+    return output;
 }
 
 }  // namespace
@@ -166,6 +403,12 @@ std::shared_ptr<Variable> MultiHeadAttention::forward(const std::shared_ptr<Vari
     // The weights get gradients even when the input is frozen, so the
     // graph is recorded if anything feeding this op requires grad.
     const bool needs_grad = compute_requires_grad(input, W_q, W_k, W_v, W_o, b_q, b_k, b_v, b_o);
+    if (metal_mode()) {
+        auto output =
+            attention_metal({input, W_q, W_k, W_v, W_o, b_q, b_k, b_v, b_o, batch_size, S, d, H,
+                             head_size, dropout_rate_, use_attn_dropout, rope_, needs_grad});
+        return use_attn_dropout ? output->dropout(dropout_rate_, training) : output;
+    }
     const float keep_scale = 1.0f / (1.0f - dropout_rate_);
 
     Tensor causal_mask = Tensor::create_causal_mask(S);

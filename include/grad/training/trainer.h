@@ -4,6 +4,7 @@
 #include "grad/transformer/optimizer.h"
 #include "grad/data/dataloader.h"
 #include "grad/utils/metrics.h"
+#include <chrono>
 #include <string>
 #include <memory>
 #include <optional>
@@ -79,6 +80,11 @@ private:
     float best_val_loss_restored_ = -1.0f;  // <0 = no restored value
 
     void training_step(int step);
+    // Metal mode: the same step with nothing read back until AdamW is
+    // encoded, so the GPU runs the whole step behind one wait.
+    void training_step_metal(int step);
+    void log_step(int step, float loss, float grad_norm,
+                  std::chrono::steady_clock::time_point step_start);
     std::string resume_model_path() const;
     std::string resume_state_path() const;
     // False (after a warning) if either file of the pair failed to write.

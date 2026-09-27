@@ -30,4 +30,8 @@ void fill_dropout_mask(float* mask, size_t n, float dropout_rate, float scale, u
 // fresh masks per process must seed explicitly.
 void set_dropout_seed(uint64_t seed);
 
+// The seed masks are currently drawn from; the Metal dropout kernel
+// derives the same masks from it.
+[[nodiscard]] uint64_t current_dropout_seed();
+
 }  // namespace grad
