@@ -76,6 +76,10 @@ Half a perplexity point is not visible in a handful of samples. Both models writ
 - **Same tokenizer limitations as `medium`.** Both runs use the whitespace-lossy v1 tokenizer, so they are comparable with each other, not with results on other tokenizers.
 - **In-loop validation is not comparable across the two runs.** This run's trainer scored a fixed subset spread across the whole split. `medium` scored the first 65K tokens, which turned out optimistic (see its report). Only the `grad eval` table above compares them.
 
+## Weights
+
+`tinystories_modern_final.bin` and its tokenizer are published as the [`tinystories-70m-llama` release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m-llama), with SHA-256 checksums and usage. The GPT-2 arm is the [`tinystories-70m` release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m).
+
 ## Reproduce
 
 ```bash
