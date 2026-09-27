@@ -191,7 +191,7 @@ Training throughput against PyTorch 2.14 on the same M3 Pro, fp32, under the rep
 | 22M · d512 L6 · seq 96 | **6,560 tok/s** | 4,370 | 9,464 |
 | 70M · d768 L8 · seq 256 | **2,542 tok/s** | 2,458 | 6,794 |
 
-On CPU, grad.cpp is 1.5× faster than PyTorch at 22M, where per-op overhead matters. At 70M they are at parity, because both spend the step in the same Accelerate GEMMs. PyTorch's GPU backend is 1.4× faster at 22M and 2.7× faster at 70M, because it keeps the whole step on the device, where grad.cpp's CPU mode only offloads its largest matmuls. The [Metal-resident mode](#metal-resident-execution) below is the answer to that gap; it has not been measured yet. These are results for these workloads, not claims about either framework in general. Raw records and method: [BENCHMARKS.md](BENCHMARKS.md#head-to-head-pytorch-214-on-m3-pro-2026-09-25).
+On CPU, grad.cpp is 1.5× faster than PyTorch at 22M, where per-op overhead matters. At 70M they are at parity, because both spend the step in the same Accelerate GEMMs. PyTorch's GPU backend is 1.4× faster than grad.cpp's CPU mode at 22M and 2.7× faster at 70M, because it keeps the whole step on the device. grad.cpp's [Metal-resident mode](#metal-resident-execution) does the same and beats it: 14,760 vs 9,464 tok/s at 22M, 7,282 vs 6,794 at 70M. These are results for these workloads, not claims about either framework in general. Raw records and method: [BENCHMARKS.md](BENCHMARKS.md#head-to-head-pytorch-214-on-m3-pro-2026-09-25).
 
 The full optimization history, 1.2 → 7.9 steps/s across 11 measured rounds including null results, is in [BENCHMARKS.md](BENCHMARKS.md). Current benchmark commands run repeated trials, report the median, identify dirty builds, record the compiler/system/backend, and optionally write JSON.
 
@@ -205,7 +205,15 @@ The full optimization history, 1.2 → 7.9 steps/s across 11 measured rounds inc
 ./build/grad eval ckpt.bin data/tinystories.txt --device metal
 ```
 
-**Status: implemented and tested, not yet measured.** It was built while the machine ran a 35-hour training job, so no throughput numbers exist yet; the measurements to take, and what they are expected to show, are in [BENCHMARKS.md](BENCHMARKS.md#metal-resident-mode-measurements-pending) and the [design note](docs/design/metal-resident.md). The default device is the CPU, which is unchanged, including its large-matmul GPU offload.
+**Status: measured, and faster than PyTorch's GPU backend at every size tested** (M3 Pro, fp32; [BENCHMARKS.md](BENCHMARKS.md#metal-resident-mode-2026-09-27-m3-pro)):
+
+| training config | grad.cpp CPU | grad.cpp Metal | PyTorch MPS |
+|---|---:|---:|---:|
+| 22M | 6,380 tok/s | **14,760 tok/s** | 9,464 |
+| 70M GPT-2 block | 2,542 | **7,282** | 6,794 |
+| 69M Llama block | 2,602 | **7,509** | 6,008 |
+
+Metal and CPU training losses agree to the log's 6 significant digits at 70M from the same seed. The price is memory: a flat 5.1GB at 70M against the CPU mode's 1.3 to 3.1GB. The default device is still the CPU, including its large-matmul GPU offload.
 
 **How it works.** Unified memory means tensors never move: in Metal mode their storage is shared `MTLBuffer`s, and each op encodes its kernel into one command stream instead of running on the calling thread. The CPU encodes a whole step while the GPU executes it, and waits only when it reads a result: once per optimizer step in `grad train` (the losses and gradient norm, read together after AdamW is encoded), never inside a `grad bench` trial. Reads are safe by construction: a tensor handed to the GPU makes its CPU accessors wait for queued work first, and one never handed to the GPU never waits. GEMMs run on MPS; attention's per-head products, norms, softmax, the fused cross-entropy, embeddings, RoPE, dropout, AdamW and the gradient norm are kernels in [`metal_kernels.metal`](src/transformer/metal_kernels.metal), compiled at startup, so building needs no Metal toolchain.
 
@@ -303,7 +311,7 @@ data/            Tiny Shakespeare corpus (~1.1MB)
 ## Limitations and roadmap
 
 - **The 70M checkpoint uses tokenizer v1**, which drops whitespace structure: newlines and runs of spaces never reached that model, and `_` decodes as a space. New corpora default to the lossless v2, and a v2 TinyStories run has not been trained yet.
-- **Metal-resident mode is unmeasured.** It is correct against the CPU on test models and deterministic, but its throughput against CPU mode and PyTorch MPS, its syncs per step and its peak memory have not been measured (see BENCHMARKS.md). The first optimization targets are expected to be attention (a simple tiled GEMM, full S×S scores) and per-parameter AdamW dispatches. A CUDA port was attempted earlier and rolled back (see git history).
+- **Metal-resident mode trades memory for speed and is not yet profiled per kernel.** It holds a flat 5.1GB at 70M (its buffer pool keeps its high-water mark). The next optimization targets are attention (a simple tiled GEMM with full S×S scores) and the per-parameter AdamW dispatches, pending an Xcode Metal capture. A CUDA port was attempted earlier and rolled back (see git history).
 - **The `Tensor` type special-cases 2D and 3D** instead of carrying a general shape and strides, and evaluation still builds an autograd graph that it immediately discards (no no-grad mode yet).
 - Scope: this is a training and inference stack built to be read and measured, not a production serving engine.
 

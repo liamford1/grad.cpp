@@ -14,12 +14,20 @@ set -uo pipefail
 BIN="${1:?usage: time_train_steps.sh <grad> <corpus> <preset> [steps]}"
 CORPUS="${2:?corpus}"; PRESET="${3:?preset}"; STEPS="${4:-35}"
 
+# Only a metrics CSV written by this run counts: a stale one from an
+# earlier run in the same directory would otherwise satisfy the step count
+# at once and stop the new run during startup.
+marker=$(mktemp ./.time_train_steps.XXXXXX)
+trap 'rm -f "$marker"' EXIT
+
 "$BIN" train "$CORPUS" "$PRESET" "${@:5}" > time_train_steps.log 2>&1 &
 pid=$!
 csv=""
 while kill -0 "$pid" 2>/dev/null; do
-    csv=$(ls -t ./*_metrics.csv 2>/dev/null | head -1)
-    if [ -n "$csv" ] && [ "$(grep -c '^t,' "$csv")" -ge "$STEPS" ]; then break; fi
+    csv=$(find . -maxdepth 1 -name '*_metrics.csv' -newer "$marker" 2>/dev/null | head -1)
+    if [ -n "$csv" ] && [ "$(awk -F, '$1=="t"{c++} END{print c+0}' "$csv")" -ge "$STEPS" ]; then
+        break
+    fi
     sleep 5
 done
 kill -INT "$pid" 2>/dev/null; wait "$pid"

@@ -1,8 +1,9 @@
 # Metal-resident execution
 
-Status: implemented on `feature/metal-resident` (`--device metal`), tested
-for correctness against the CPU, and not yet measured. CPU mode, the default,
-is unchanged bit for bit.
+Status: implemented (`--device metal`), tested for correctness against the
+CPU, and measured on an idle M3 Pro (see Measurements below): 14,760 tok/s at
+22M and 7,282 / 7,509 tok/s at 70M, faster than PyTorch MPS at every size
+tested. CPU mode, the default, is unchanged bit for bit.
 
 ## Why
 
@@ -243,7 +244,8 @@ different on every run).
 
 ## What remains
 
-- Measurement, below. Nothing about performance is known yet.
+- A per-kernel GPU time breakdown (Xcode Metal capture), to rank the
+  optimization targets below by measured cost.
 - Performance work the measurements are expected to motivate: a faster
   attention (the batched GEMM is a plain 32x32 simdgroup tile, and the full
   S x S scores are computed and masked rather than only the causal half, or
@@ -253,34 +255,41 @@ different on every run).
 - Generation stays on the CPU. It is latency-bound single-token work where
   the resident stream's advantage, batching many dispatches, does not apply.
 
-## Measurements to take when the machine is idle
+## Measurements (2026-09-27, M3 Pro)
 
-Nothing below has been run; the machine was busy with a 35-hour training
-run while this was built. Protocol: idle machine, `nice` off, 5 trials.
-BENCHMARKS.md carries the same list as a table.
+Measured after the 35-hour run finished, on an idle machine (each run gated
+on a 1-minute load average below 2.5 and repeated if another heavy process
+appeared), 5 trials. Raw JSON: `benchmarks/results/2026-09-27-m3pro-metal/`.
+Each item states what was predicted before measuring, and what happened.
 
-1. `grad bench --device metal --steps 20 --trials 5 --json` vs
-   `grad bench` (CPU) at 22M; compare with PyTorch MPS (9,464 tok/s).
-   *Expected:* above PyTorch MPS. The 22M step is ~100 GFLOP of GEMM
-   (~30 ms at ~3.5 TFLOPS) plus ~900 dispatches; if dispatch overhead is
-   ~10-20 us each on the GPU the step lands at 45-60 ms, 13-17k tok/s.
-2. `benchmarks/time_train_steps.sh` with `--device metal` for `medium` and
-   `modern` at 70M; compare with CPU 2,542 / 2,602 and PyTorch MPS 6,794 /
-   6,008 tok/s. *Expected:* 5,000-7,000 tok/s; the step is GEMM-bound
-   (~850 GFLOP per micro-batch), and MPS GEMMs are the same kernels PyTorch
-   uses.
-3. Syncs per optimizer step from `metal::stream_stats()` (bench prints it).
-   *Expected:* 0 within a bench trial and 1 per `grad train` step. More
-   means a CPU read slipped into the step.
-4. Command buffers, dispatches and run-ahead waits per step, and sweeps of
-   `GRAD_METAL_COMMIT` (8, 16, 32, 64, 128) and `GRAD_METAL_MAX_IN_FLIGHT`
-   (4, 16, 64). *Expected:* flat beyond 16 and 8 respectively if the GPU is
-   the bottleneck; run-ahead waits every step mean the CPU encodes faster
-   than the GPU executes, which is the goal.
-5. Peak memory (`footprint`, not RSS: GPU-shared pages) at 70M vs CPU.
-   *Expected:* CPU peak plus at most `GRAD_METAL_MAX_IN_FLIGHT` command
-   buffers' worth of deferred frees; the allocator caches blocks by size,
-   so a plateau after the first step, not growth.
-6. GPU time split (Xcode Metal capture or `MTLCommandBuffer.GPUStartTime`):
-   GEMM vs attention kernels vs elementwise. *Expected:* the batched
-   attention GEMM and dropout generation are the first optimization targets.
+1. **22M, `grad bench --device metal`.** Predicted above PyTorch MPS, 13-17k
+   tok/s. Measured **14,760 tok/s** (two rounds: 14,830 and 14,687), against
+   6,380 for CPU mode and 9,464 for PyTorch MPS: 2.3x and 1.56x. Inside the
+   predicted range.
+2. **70M, `time_train_steps.sh --device metal`.** Predicted 5,000-7,000
+   tok/s. Measured **7,282** (`medium`, 1,125 ms/step) and **7,509**
+   (`modern`, 1,091 ms/step), against CPU 2,542 / 2,602 and PyTorch MPS
+   6,794 / 6,008. Slightly above the predicted range. The prediction assumed
+   parity with PyTorch on shared MPS GEMMs; the rest of the step is cheaper
+   here than there.
+3. **Syncs.** 0 per step inside a bench trial, as predicted. 935 dispatches
+   in 29 command buffers per 22M step. (Syncs per `grad train` step were not
+   counted separately; the trainer reads the losses and gradient norm once
+   per step by design.)
+4. **Sweeps.** Throughput stayed within 3% (14,519 to 14,934 tok/s) across
+   `GRAD_METAL_COMMIT` 8-128 and `GRAD_METAL_MAX_IN_FLIGHT` 4-64: flat, as
+   predicted if the GPU is the bottleneck. About 28 run-ahead waits per
+   step confirm that the CPU encodes faster than the GPU executes. The
+   defaults stay.
+5. **Memory.** Predicted a plateau after the first step. Measured a flat
+   5,069 MB `phys_footprint` over a 30-step 70M `medium` run, against the
+   CPU mode's 1.3-3.1 GB sawtooth. It is a plateau, as predicted, but
+   higher than "CPU peak plus deferred frees": the pool keeps every block
+   size's high-water mark for the life of the process. Returning cached
+   blocks between steps is an option if memory ever matters more than
+   allocation speed.
+6. **Parity at scale.** Not on the original list, and added because the
+   speedup is large enough to need it: at 70M from the same seed, Metal and
+   CPU losses agree to the metrics log's 6 significant digits for 16 steps
+   of `medium` and 226 steps of `modern`.
+7. **GPU time split.** Not yet taken (needs an Xcode Metal capture).
