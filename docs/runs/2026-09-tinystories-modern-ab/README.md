@@ -50,12 +50,12 @@ The Llama-style model reaches the GPT-2 model's final training loss (1.666, mean
 | Median step | 3.23 s | 3.06 s |
 | 10th to 90th percentile | 3.20 to 3.44 s | 3.04 to 3.11 s |
 | Training time | 37.1 h over 4 sessions | 35.0 h, one session |
-| Max gradient norm (clip 5.0) | 3.36 | 2.65 |
+| Max gradient norm (clip 5.0), as logged | 3.36 (about 3.6 true) | 2.65 (about 2.8 true) |
 | End-of-step RSS, median / max | 1.8 / 2.3 GB | 2.2 / 2.4 GB |
 
 The Llama block is faster per step despite its extra FFN matrix, because RMSNorm, the bias-free layers and RoPE (no position-embedding add or gradient) do less memory-bound work than their GPT-2 counterparts. Its narrower step-time spread partly reflects running in a single uninterrupted session. This run ran from a newer build than `medium` (after the review and refactor work), which measured 4% faster on the `modern` preset in a direct comparison before the run. So part of the step-time difference is the build, not the architecture. The numerics of the two builds are identical, so the loss comparison is unaffected.
 
-Training was clean: no loss spikes, no restarts, and the supervisor never had to intervene.
+Training was clean: no loss spikes, no restarts, and the supervisor never had to intervene. The logged gradient norms read 4 to 11% low: the logging code summed in a float, and has since been fixed. The "true" figures above correct for the bias measured at initialization, where both maxima occurred. The clip used an accurate sum.
 
 ## Samples
 

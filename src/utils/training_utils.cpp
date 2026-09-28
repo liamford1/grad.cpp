@@ -19,18 +19,22 @@ constexpr size_t kBytesPerMiB = size_t{1024} * 1024;
 }  // namespace
 
 float compute_grad_norm(const std::vector<std::shared_ptr<Variable>>& params) {
-    float grad_norm = 0.0f;
+    // Accumulated in double: a float running sum over 22M-70M squares loses
+    // the small terms once the total is large, and read 2-8% low (1.5256
+    // against 1.5754 on one 22M backward). This is the logged and
+    // dashboard figure; clipping computes its own norm.
+    double sum_sq = 0.0;
     for (const auto& param : params) {
         const Tensor& grad = param->getGrad();
         // raw() once per tensor: it fences on the GPU stream, which is not
-        // free per element. Same summation order as ever.
+        // free per element.
         const float* g_ptr = grad.raw();
         for (size_t i = 0; i < grad.numel(); i++) {
-            float g = g_ptr[i];
-            grad_norm += g * g;
+            const double g = g_ptr[i];
+            sum_sq += g * g;
         }
     }
-    return std::sqrt(grad_norm);
+    return static_cast<float>(std::sqrt(sum_sq));
 }
 
 size_t get_memory_mb() {
