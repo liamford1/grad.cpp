@@ -29,7 +29,7 @@ The orange line is the trainer's in-loop validation on a fixed 65K-token slice, 
 
 Both splits are scored by `grad eval` (fixed seed, so both checkpoints see the same windows) on uniform random samples of non-overlapping 256-token windows. The validation loss sits 0.025 nats above the training loss, a small generalization gap. That is expected: the run covered 0.9 epochs, so it saw most training windows at most once and had little opportunity to memorize.
 
-Training was clean. The loss curve has no spikes, and the gradient norm never reached the clip threshold (maximum 3.36 raw, median 0.68 over the last 1,000 steps).
+Training was clean. The loss curve has no spikes, and the gradient norm never reached the clip threshold of 5.0. The logged maximum was 3.36, with a median of 0.68 over the last 1,000 steps. Those logged figures are low: the logging code summed 70M squares in a float, which on these models measures 4 to 6% low near initialization and 9 to 11% low late in training. So the true maximum was about 3.6, and the late median about 0.75. The clip itself used a separate, accurate sum, so training was unaffected, and the logging has since been fixed.
 
 ### The in-loop validation number was optimistic
 

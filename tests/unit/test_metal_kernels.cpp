@@ -76,7 +76,7 @@ bool close(const std::string& what, const std::vector<float>& expected, const Te
         const float tol = atol + rtol * std::abs(expected[i]);
         const float err = std::abs(expected[i] - actual[i]);
         worst = std::max(worst, tol > 0.0f ? err / tol : (err > 0.0f ? 2.0f : 0.0f));
-        if (std::isnan(actual[i]) != std::isnan(expected[i])) worst = 2.0f;
+        if (std::isnan(actual[i]) != std::isnan(expected[i])) worst = std::max(worst, 2.0f);
     }
     std::cout << "  " << what << ": worst " << worst << " of tolerance" << std::endl;
     return CHECK(worst < 1.0f);
@@ -236,6 +236,49 @@ void test_activations() {
     }
     ops::silu_backward(x.device_data(), dy.device_data(), dx2.device_data(), n);
     close("silu_backward", ref, dx2, 1e-6f, 1e-5f);
+}
+
+// GELU and SiLU where their transcendentals saturate. GELU's tanh argument
+// k(x + a x^3) passes 43.67 at x = 10.0; there metal::fast::tanh returns 0
+// (GELU then halves x) and from 44.36 NaN (a GELU input of 10.4), which is
+// how a 22M model first produced a NaN, at step 2558 of a Shakespeare run.
+// Includes that run's two largest inputs, 10.0511789 and 10.4155178.
+// Beyond |x| of about 1e13 x^3 overflows on both sides alike; not tested.
+void test_activation_saturation() {
+    std::cout << "activation saturation" << std::endl;
+    std::vector<float> values = {10.0511789f, 10.4155178f, 1e3f, -1e3f, 1e6f, -1e6f, 1e12f, -1e12f};
+    for (float v = 6.0f; v <= 60.0f; v += 0.01f) {
+        values.push_back(v);
+        values.push_back(-v);
+    }
+    const size_t n = values.size();
+    Tensor x = Tensor::uninitialized(Shape{n});
+    std::copy(values.begin(), values.end(), x.values().begin());
+    const Tensor dy = rnd(Shape{n});
+    const std::vector<float> hdy = host(dy);
+    std::vector<float> ref_gelu, ref_silu;
+    on_cpu([&] {
+        ref_gelu = host(Variable::create(x)->gelu()->getData());
+        ref_silu = host(Variable::create(x)->silu()->getData());
+    });
+    Tensor y = Tensor::uninitialized(Shape{n});
+    ops::gelu(x.device_data(), y.device_data(), n);
+    close("gelu, |x| in [6, 60] and beyond", ref_gelu, y, 1e-6f, 1e-5f);
+    ops::silu(x.device_data(), y.device_data(), n);
+    close("silu, |x| in [6, 60] and beyond", ref_silu, y, 1e-6f, 1e-5f);
+
+    constexpr float k = 0.79788456f;
+    constexpr float a = 0.044715f;
+    Tensor dx(Shape{n});
+    std::vector<float> ref(n, 0.0f);
+    for (size_t i = 0; i < n; i++) {
+        const float xi = values[i];
+        const float t = std::tanh(k * (xi + a * xi * xi * xi));
+        const float d = 0.5f * (1.0f + t + xi * (1.0f - t * t) * k * (1.0f + 3.0f * a * xi * xi));
+        ref[i] = d * hdy[i];
+    }
+    ops::gelu_backward(x.device_data(), dy.device_data(), dx.device_data(), n);
+    close("gelu_backward, |x| in [6, 60] and beyond", ref, dx, 1e-6f, 1e-5f);
 }
 
 // Forward against the CPU LayerNorm module; backward against the CPU
@@ -670,6 +713,7 @@ int main() {
         test_broadcast_add();
         test_reductions();
         test_activations();
+        test_activation_saturation();
         test_norms();
         test_softmax_family();
         test_attention_softmax();

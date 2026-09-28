@@ -2,6 +2,7 @@
 #include "grad/transformer/blas_wrapper.h"
 #include "grad/transformer/device.h"
 #include "grad/transformer/metal_ops.h"
+#include "grad/transformer/op_check.h"
 #include "grad/transformer/parallel.h"
 #include <cmath>
 #include <cstdint>
@@ -10,6 +11,7 @@
 #include <istream>
 #include <numbers>
 #include <ostream>
+#include <string>
 #include <vector>
 
 namespace grad {
@@ -81,6 +83,13 @@ void AdamOptimizer::step() {
         if (metal_mode()) {
             metal::ops::adamw(data.device_data(), grad.device_data(), m.device_data(),
                               v.device_data(), n, {lr, b1, b2, inv_bc1, inv_bc2, eps, wd});
+            if (op_check::enabled()) [[unlikely]] {
+                const std::string of =
+                    " of parameter " + std::to_string(&param - parameters_.data());
+                op_check::tensor("AdamW first moment" + of, m);
+                op_check::tensor("AdamW second moment" + of, v);
+                op_check::tensor("AdamW updated weight" + of, data);
+            }
             continue;
         }
         float* dptr = data.raw();
@@ -201,6 +210,16 @@ void AdamOptimizer::clip_grad_norm(float max_norm) {
             if (!param->requiresGrad() || !param->hasGrad()) continue;
             Tensor& grad = param->getGrad();
             metal::ops::scale_by(grad.device_data(), device_norm_.device_data() + 1, grad.numel());
+        }
+        if (op_check::enabled()) [[unlikely]] {
+            op_check::tensor("gradient norm and clip coefficient", device_norm_);
+            for (size_t k = 0; k < parameters_.size(); k++) {
+                const auto& param = parameters_[k];
+                if (param->requiresGrad() && param->hasGrad()) {
+                    op_check::tensor("clipped gradient of parameter " + std::to_string(k),
+                                     param->getGrad());
+                }
+            }
         }
         return;
     }

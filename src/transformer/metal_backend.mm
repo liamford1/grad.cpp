@@ -137,10 +137,16 @@ std::vector<uint64_t> dropout_jump_matrices() {
 
 // Safe math: IEEE semantics for NaN and infinity, no reassociation, and
 // precise transcendentals, so GPU results track the CPU's to rounding.
+// From macOS 15 these are two settings: mathMode governs the arithmetic,
+// and mathFloatingPointFunctions picks which namespace an unqualified
+// tanh or exp resolves to, metal::fast unless told otherwise, whatever the
+// math mode. fast::tanh returns 0 for x in [43.67, 44.36) and NaN above
+// (an overflowing exp inside), which GELU reaches from an input of 10.
 MTLCompileOptions* resident_compile_options() {
     MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
     if (@available(macOS 15.0, *)) {
         options.mathMode = MTLMathModeSafe;
+        options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
     } else {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"

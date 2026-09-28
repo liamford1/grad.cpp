@@ -1,6 +1,7 @@
 #include "grad/training/trainer.h"
 #include "grad/utils/training_utils.h"
 #include "grad/transformer/device.h"
+#include "grad/transformer/op_check.h"
 #include "grad/transformer/variable.h"
 #include <cerrno>
 #include <cmath>
@@ -346,6 +347,8 @@ float Trainer::evaluate() {
 }
 
 void Trainer::training_step(int step) {
+    if (op_check::enabled()) [[unlikely]]
+        op_check::set_step(step);
     if (metal_mode()) {
         training_step_metal(step);
         return;

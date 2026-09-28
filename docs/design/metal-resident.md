@@ -1,9 +1,10 @@
 # Metal-resident execution
 
 Status: implemented (`--device metal`), tested for correctness against the
-CPU, and measured on an idle M3 Pro (see Measurements below): 14,760 tok/s at
-22M and 7,282 / 7,509 tok/s at 70M, faster than PyTorch MPS at every size
-tested. CPU mode, the default, is unchanged bit for bit.
+CPU, soak-tested on long runs (see Correctness), and measured on an idle M3
+Pro (see Measurements below): 14,760 tok/s at 22M and 7,282 / 7,509 tok/s
+at 70M, faster than PyTorch MPS at every size tested. CPU mode, the
+default, is unchanged bit for bit.
 
 ## Why
 
@@ -132,7 +133,9 @@ gradient-norm reduction and clip scaling.
 **Compilation.** The kernels live in `src/transformer/metal_kernels.metal`,
 are embedded into the library as a byte array at configure time (a string
 literal would hit -Wpedantic's 65,536-character limit), and are
-compiled once per process with `newLibraryWithSource` in safe math mode. A
+compiled once per process with `newLibraryWithSource` in safe math mode
+with precise math functions (two settings from macOS 15; see the known
+failure under Correctness). A
 build-time metallib would need the offline `metal` compiler, which on
 current Xcode is a separate download (absent on this machine) and not
 guaranteed on CI images; runtime compilation needs only Metal.framework and
@@ -140,8 +143,13 @@ costs a fraction of a second once per process, negligible against any
 training run. Linux builds compile neither and link stubs; `metal_mode()`
 can never become true there.
 
-**Numerics.** Safe math mode keeps IEEE semantics and precise
-transcendentals. Multiply-adds may still be fused into one rounding, by the
+**Numerics.** Safe math mode keeps IEEE semantics, and the precise
+math-function setting makes an unqualified `tanh`, `exp`, `log` or `sqrt`
+the `metal::precise` one: over every 97th float, within 2.3e-7 relative
+of the CPU's libm. The GPU flushes subnormal inputs to zero in either
+mode (`log` of a subnormal is -inf, `1/x` is inf), where the CPU does not;
+no kernel feeds a subnormal to one of these on a path that matters (the
+norms add eps first, the softmax sums are at least 1). Multiply-adds may still be fused into one rounding, by the
 Metal compiler and by clang on the CPU (`-ffp-contract=on` is its default),
 so elementwise results that are a product plus a sum can differ from the CPU
 by an ulp of the product; disabling contraction in the kernels
@@ -218,8 +226,11 @@ different on every run).
 - `MetalKernelsVsCPU`: every kernel against the CPU implementation or its
   formula. Single-rounding outputs and all dropout masks match bit for bit;
   fused multiply-adds within an ulp of the product; transcendentals within
-  1e-5 relative (observed worst 0.3 of that); reordered reductions within a
-  bound scaled to their length (observed at most 0.09 of it).
+  1e-5 relative (observed worst 0.85 of that, in GELU's backward, where
+  1 - tanh^2 cancels); reordered reductions within a bound scaled to their
+  length (observed at most 0.09 of it). The activations are also run where
+  they saturate: |x| from 6 to 60 in steps of 0.01 and magnitudes to 1e12,
+  which the random inputs from [-6, 6] never reach.
 - `MetalGradientChecking`: central differences through matmul, bias add,
   GELU, LayerNorm, SiLU gating, dropout and the fused loss on the GPU.
 - `MetalTrainingParity`: GPT-2 and modern models (d64, 2 layers, vocab 97)
@@ -241,6 +252,90 @@ different on every run).
 - Every Metal test exits 77 (skip) without a Metal device;
   `-DGRAD_METAL_BACKEND=OFF` builds the stubs on macOS to check that
   configuration, which is what Linux builds.
+- Soak runs, `benchmarks/metal_soak.sh`: a preset trained from one seed on
+  both devices for thousands of steps, reporting the first non-finite loss
+  or gradient norm, gradient-norm spikes, step-time drift, memory footprint
+  over the run, and the loss agreement at every step and evaluation. The
+  tests above use tiny models for a few steps, so a failure that needs a
+  trained model's value ranges passes all of them; the soak is where the one
+  below was found. Results (2026-09-27, M3 Pro), all finite at every step:
+  - `small` on Shakespeare (tokenizer v2), all 8,000 steps on both devices:
+    final train loss 3.3455 on Metal and 3.3730 on the CPU, final val loss
+    4.5613 and 4.5621. The per-step train loss difference grows as ordinary
+    fp drift with dropout on, from a mean of 0.003 over the first 1,000
+    steps to 0.017 over the last (largest single step 0.074); the 31 val
+    losses differ by at most 0.028. No gradient-norm spikes; the largest
+    norm is 4.59, at step 9 of warmup. Metal step time 52 ms from start to
+    end, footprint flat at 1.3 GB.
+  - `medium` (70M, GPT-2 block with GELU) on TinyStories, tokenizer v1,
+    1,500 steps on Metal: train loss 3.2267 at step 1499, val loss 3.2023
+    at step 1500, largest gradient norm 3.54 (step 2), no spikes, 1,120 ms
+    per step over the last 500 (1,125 in the measurements below),
+    footprint flat at 5.1 GB.
+  - `modern` (69M, Llama block) on TinyStories, tokenizer v2, 1,000 steps
+    on Metal: train loss 2.7257 at step 999, val loss 2.6764 at step 1000,
+    largest gradient norm 3.50 (step 34), no spikes, 1,082 ms per step at
+    the end, footprint flat at 4.7 GB.
+  - `modern` on TinyStories, tokenizer v1, 600 steps on Metal against the
+    CPU run that trained the released 69M checkpoint (same seed, same
+    tokenizer): every step's loss within 1e-5, the metrics log's last
+    digit (mean 1.3e-6), and the step-500 val loss identical, 4.25862.
+  - Logged gradient norms differ between the devices by 2 to 8%, from
+    step 0: the CPU trainer's logged norm (`compute_grad_norm`) adds 22M
+    to 70M squares into one float, and small terms vanish against the
+    running sum. On one 22M backward it reads 1.5256 against 1.5754 in
+    double precision; the Metal reduction reads 1.5754278, and the CPU
+    clip itself (per-tensor `sdot`) 1.5754268, so training is unaffected.
+    Only CPU-mode logs are low, and they are left as they are here.
+- `GRAD_METAL_CHECK=1` (`op_check.h`) localizes a non-finite value: every
+  op that records a graph node waits for the GPU after its forward and its
+  backward and scans what it wrote, the optimizer scans its state, and the
+  first bad value throws after naming the step, the op and its index in the
+  step, the tensor, the first bad index and whether the op's inputs were
+  finite. `GRAD_METAL_CHECK_FROM=N` starts at step N so a run reaches an
+  event at full speed; `GRAD_METAL_CHECK_DUMP=DIR` writes the op's tensors.
+  Off, it costs a load and a not-taken branch per op. `OpCheck` tests it
+  on both devices.
+
+### Known failure found by soak and its fix
+
+What: `grad train data/shakespeare.txt small --device metal` turned NaN at
+step 2558, deterministically, where the CPU run stayed finite. With
+`GRAD_METAL_CHECK` the first non-finite value was the last block's GELU
+forward: input 10.4155 (finite), output NaN. Its only other input of 10 or
+more, 10.0512, came out as 5.0256, half of what it should be. It was the
+first time any GELU input had reached 10: the largest had grown from 8.0
+at step 1274 to 9.98 at step 2535. Resumed from the step-2500 state (which
+draws different batches, since a resume reseeds the loader by step), the
+run failed the same way at step 2650, in the same FFN hidden unit (column
+1800 of 2048), and bitwise identically on a second resume.
+
+Why: GELU is `0.5x(1 + tanh(k(x + a x^3)))`, and at x = 10 the tanh
+argument is 43.7. The kernels were compiled with `mathMode = Safe`, the
+macOS 15 replacement for `fastMathEnabled = NO`, but that setting governs
+only arithmetic; which namespace an unqualified `tanh` resolves to is a
+second option, `mathFloatingPointFunctions`, whose default is
+`metal::fast`. `fast::tanh` returns 0 for arguments in [43.67, 44.36)
+and NaN from 44.36 to infinity (every float from 1 to 128 and a sample of
+those above, on an M3 Pro), where `precise::tanh` and the CPU's `vvtanhf`
+saturate to 1. So GELU returned x/2 for inputs in [10.0, 10.4), NaN above,
+and its backward a derivative near 58 instead of 1. The NaN reached the
+loss and, through AdamW, every weight. The first run also hit a GPU fault
+(command buffers discarded as victims of GPU recovery) near step 5090; a
+second run of the unfixed build stayed NaN but ran all 8,000 steps with a
+flat footprint, so that fault did not come from the NaN deterministically.
+
+Why the tests missed it: the kernel tests drew activation inputs from
+[-6, 6], where the tanh argument stays below 13, and the parity tests
+train tiny models for 8 steps, whose activations never grow that large.
+Every check passed because every check stayed inside the range where the
+fast and precise functions agree to 1e-5.
+
+Fix: `mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise`,
+which makes every unqualified transcendental in the kernels the precise
+one, as this note always said they were (throughput unchanged within
+noise: 14,143 against 14,110 tok/s at 22M, and the 70M step times above). `MetalKernelsVsCPU` now runs the activations through their
+saturation range, and fails without the fix.
 
 ## What remains
 

@@ -6,6 +6,14 @@
 // otherwise both splits are sampled uniformly, so a capped run still covers
 // the split rather than its first few stories. The train-side figure
 // separates generalization from distribution shift between the two splits.
+//
+// Bits per byte makes runs on different tokenizers comparable, which
+// per-token loss is not: loss / ln 2 / (corpus bytes per token), with the
+// ratio taken over the whole prepared corpus (train + val tokens against
+// the corpus file's size). v2 spends ~20% more tokens than v1 on the same
+// text, so the same bits per byte shows up as a ~20% lower v1 loss. The
+// ratio is a corpus average, so a window's own byte count may differ; over
+// a large uniform sample the difference averages out.
 
 #include "cli/args.h"
 #include "commands.h"
@@ -18,6 +26,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
+#include <numbers>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -78,11 +88,33 @@ void evaluate(const std::string& checkpoint_path, const std::string& corpus_path
                         : static_cast<int>(val_loader.num_batches());
     DataLoader train_loader(train, kBatchSize, /*shuffle=*/true, kSeed + 1);
 
-    const auto report = [](const char* split, double loss, long tokens, double seconds) {
+    // Corpus bytes per token, for bits per byte; unknown when the corpus
+    // text is not present beside its prepared token files.
+    std::error_code size_error;
+    const auto corpus_bytes = std::filesystem::file_size(corpus_path, size_error);
+    const double bytes_per_token =
+        size_error ? 0.0
+                   : static_cast<double>(corpus_bytes)
+                         / static_cast<double>(train->tokenCount() + val->tokenCount());
+    if (bytes_per_token > 0.0) {
+        std::cout << "Corpus: " << std::fixed << std::setprecision(3) << bytes_per_token
+                  << " bytes/token" << std::defaultfloat << std::endl;
+    } else {
+        std::cerr << "Warning: " << corpus_path
+                  << " not found; bits per byte needs its size and is not reported" << std::endl;
+    }
+
+    const auto report = [bytes_per_token](const char* split, double loss, long tokens,
+                                          double seconds) {
         std::cout << std::left << std::setw(8) << split << std::right << std::fixed << " loss "
                   << std::setprecision(4) << loss << "  perplexity " << std::setprecision(3)
-                  << std::exp(loss) << "  (" << tokens << " tokens, " << std::setprecision(0)
-                  << seconds << "s)" << std::defaultfloat << std::endl;
+                  << std::exp(loss);
+        if (bytes_per_token > 0.0) {
+            std::cout << "  bits/byte " << std::setprecision(4)
+                      << loss / std::numbers::ln2 / bytes_per_token;
+        }
+        std::cout << "  (" << tokens << " tokens, " << std::setprecision(0) << seconds << "s)"
+                  << std::defaultfloat << std::endl;
     };
     const auto timed = [&](DataLoader& loader) {
         const auto start = std::chrono::steady_clock::now();
