@@ -80,6 +80,10 @@ This run followed a soak test. The first attempt at this pre-flight found a Meta
 - **Cross-tokenizer comparisons are approximate**, for the reasons above. The clean comparisons are within a tokenizer: the A/B for v1, and future v2 runs against this one.
 - **Budget.** At 4.75 tokens per parameter the model is still far from compute-optimal (about 20). A longer run is the obvious next step now that one costs 12 hours instead of 35.
 
+## Weights
+
+`tinystories_v2_modern_final.bin` and its v2 tokenizer are published as the [`tinystories-70m-llama-v2` release](https://github.com/liamford1/grad.cpp/releases/tag/tinystories-70m-llama-v2), with SHA-256 checksums and usage.
+
 ## Reproduce
 
 ```bash
