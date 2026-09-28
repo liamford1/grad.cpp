@@ -100,6 +100,7 @@ Runtime switches are environment variables:
 | `GRAD_METAL=0` | Keep every matmul on the CPU |
 | `GRAD_METAL_THRESHOLD=N` | Minimum FLOPs (2·M·N·K) for a matmul to go to the Metal GPU (default 10 GFLOPs) |
 | `GRAD_METAL_FP16=1` | fp16 GPU operands with fp32 accumulation (off by default, BENCHMARKS.md #11) |
+| `GRAD_METAL_CHECK=1` | Debugging: wait for the GPU after every op and stop at the first non-finite value, naming the op, step and index (`GRAD_METAL_CHECK_FROM=N` starts at step N, `GRAD_METAL_CHECK_DUMP=DIR` writes the op's tensors; see `op_check.h`) |
 
 They were named `TRANSFORMER_*` before; the old names are still read when the new one is unset.
 
@@ -219,7 +220,7 @@ Metal and CPU training losses agree to the log's 6 significant digits at 70M fro
 
 **What stays on the CPU:** data loading, token-id validation, KV-cached generation (single-token decoding is latency-bound; it reads the GPU-trained weights directly), and checkpoint I/O. Checkpoints are the same files in both modes.
 
-**Numerics.** Everything is fp32. Dropout masks are bitwise identical to the CPU's, the same function of (seed, stream, position). Results are not bitwise equal to the CPU's, because reductions sum in a different order, but they are deterministic: the same run twice gives the same bits. On the test models, CPU and Metal training losses agree within 2e-6 per micro-batch over 8 steps.
+**Numerics.** Everything is fp32, and the kernels use Metal's precise math functions: the fast ones, Metal's default even in safe math mode, break at large arguments (fast `tanh` is NaN above 44.4), which a 22M GELU model reached after 2,558 steps ([design note](docs/design/metal-resident.md#known-failure-found-by-soak-and-its-fix)). Dropout masks are bitwise identical to the CPU's, the same function of (seed, stream, position). Results are not bitwise equal to the CPU's, because reductions sum in a different order, but they are deterministic: the same run twice gives the same bits. On the test models, CPU and Metal training losses agree within 2e-6 per micro-batch over 8 steps; over a full 8,000-step 22M run with dropout they drift apart as rounding noise does and end at the same loss (val 4.5613 on Metal, 4.5621 on the CPU). `benchmarks/metal_soak.sh` runs that comparison for any preset.
 
 **Requirements and knobs.** An Apple GPU of family 7 or later (M1 onward). Select the device before building tensors, as the CLI does; Metal-mode tensors stay readable from CPU code. `GRAD_METAL_COMMIT` (dispatches per command buffer, default 32) and `GRAD_METAL_MAX_IN_FLIGHT` (command buffers the CPU may run ahead, default 16, which bounds the memory held by frees awaiting the GPU) are tuning knobs for the measurements.
 
@@ -236,7 +237,7 @@ The test suite checks the parts that are easiest to get silently wrong. Every ch
 - **Integration checks**: tiny-sequence overfitting, parity between full-sequence and KV-cached inference for both architectures, the data loader, and rejection of truncated or corrupt checkpoints, token files and tokenizer caches
 - **Tokenizers**: round trips over random bytes, invalid UTF-8, whitespace runs and special tokens; pre-tokenizer splits checked against GPT-2's regex; training determinism and the tie-break rule; encoding against the merge-in-order definition; chunked encoding; rejection of every truncation of a tokenizer file; v1 ids checked against the pre-v2 binary
 - **Packaging**: CI builds a small consumer project against the installed `grad::core` CMake package
-- **Metal-resident mode**: every GPU kernel against the CPU implementation (dropout masks bit for bit), the stream's waiting and deferred-reuse rules, gradient checks through GPU ops, KV-cached decoding against the GPU forward, and tiny GPT-2 and modern models trained on both devices from one seed: losses agree, a second Metal run is bitwise identical, and a Metal step waits for the GPU once
+- **Metal-resident mode**: every GPU kernel against the CPU implementation (dropout masks bit for bit), the stream's waiting and deferred-reuse rules, gradient checks through GPU ops, KV-cached decoding against the GPU forward, and tiny GPT-2 and modern models trained on both devices from one seed: losses agree, a second Metal run is bitwise identical, and a Metal step waits for the GPU once; activations through their saturation range, where a fast-math `tanh` once produced NaN; and a soak script for long runs on both devices (`benchmarks/metal_soak.sh`)
 - **Hardware-aware results**: Metal tests are reported as skipped, not passed, when no Metal device is exposed
 
 CI builds with warnings as errors (`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast`, and Clang's stricter `-Wshadow-all`) on macOS and Linux, runs the suite, a training smoke test and the package consumer, and runs the suite again under AddressSanitizer and UndefinedBehaviorSanitizer. A `lint` job checks formatting and runs clang-tidy (see Development).
