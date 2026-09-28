@@ -125,6 +125,7 @@ set(GRAD_CORE_SOURCES
     src/transformer/variable.cpp
     src/transformer/optimizer.cpp
     src/transformer/device.cpp
+    src/transformer/op_check.cpp
     src/transformer/metal_graph.cpp
     src/tokenizer/bpe_tokenizer.cpp
     src/tokenizer/pretokenize.cpp
@@ -270,6 +271,7 @@ if(BUILD_TESTS)
     add_grad_test(test_metal_stream tests/unit/test_metal_stream.cpp MetalStream)
     add_grad_test(test_metal_kernels tests/unit/test_metal_kernels.cpp MetalKernelsVsCPU)
     add_grad_test(test_dropout tests/unit/test_dropout.cpp DropoutVerification)
+    add_grad_test(test_op_check tests/unit/test_op_check.cpp OpCheck)
     add_grad_test(test_attention_bias tests/unit/test_attention_bias.cpp AttentionBiasVerification)
     add_grad_test(test_weight_tying tests/unit/test_weight_tying.cpp WeightTyingVerification)
     add_grad_test(test_attention_gradients tests/unit/test_attention_gradients.cpp AttentionGradientChecking)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "grad/transformer/op_check.h"
 #include "grad/transformer/tensor.h"
 #include <memory>
 #include <functional>
@@ -133,6 +134,17 @@ public:
     template <typename Fn>
     void setBackward(std::initializer_list<std::shared_ptr<Variable>> inputs, Fn fn) {
         children.insert(children.end(), inputs.begin(), inputs.end());
+        if (op_check::enabled()) [[unlikely]] {
+            op_check::forward(*this, children, typeid(Fn));
+            backward_fn = [self = weak_from_this(), body = std::move(fn)]() {
+                auto node = self.lock();
+                if (!node || !node->hasGrad()) return;
+                op_check::before_backward(node->children);
+                body(*node);
+                op_check::backward(*node, node->children, typeid(Fn));
+            };
+            return;
+        }
         backward_fn = [self = weak_from_this(), body = std::move(fn)]() {
             auto node = self.lock();
             if (node && node->hasGrad()) body(*node);
