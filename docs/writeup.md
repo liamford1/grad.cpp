@@ -4,21 +4,24 @@ grad.cpp is a GPT training stack written from the ground up in C++20: tensors, r
 
 This post covers what I trained with it and what I measured:
 
-- two ~70M-parameter language models trained from scratch on one MacBook (an M3 Pro), 35 to 37 hours each
+- three ~70M-parameter language models trained from scratch on one MacBook (an M3 Pro): two on the CPU at 35 to 37 hours each, and one on the GPU in 12
 - a controlled architecture A/B between them: the GPT-2 block against the Llama-style block
 - the validation number I almost published, and why it was wrong
 - making training bit-for-bit reproducible, and why that mattered for everything after it
 - a GPU execution mode that trains **1.56× faster than PyTorch's MPS backend** at 22M parameters, and 7 to 25% faster at 70M
+- the bug a 12-hour soak test was designed to catch, and caught: a GPU `tanh` that returns NaN
 
-Everything is at [github.com/liamford1/grad.cpp](https://github.com/liamford1/grad.cpp), and both trained models can be downloaded from its releases.
+Everything is at [github.com/liamford1/grad.cpp](https://github.com/liamford1/grad.cpp), and all three trained models can be downloaded from its releases.
 
 ## What it produces
 
-A sample from the 69M-parameter model, prompted with the bold text, sampled at temperature 0.8, first draw, unedited:
+A sample from the current flagship, a 69M-parameter model trained on the GPU with a lossless tokenizer. It is prompted with the bold text, sampled at temperature 0.8, first draw, unedited. The paragraph breaks are the model's own:
 
-> **Once upon a time, there was a little dragon who** lived in the forest. The dragon loved to fly around and explore new places. One day, while flying, he saw an unusual sight. It was an old castle, hidden down amongst all the trees. He decided to enter and see what it was. Inside, there were trees, houses, and even a lot of food!
+> **Once upon a time, there was a little dragon who** lived in the woods. He liked to explore and play with his friends all day long! One day, he got very sick and his mom took him to see the doctor. The doctor said that he needed medicine for one of her teeth but it was hidden down in a special place under the trees.
+>
+> The little dragon was scared, so with a deep breath, he went and found an old man who knew how to heal his tooth. The hero helped him get rid of the medicine from his teeth and gave it to him as a special treat for being brave.
 
-The models are trained on [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories), a corpus of short children's stories designed so that small models can learn fluent English. It is a good fit for a laptop: a 70M model gets far enough to be interesting in a couple of days.
+The models are trained on [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories), a corpus of short children's stories designed so that small models can learn fluent English. It is a good fit for a laptop: a 70M model gets far enough to be interesting in half a day on the GPU.
 
 ## The stack
 
@@ -118,6 +121,32 @@ Two results from the same measurement pass are just as useful:
 
 I wrote down the expected results before measuring. 22M landed inside the predicted range, and 70M slightly above it.
 
+## The bug the soak test caught
+
+Before starting a 12-hour run in GPU mode, I ran a pre-flight: train the 22M preset on the GPU, interrupt it, resume it. It never got as far as the resume test. At exactly step 2,558 the loss became NaN, while the CPU run from the same seed kept going. Because the Metal path is deterministic, it happened at the same step every time. That turned an intermittent mystery into a two-minute reproduction.
+
+A debug mode that synchronizes after every GPU op and checks its outputs found the first bad value. It was in GELU's forward pass, on an input of 10.4, finite, with a NaN output. GELU computes `tanh(k(x + a·x³))`, and at x = 10.4 that argument is 48.6.
+
+The kernels were compiled with Metal's "safe" arithmetic mode. A separate setting picks which `tanh` implementation is used, and it defaults to the fast one. Measured on this GPU, fast `tanh` returns NaN for arguments above 44.4. The CPU's `tanh` saturates to 1 there. Step 2,558 was simply the first time any GELU input in the run grew past 10.
+
+The fix is one line: precise math functions, at no measurable speed cost. It came with a regression test covering saturated inputs, and a soak script that trains any preset on both devices from one seed and compares them.
+
+The lesson is about test design, not GPUs. Every parity test had passed, because tiny models trained for 8 steps never produce large activations. The failure was in the tail of a distribution that only a long run reaches.
+
+## The flagship: GPU training with a lossless tokenizer
+
+With the fix in, the flagship ran overnight: the Llama block, tokenizer v2, 40,000 steps, entirely on the GPU. It took **12.1 hours at 1.08 s per step**, in one uninterrupted session with no non-finite values. The same model took 35 hours on the CPU.
+
+Comparing it with the earlier models needs a tokenizer-independent measure, since per-token loss depends on what a token is. `grad eval` reports bits per byte:
+
+| model | tokenizer | held-out bits/byte | training time |
+|---|---|---:|---:|
+| GPT-2 block | v1 (lossy) | 0.4852 | 37.1 h, CPU |
+| Llama block | v1 (lossy) | **0.4720** | 35.0 h, CPU |
+| Llama block | v2 (lossless) | 0.4777 | **12.1 h, GPU** |
+
+The v2 model lands about 1% behind the v1 Llama model, and the comparison is tilted against it. v2 predicts all 14.8 million of the corpus's newlines, which v1 never has to (v1's figure still divides by those bytes). And v2's tokens hold less text, so at the same token budget it read 17% less. What you see in the samples is the payoff: paragraphs, dialogue on its own lines, and stories that end.
+
 ## Smaller things that make it hold up
 
 - **A lossless tokenizer.** The original BPE split on whitespace, so newlines never reached the model. Tokenizer v2 is byte-level: `decode(encode(x)) == x` for any bytes. Its hand-written GPT-2 pre-tokenizer matches the reference regex on 5 million pieces of real text. It learns merges hundreds of times faster, and breaks ties deterministically so macOS and Linux produce the same vocabulary. Checkpoints record their tokenizer's fingerprint and refuse a mismatch.
@@ -128,11 +157,11 @@ I wrote down the expected results before measuring. 22M landed inside the predic
   - pinned clang-format and clang-tidy
   - a consumer project built against the installed CMake package
   - the thread-count determinism test
-- **Honest benchmarks.** Repeated trials, medians, JSON with build and system provenance, and runs gated on an idle machine. One set of measurements was contaminated by an unrelated test suite on the same machine; it was thrown out and redone. Early on, a 70M comparison was withdrawn when an audit found an inconsistent calculation, and it stays in the history as a correction.
+- **Honest benchmarks.** Repeated trials, medians, JSON with build and system provenance, and runs gated on an idle machine. One set of measurements was contaminated by an unrelated test suite on the same machine; it was thrown out and redone. Early on, a 70M comparison was withdrawn when an audit found an inconsistent calculation, and it stays in the history as a correction. So does a logging bug: the gradient norm in the metrics log was summed in single precision and read 4 to 11% low. The run reports that quoted it now say so.
 
 ## What's next
 
-- **A flagship run on the new stack.** Metal cuts a 40,000-step run from 35 hours to about 12, which makes a lossless-tokenizer model trained to its compute-optimal token count practical on a laptop.
+- **A compute-optimal run.** The flagship is at 4.75 training tokens per parameter against the usual ~20. On the GPU that is now about two days, not a week.
 - **Multiple seeds for the A/B,** so the architecture gap comes with error bars.
 - **Per-kernel GPU profiling,** then a fused attention kernel and multi-tensor AdamW, which are the first optimization targets.
 - **Inference work:** generation on the GPU, and int8 quantization.
