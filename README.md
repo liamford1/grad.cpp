@@ -179,12 +179,14 @@ Long runs are interruptible: Ctrl-C saves a resume pair (`<prefix>_resume_model.
 
 A resumed or warm-started run reseeds the data loader (by step position and checkpoint path respectively), so it draws fresh training windows instead of replaying the batches the checkpoint already saw.
 
-`--seed N` (default 42) drives weight initialization, window sampling, and dropout together, for repeating an experiment under a different seed; the default reproduces runs made before the flag existed. Resume such a run with the same `--seed`:
+`--seed N` (default 42) drives weight initialization, window sampling, and dropout together, for repeating an experiment under a different seed; the default reproduces runs made before the flag existed. A non-default seed adds `_s<seed>` to the checkpoint prefix (`tinystories_modern_s7_best.bin`), so several seeds of one preset train side by side. `--steps N` trains for N optimizer steps instead of the preset's, with the LR schedule decaying over N. Resume such a run with the same `--seed` and `--steps`:
 
 ```bash
-./build/grad train data/tinystories.txt medium --seed 7
-./build/grad train data/tinystories.txt medium resume --seed 7
+./build/grad train data/tinystories.txt medium --seed 7 --steps 10000
+./build/grad train data/tinystories.txt medium resume --seed 7 --steps 10000
 ```
+
+`train_supervised.sh` passes `GRAD_SEED` and `GRAD_STEPS` through to those flags, and [`tools/ab_seeds.sh`](tools/ab_seeds.sh) queues a multi-seed `medium` vs `modern` A/B through it.
 
 ## Performance
 

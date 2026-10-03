@@ -31,6 +31,8 @@ namespace grad::cli {
 
 namespace {
 
+constexpr std::uint32_t kDefaultSeed = 42;
+
 // Checkpoint prefix from the corpus filename: data/tinystories.txt ->
 // "tinystories" (data/shakespeare.txt keeps its historical "shakespeare").
 // train_supervised.sh derives the same prefix; keep the two in step.
@@ -44,18 +46,21 @@ std::string checkpoint_stem(const std::string& corpus_path) {
 
 // v2 runs carry "_v2" so they can never overwrite a v1 lineage's
 // checkpoints on the same corpus; v1 keeps its historical names so
-// existing runs resume in place.
+// existing runs resume in place. A non-default seed adds "_s<seed>" so
+// seeds of one preset can train side by side (multi-seed A/Bs).
 std::string checkpoint_prefix(const std::string& corpus_path, const Preset& preset,
-                              TokenizerKind kind) {
+                              TokenizerKind kind, std::uint32_t seed) {
     return checkpoint_stem(corpus_path) + (kind == TokenizerKind::ByteBpe ? "_v2" : "")
-           + (preset.modern ? "_modern" : "") + (preset.is_smoke_test() ? "_fast" : "");
+           + (preset.modern ? "_modern" : "") + (preset.is_smoke_test() ? "_fast" : "")
+           + (seed != kDefaultSeed ? "_s" + std::to_string(seed) : "");
 }
 
 // Which tokenizer lineage `resume` continues when --tokenizer is not given:
 // the one that left resume state behind. Both existing is ambiguous.
-TokenizerKind resumable_kind(const std::string& corpus_path, const Preset& preset) {
+TokenizerKind resumable_kind(const std::string& corpus_path, const Preset& preset,
+                             std::uint32_t seed) {
     const auto has_state = [&](TokenizerKind kind) {
-        return training::peek_resume_step(checkpoint_prefix(corpus_path, preset, kind)
+        return training::peek_resume_step(checkpoint_prefix(corpus_path, preset, kind, seed)
                                           + "_resume_state.bin")
             .has_value();
     };
@@ -67,9 +72,10 @@ TokenizerKind resumable_kind(const std::string& corpus_path, const Preset& prese
             "pass --tokenizer v1 or --tokenizer v2");
     }
     if (!v1 && !v2) {
-        throw std::runtime_error("No resume state found ("
-                                 + checkpoint_prefix(corpus_path, preset, TokenizerKind::BpeV1)
-                                 + "_resume_state.bin or the _v2 equivalent); start a run first");
+        throw std::runtime_error(
+            "No resume state found ("
+            + checkpoint_prefix(corpus_path, preset, TokenizerKind::BpeV1, seed)
+            + "_resume_state.bin or the _v2 equivalent); start a run first");
     }
     return v1 ? TokenizerKind::BpeV1 : TokenizerKind::ByteBpe;
 }
@@ -181,8 +187,6 @@ void generate_samples(GPTModel& model, const Tokenizer& tokenizer,
 // its historical value XOR (seed ^ kDefaultSeed), so the default seed
 // reproduces runs made before --seed existed bit for bit and any other
 // seed moves all of them.
-constexpr std::uint32_t kDefaultSeed = 42;
-
 struct RunSeeds {
     std::uint32_t init;    // weight initialization (Tensor::set_init_seed)
     std::uint32_t loader;  // training-window sampling and dropout masks
@@ -226,6 +230,7 @@ struct TrainRequest {
     std::string init;
     std::uint32_t seed;
     std::optional<TokenizerKind> tokenizer;  // --tokenizer, if given
+    std::optional<int> steps;                // --steps, if given (already applied to preset)
     bool via_train_fast;                     // which command the resume hint should name
 };
 
@@ -243,8 +248,8 @@ int train(const TrainRequest& request) {
     std::string prefix;
     std::optional<int> resume_next_step;
     if (resume) {
-        if (!requested) requested = resumable_kind(corpus_path, preset);
-        prefix = checkpoint_prefix(corpus_path, preset, *requested);
+        if (!requested) requested = resumable_kind(corpus_path, preset, request.seed);
+        prefix = checkpoint_prefix(corpus_path, preset, *requested, request.seed);
         resume_next_step = training::peek_resume_step(prefix + "_resume_state.bin");
         if (!resume_next_step) {
             throw std::runtime_error("No resume state found (" + prefix
@@ -276,7 +281,7 @@ int train(const TrainRequest& request) {
 
     const TokenizerKind kind =
         choose_tokenizer(corpus_path, preset.vocab_size, requested, start ? &*start : nullptr);
-    if (!resume) prefix = checkpoint_prefix(corpus_path, preset, kind);
+    if (!resume) prefix = checkpoint_prefix(corpus_path, preset, kind, request.seed);
     TrainingData data =
         is_prepared(corpus_path, preset.vocab_size, kind)
             ? map_prepared(corpus_path, preset.vocab_size, preset.seq_length, kind)
@@ -332,6 +337,7 @@ int train(const TrainRequest& request) {
                           : "train " + corpus_path + " " + std::string(preset.name))
                   << " resume"
                   << (request.seed != kDefaultSeed ? " --seed " + std::to_string(request.seed) : "")
+                  << (request.steps ? " --steps " + std::to_string(*request.steps) : "")
                   << (request.tokenizer
                           ? std::string(" --tokenizer ") + tokenizer_kind_flag(*request.tokenizer)
                           : "")
@@ -375,6 +381,7 @@ int run_train(const Invocation& invocation) {
     std::string preset_name = "small";
     std::string init;
     std::uint32_t seed = kDefaultSeed;
+    std::optional<int> steps;
     std::optional<std::string> tokenizer;
     std::optional<std::string> device;
 
@@ -388,22 +395,29 @@ int run_train(const Invocation& invocation) {
     cmd.optional("preset", preset_name, "one of " + train_preset_names() + "; see grad presets");
     cmd.optional("init", init, kInitHelp).metavar("CKPT|resume");
     cmd.option("--seed", seed, kSeedHelp);
+    cmd.option("--steps", steps,
+               "train for N optimizer steps instead of the preset's; the LR schedule "
+               "decays over N (pass the same --steps to resume)")
+        .at_least(1);
     add_tokenizer_option(cmd, tokenizer, kTokenizerHelp);
     add_device_option(cmd, device);
     if (cmd.parse(invocation.args) == ParseResult::HelpShown) return 0;
 
-    const Preset* preset = find_preset(preset_name);
-    if (!preset || preset->name == "fast") {
+    const Preset* found = find_preset(preset_name);
+    if (!found || found->name == "fast") {
         throw UsageError("unknown preset '" + preset_name + "' (available: " + train_preset_names()
                          + ")");
     }
+    Preset preset = *found;
+    if (steps) preset.num_steps = *steps;
     const std::optional<TokenizerKind> kind = parse_tokenizer_flag(tokenizer);
     apply_device(device);
-    return train({.preset = *preset,
+    return train({.preset = preset,
                   .corpus_path = corpus,
                   .init = init,
                   .seed = seed,
                   .tokenizer = kind,
+                  .steps = steps,
                   .via_train_fast = false});
 }
 
@@ -432,6 +446,7 @@ int run_train_fast(const Invocation& invocation) {
                   .init = init,
                   .seed = seed,
                   .tokenizer = kind,
+                  .steps = std::nullopt,
                   .via_train_fast = true});
 }
 
