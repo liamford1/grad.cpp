@@ -12,7 +12,9 @@
 # The corpus path is relative to the repo root, where the trainer runs and
 # writes its checkpoints. GRAD_TOKENIZER=v1|v2 picks the tokenizer lineage;
 # unset, it is the one that already has a run for this corpus and preset,
-# else the one whose tokenizer file exists, else v2.
+# else the one whose tokenizer file exists, else v2. GRAD_SEED and
+# GRAD_STEPS pass through to --seed and --steps; GRAD_DEVICE the trainer
+# reads itself.
 set -uo pipefail
 
 CORPUS="${1:?usage: train_supervised.sh <corpus.txt> <preset> [max_restarts]}"
@@ -25,11 +27,16 @@ cd "$REPO" || exit 1
 # Checkpoint prefix, derived exactly as src/cli/train.cpp does: the corpus
 # filename minus its last extension, then "_modern" for the modern-architecture
 # presets and "_fast" for the fast ones, so lineages coexist on one corpus.
-# v2 runs add "_v2" after the corpus name.
+# v2 runs add "_v2" after the corpus name, and a non-default seed adds
+# "_s<seed>" at the end.
 BASE="$(basename "$CORPUS")"; BASE="${BASE%.*}"
 SUFFIX=""
 case "$PRESET" in modern|fast-modern) SUFFIX="${SUFFIX}_modern" ;; esac
 case "$PRESET" in fast*) SUFFIX="${SUFFIX}_fast" ;; esac
+SEED="${GRAD_SEED:-42}"
+[ "$SEED" != 42 ] && SUFFIX="${SUFFIX}_s${SEED}"
+STEPS_FLAG=""
+[ -n "${GRAD_STEPS:-}" ] && STEPS_FLAG="--steps $GRAD_STEPS"
 
 has_run() { [ -f "${BASE}$1${SUFFIX}_resume_state.bin" ] || [ -f "${BASE}$1${SUFFIX}_final.bin" ]; }
 has_v1_tokenizer() {
@@ -77,7 +84,7 @@ trap 'rm -rf "$LOCKDIR"' EXIT
 [ -x "$BIN" ] || { log "FATAL: $BIN missing. Build first."; exit 1; }
 [ -f "$CORPUS" ] || { log "FATAL: corpus $CORPUS missing."; exit 1; }
 
-log "supervising: preset=$PRESET tokenizer=$TOKENIZER prefix=$PREFIX corpus=$CORPUS"
+log "supervising: preset=$PRESET tokenizer=$TOKENIZER seed=$SEED steps=${GRAD_STEPS:-preset} device=${GRAD_DEVICE:-cpu} prefix=$PREFIX corpus=$CORPUS"
 
 for (( attempt = 1; attempt <= MAX_RESTARTS; attempt++ )); do
     # Resume only if the trainer actually left state behind; otherwise cold start.
@@ -88,7 +95,8 @@ for (( attempt = 1; attempt <= MAX_RESTARTS; attempt++ )); do
     fi
     log "attempt $attempt/$MAX_RESTARTS (init='${INIT:-scratch}')"
 
-    "$BIN" train "$CORPUS" "$PRESET" $INIT --tokenizer "$TOKENIZER" >>"$LOG" 2>&1
+    # shellcheck disable=SC2086  # STEPS_FLAG is intentionally two words or empty
+    "$BIN" train "$CORPUS" "$PRESET" $INIT --tokenizer "$TOKENIZER" --seed "$SEED" $STEPS_FLAG >>"$LOG" 2>&1
     rc=$?
 
     # The trainer exits 0 both on completion and on a SIGINT pause (it saves
